@@ -1,0 +1,21 @@
+{
+  "auto_detect_clipboard": true,
+  "auto_generate_acceptance": true,
+  "default_deadline": "same_day",
+  "reminder_advance_minutes": 60,
+  "theme": "light",
+  "language": "zh_CN",
+  "ai_type": "qwen",
+  "ai_api_key": "sk-190f4264289e4f7fb70848fd245247c7",
+  "ai_api_base": "",
+  "external_enabled": true,
+  "external_url": "http://127.0.0.1",
+  "external_token": "",
+  "sync_on_create": true,
+  "sync_on_complete": true,
+  "chat_api_type": "qwen",
+  "chat_api_key": "sk-190f4264289e4f7fb70848fd245247c7",
+  "chat_api_base": "",
+  "remind_enabled": true,
+  "remind_minutes": 30
+}
