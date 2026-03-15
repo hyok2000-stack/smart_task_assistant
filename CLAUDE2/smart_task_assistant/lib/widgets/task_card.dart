@@ -59,9 +59,8 @@ class TaskCard extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      onLongPress: selectable
-          ? () => onSelectionChanged?.call(!isSelected)
-          : null,
+      onLongPress:
+          selectable ? () => onSelectionChanged?.call(!isSelected) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(12),
@@ -69,15 +68,15 @@ class TaskCard extends StatelessWidget {
           color: isSelected
               ? AppTheme.primaryColor.withOpacity(0.15)
               : (isDark
-                    ? Colors.grey.shade800
-                    : Colors.white.withOpacity(0.95)),
+                  ? Colors.grey.shade800
+                  : Colors.white.withOpacity(0.95)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
                 : (task.isOverdue
-                      ? AppTheme.errorColor.withOpacity(0.5)
-                      : _getPriorityColor(task.priority).withOpacity(0.3)),
+                    ? AppTheme.errorColor.withOpacity(0.5)
+                    : _getPriorityColor(task.priority).withOpacity(0.3)),
             width: isSelected || task.isOverdue ? 2 : 1,
           ),
           boxShadow: [
@@ -135,12 +134,10 @@ class TaskCard extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      decoration: task.isCompleted
-                          ? TextDecoration.lineThrough
-                          : null,
-                      color: task.isCompleted
-                          ? AppTheme.textSecondaryColor
-                          : null,
+                      decoration:
+                          task.isCompleted ? TextDecoration.lineThrough : null,
+                      color:
+                          task.isCompleted ? AppTheme.textSecondaryColor : null,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -261,9 +258,8 @@ class TaskCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          onLongPress: selectable
-              ? () => onSelectionChanged?.call(!isSelected)
-              : null,
+          onLongPress:
+              selectable ? () => onSelectionChanged?.call(!isSelected) : null,
           borderRadius: BorderRadius.circular(16),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -281,22 +277,22 @@ class TaskCard extends StatelessWidget {
                             AppTheme.primaryColor.withOpacity(0.05),
                           ]
                         : (isDark
-                              ? [
-                                  Colors.white.withOpacity(0.08),
-                                  Colors.white.withOpacity(0.04),
-                                ]
-                              : [
-                                  Colors.white.withOpacity(0.95),
-                                  Colors.white.withOpacity(0.85),
-                                ]),
+                            ? [
+                                Colors.white.withOpacity(0.08),
+                                Colors.white.withOpacity(0.04),
+                              ]
+                            : [
+                                Colors.white.withOpacity(0.95),
+                                Colors.white.withOpacity(0.85),
+                              ]),
                   ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
                         : (isDark
-                              ? Colors.white.withOpacity(0.15)
-                              : Colors.white.withOpacity(0.6)),
+                            ? Colors.white.withOpacity(0.15)
+                            : Colors.white.withOpacity(0.6)),
                     width: isSelected ? 2 : 1.5,
                   ),
                   boxShadow: [
@@ -501,7 +497,7 @@ class TaskCard extends StatelessWidget {
     // 只显示任务已关联的标签
     final taskTags =
         availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-        [];
+            [];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -829,9 +825,8 @@ class TaskCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 color: color,
-                fontWeight: task.isOverdue
-                    ? FontWeight.w600
-                    : FontWeight.normal,
+                fontWeight:
+                    task.isOverdue ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
             if (onDueTimeTap != null) ...[
@@ -946,6 +941,72 @@ class TaskCard extends StatelessWidget {
     );
   }
 
+  /// 构建标签药丸显示
+  Widget _buildTagPills(BuildContext context) {
+    // 只显示任务已关联的标签
+    final taskTags =
+        availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
+            [];
+
+    if (taskTags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: taskTags.map((tag) {
+        final color = _parseColor(tag.color);
+        return GestureDetector(
+          onTap: () => _showTagEditDialog(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.18), color.withOpacity(0.12)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withOpacity(0.4), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.15),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.label_rounded,
+                    size: 8,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  tag.name,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   /// 构建任务标签 - 点击打开标签管理对话框
   Widget _buildTaskTags(BuildContext context) {
     print('===== TaskCard._buildTaskTags =====');
@@ -957,7 +1018,7 @@ class TaskCard extends StatelessWidget {
     // 只显示任务已关联的标签
     final taskTags =
         availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-        [];
+            [];
 
     print('匹配到的标签数量: ${taskTags.length}');
     for (var tag in taskTags) {
