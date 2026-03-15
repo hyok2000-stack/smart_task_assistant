@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="智能任务助手 - Smart Task Assistant">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="智能任务助手">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>智能任务助手</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+      color: white;
+      z-index: 9999;
+    }
+    .loading .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    .loading .text {
+      margin-top: 24px;
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .loading .logo {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <div class="logo">📋</div>
+    <div class="spinner"></div>
+    <div class="text">正在加载智能任务助手...</div>
+  </div>
+  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // 提醒声音播放函数
+    window.playReminderSound = function() {
+      try {
+        // 创建音频上下文
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // 播放三声提示音
+        function playBeep(startTime, frequency) {
+          var oscillator = audioContext.createOscillator();
+          var gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = frequency;
+          oscillator.type = 'sine';
+          
+          // 音量包络
+          gainNode.gain.setValueAtTime(0, startTime);
+          gainNode.gain.linearRampToValueAtTime(0.5, startTime + 0.05);
+          gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.15);
+          gainNode.gain.linearRampToValueAtTime(0, startTime + 0.3);
+          
+          oscillator.start(startTime);
+          oscillator.stop(startTime + 0.3);
+        }
+        
+        var now = audioContext.currentTime;
+        playBeep(now, 880);      // A5
+        playBeep(now + 0.35, 988); // B5
+        playBeep(now + 0.7, 1047); // C6
+        
+      } catch (e) {
+        console.log('播放声音失败:', e);
+        // 备用方案：使用系统提示音
+        try {
+          var audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQgAOImm0eWpYhAJSqnL5rhoDgAktMTkqWQcBwCO1OOxah4HAIHU4bJqHQcAgdPhsmoZBgCB0+GyahkGAIDT4bNrGQYAgNPhs2sbBQCA0OGzbhsFAIDQ4bNtGwUAgM/hsm8cBQCAz+GzbhwFAIDL4bNwHQUAgcvhs3AeBQCB0+GzcB8FAIHT4bNxIAUAgdPhs3EgBQCB0+GzcSEFAIHT4bNxIQUAgdPhs3IiBQCB0+GzciMFAIHT4bNyIwUAgdPhs3IkBQCB0+GzciQFAIHT4bNyJQUAgdPhs3ImBQCB0+GzciYFAIHT4bNyJgUAgdPhs3InBQCB0+GzcicFAIHT4bNyJwUAgdPhs3IoBQCB0+GzcigFAIHT4bNyKQUAgdPhs3IpBQCB0+GzcioFAIHT4bNyKgUAgdPhs3IqBQCB0+GzciwFAIHT4bNyLQUAgdPhs3ItBQCB0+Gzci4FAIHT4bNyLgUAgdPhs3IvBQCB0+Gzci8FAIHT4bNyMAUAgdPhs3IwBQCB0+GzcjEFAIHT4bNyMQUAgdPhs3IyBQCB0+Gzcv//');
+          audio.play();
+        } catch (e2) {
+          console.log('备用音频也失败:', e2);
+        }
+      }
+    };
+    
+    window.addEventListener('load', function() {
+      // 等待Flutter应用加载完成后移除加载提示
+      var checkFlutter = setInterval(function() {
+        if (window._flutter) {
+          clearInterval(checkFlutter);
+          setTimeout(function() {
+            var loading = document.getElementById('loading');
+            if (loading) {
+              loading.style.opacity = '0';
+              loading.style.transition = 'opacity 0.3s';
+              setTimeout(function() {
+                loading.remove();
+              }, 300);
+            }
+          }, 500);
+        }
+      }, 100);
+      
+      // 超时保护
+      setTimeout(function() {
+        var loading = document.getElementById('loading');
+        if (loading) {
+          loading.querySelector('.text').textContent = '加载时间较长，请稍候...';
+        }
+      }, 10000);
+    });
+  </script>
+</body>
+</html>

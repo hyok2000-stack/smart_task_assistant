@@ -1,0 +1,19 @@
+# 智能任务助手 - 依赖包
+
+# 核心依赖
+PyQt5>=5.15.0
+requests>=2.28.0
+
+# 可选依赖
+pyperclip>=1.8.2          # 剪贴板操作
+SpeechRecognition>=3.10.0 # 语音识别
+sounddevice>=0.4.0        # 音频输入（PyAudio的现代替代品）
+numpy>=1.20.0             # 数值计算（语音输入需要）
+
+# 测试依赖
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-html>=3.2.0
+
+# 开发工具
+coverage>=7.3.0
