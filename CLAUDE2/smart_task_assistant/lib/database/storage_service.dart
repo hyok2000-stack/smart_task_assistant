@@ -111,8 +111,9 @@ class WebStorageService implements StorageService {
   Future<void> insertTag(Tag tag) async {
     // 检查是否已存在相同ID或相同名称的标签
     final existingById = _tags.any((t) => t.id == tag.id);
-    final existingByName =
-        _tags.any((t) => t.name.toLowerCase() == tag.name.toLowerCase());
+    final existingByName = _tags.any(
+      (t) => t.name.toLowerCase() == tag.name.toLowerCase(),
+    );
 
     if (existingById || existingByName) {
       debugPrint('标签已存在，跳过创建: ${tag.name}');
@@ -149,8 +150,9 @@ class WebStorageService implements StorageService {
     final total = _tasks.length;
     final completed = _tasks.where((t) => t.isCompleted).length;
     final pending = _tasks.where((t) => t.status == TaskStatus.pending).length;
-    final inProgress =
-        _tasks.where((t) => t.status == TaskStatus.inProgress).length;
+    final inProgress = _tasks
+        .where((t) => t.status == TaskStatus.inProgress)
+        .length;
     final overdue = _tasks.where((t) => t.isOverdue).length;
 
     return {
@@ -166,8 +168,10 @@ class WebStorageService implements StorageService {
   Future<List<Task>> getOverdueTasks() async {
     // 逾期任务：未完成、未取消且已过截止时间
     return _tasks
-        .where((t) =>
-            !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue)
+        .where(
+          (t) =>
+              !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue,
+        )
         .toList();
   }
 
@@ -223,6 +227,16 @@ class WebStorageService implements StorageService {
     }
   }
 
+  /// 清除自动备份数据
+  Future<void> clearAutoBackup() async {
+    try {
+      await _prefs?.remove(_backupKey);
+      debugPrint('自动备份数据已清除');
+    } catch (e) {
+      debugPrint('清除自动备份数据失败: $e');
+    }
+  }
+
   /// 获取导出数据（用于下载）
   String getExportData() {
     final exportData = {
@@ -246,7 +260,8 @@ StorageService? _storageInstance;
 
 /// 获取存储服务实例（单例模式）
 StorageService getStorageService() {
-  _storageInstance ??=
-      kIsWeb ? WebStorageService() : createNativeStorageService();
+  _storageInstance ??= kIsWeb
+      ? WebStorageService()
+      : createNativeStorageService();
   return _storageInstance!;
 }

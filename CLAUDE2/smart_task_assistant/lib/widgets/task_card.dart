@@ -59,8 +59,9 @@ class TaskCard extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      onLongPress:
-          selectable ? () => onSelectionChanged?.call(!isSelected) : null,
+      onLongPress: selectable
+          ? () => onSelectionChanged?.call(!isSelected)
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(12),
@@ -68,15 +69,15 @@ class TaskCard extends StatelessWidget {
           color: isSelected
               ? AppTheme.primaryColor.withOpacity(0.15)
               : (isDark
-                  ? Colors.grey.shade800
-                  : Colors.white.withOpacity(0.95)),
+                    ? Colors.grey.shade800
+                    : Colors.white.withOpacity(0.95)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
                 : (task.isOverdue
-                    ? AppTheme.errorColor.withOpacity(0.5)
-                    : _getPriorityColor(task.priority).withOpacity(0.3)),
+                      ? AppTheme.errorColor.withOpacity(0.5)
+                      : _getPriorityColor(task.priority).withOpacity(0.3)),
             width: isSelected || task.isOverdue ? 2 : 1,
           ),
           boxShadow: [
@@ -134,10 +135,12 @@ class TaskCard extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      decoration:
-                          task.isCompleted ? TextDecoration.lineThrough : null,
-                      color:
-                          task.isCompleted ? AppTheme.textSecondaryColor : null,
+                      decoration: task.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: task.isCompleted
+                          ? AppTheme.textSecondaryColor
+                          : null,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -179,11 +182,7 @@ class TaskCard extends StatelessWidget {
                       if (task.reminderMinutes != null &&
                           task.reminderMinutes! > 0) ...[
                         const SizedBox(width: 6),
-                        Icon(
-                          Icons.alarm,
-                          size: 11,
-                          color: Colors.orange,
-                        ),
+                        Icon(Icons.alarm, size: 11, color: Colors.orange),
                       ],
                     ],
                   ),
@@ -198,8 +197,11 @@ class TaskCard extends StatelessWidget {
                   color: AppTheme.successColor.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.check,
-                    color: AppTheme.successColor, size: 14),
+                child: const Icon(
+                  Icons.check,
+                  color: AppTheme.successColor,
+                  size: 14,
+                ),
               )
             else if (task.isOverdue)
               Container(
@@ -208,8 +210,11 @@ class TaskCard extends StatelessWidget {
                   color: AppTheme.errorColor.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.warning_amber_rounded,
-                    color: AppTheme.errorColor, size: 14),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppTheme.errorColor,
+                  size: 14,
+                ),
               ),
           ],
         ),
@@ -256,8 +261,9 @@ class TaskCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          onLongPress:
-              selectable ? () => onSelectionChanged?.call(!isSelected) : null,
+          onLongPress: selectable
+              ? () => onSelectionChanged?.call(!isSelected)
+              : null,
           borderRadius: BorderRadius.circular(16),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -275,22 +281,22 @@ class TaskCard extends StatelessWidget {
                             AppTheme.primaryColor.withOpacity(0.05),
                           ]
                         : (isDark
-                            ? [
-                                Colors.white.withOpacity(0.08),
-                                Colors.white.withOpacity(0.04),
-                              ]
-                            : [
-                                Colors.white.withOpacity(0.95),
-                                Colors.white.withOpacity(0.85),
-                              ]),
+                              ? [
+                                  Colors.white.withOpacity(0.08),
+                                  Colors.white.withOpacity(0.04),
+                                ]
+                              : [
+                                  Colors.white.withOpacity(0.95),
+                                  Colors.white.withOpacity(0.85),
+                                ]),
                   ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
                         : (isDark
-                            ? Colors.white.withOpacity(0.15)
-                            : Colors.white.withOpacity(0.6)),
+                              ? Colors.white.withOpacity(0.15)
+                              : Colors.white.withOpacity(0.6)),
                     width: isSelected ? 2 : 1.5,
                   ),
                   boxShadow: [
@@ -348,8 +354,11 @@ class TaskCard extends StatelessWidget {
                                   : null,
                             ),
                             child: task.isCompleted
-                                ? const Icon(Icons.check,
-                                    size: 14, color: Colors.white)
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 14,
+                                    color: Colors.white,
+                                  )
                                 : null,
                           ),
                         ),
@@ -422,8 +431,11 @@ class TaskCard extends StatelessWidget {
                                 value: 'edit',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.edit_outlined,
-                                        color: AppTheme.primaryColor, size: 20),
+                                    Icon(
+                                      Icons.edit_outlined,
+                                      color: AppTheme.primaryColor,
+                                      size: 20,
+                                    ),
                                     const SizedBox(width: 12),
                                     const Text('编辑任务'),
                                   ],
@@ -433,8 +445,11 @@ class TaskCard extends StatelessWidget {
                                 value: 'delete',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.delete_outline,
-                                        color: AppTheme.errorColor, size: 20),
+                                    Icon(
+                                      Icons.delete_outline,
+                                      color: AppTheme.errorColor,
+                                      size: 20,
+                                    ),
                                     const SizedBox(width: 12),
                                     const Text('删除任务'),
                                   ],
@@ -486,7 +501,7 @@ class TaskCard extends StatelessWidget {
     // 只显示任务已关联的标签
     final taskTags =
         availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-            [];
+        [];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -521,8 +536,10 @@ class TaskCard extends StatelessWidget {
               GestureDetector(
                 onTap: () => _showTagEditDialog(context),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -557,15 +574,14 @@ class TaskCard extends StatelessWidget {
             children: taskTags.map((tag) {
               final color = _parseColor(tag.color);
               return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: color,
-                    width: 1.5,
-                  ),
+                  border: Border.all(color: color, width: 1.5),
                   boxShadow: [
                     BoxShadow(
                       color: color.withOpacity(0.2),
@@ -704,7 +720,7 @@ class TaskCard extends StatelessWidget {
     final priorities = [
       TaskPriority.low,
       TaskPriority.medium,
-      TaskPriority.high
+      TaskPriority.high,
     ];
     final currentIndex = priorities.indexOf(task.priority);
     final nextIndex = (currentIndex + 1) % priorities.length;
@@ -779,7 +795,7 @@ class TaskCard extends StatelessWidget {
     final statuses = [
       TaskStatus.pending,
       TaskStatus.inProgress,
-      TaskStatus.completed
+      TaskStatus.completed,
     ];
     final currentIndex = statuses.indexOf(task.status);
     final nextIndex = (currentIndex + 1) % statuses.length;
@@ -806,19 +822,16 @@ class TaskCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.access_time_rounded,
-              size: 11,
-              color: color,
-            ),
+            Icon(Icons.access_time_rounded, size: 11, color: color),
             const SizedBox(width: 3),
             Text(
               task.dueTimeDescription,
               style: TextStyle(
                 fontSize: 11,
                 color: color,
-                fontWeight:
-                    task.isOverdue ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: task.isOverdue
+                    ? FontWeight.w600
+                    : FontWeight.normal,
               ),
             ),
             if (onDueTimeTap != null) ...[
@@ -857,7 +870,9 @@ class TaskCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: onRecurringTap != null
               ? Border.all(
-                  color: AppTheme.primaryColor.withOpacity(0.3), width: 1)
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  width: 1,
+                )
               : null,
         ),
         child: Row(
@@ -875,8 +890,11 @@ class TaskCard extends StatelessWidget {
             ),
             if (onRecurringTap != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit,
-                  size: 8, color: AppTheme.primaryColor.withOpacity(0.7)),
+              Icon(
+                Icons.edit,
+                size: 8,
+                color: AppTheme.primaryColor.withOpacity(0.7),
+              ),
             ],
           ],
         ),
@@ -930,14 +948,28 @@ class TaskCard extends StatelessWidget {
 
   /// 构建任务标签 - 点击打开标签管理对话框
   Widget _buildTaskTags(BuildContext context) {
+    print('===== TaskCard._buildTaskTags =====');
+    print('任务ID: ${task.id}');
+    print('任务标题: ${task.title}');
+    print('任务关联的标签ID: ${task.tagIds}');
+    print('可用标签数量: ${availableTags?.length ?? 0}');
+
     // 只显示任务已关联的标签
     final taskTags =
         availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-            [];
+        [];
+
+    print('匹配到的标签数量: ${taskTags.length}');
+    for (var tag in taskTags) {
+      print('  - 标签ID: ${tag.id}, 名称: ${tag.name}');
+    }
 
     if (taskTags.isEmpty) {
+      print('没有匹配的标签，不显示');
+      print('====================================');
       return const SizedBox.shrink();
     }
+    print('====================================');
 
     return GestureDetector(
       onTap: () => _showTagEditDialog(context),
@@ -950,10 +982,7 @@ class TaskCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  color.withOpacity(0.18),
-                  color.withOpacity(0.12),
-                ],
+                colors: [color.withOpacity(0.18), color.withOpacity(0.12)],
               ),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: color.withOpacity(0.4), width: 1.2),
@@ -991,11 +1020,7 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 2),
-                Icon(
-                  Icons.edit,
-                  size: 8,
-                  color: color.withOpacity(0.8),
-                ),
+                Icon(Icons.edit, size: 8, color: color.withOpacity(0.8)),
               ],
             ),
           );

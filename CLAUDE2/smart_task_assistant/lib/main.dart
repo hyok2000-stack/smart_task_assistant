@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'providers/task_provider.dart';
+import 'providers/settings_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'services/reminder_service.dart';
@@ -18,6 +19,15 @@ class AppSettings extends ChangeNotifier {
   Locale _locale = const Locale('zh', 'CN');
   bool _clipboardMonitorEnabled = true; // 默认开启
   bool _notificationsEnabled = true;
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    // 确保主题模式始终为浅色
+    if (_themeMode != ThemeMode.light) {
+      _themeMode = ThemeMode.light;
+    }
+  }
 
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
@@ -61,22 +71,29 @@ void main() {
 
   // 创建 Provider 实例
   final taskProvider = TaskProvider();
+  final settingsProvider = SettingsProvider();
 
   // 初始化提醒服务
   final reminderService = ReminderService();
 
   runApp(MyApp(
     taskProvider: taskProvider,
+    settingsProvider: settingsProvider,
     reminderService: reminderService,
   ));
 }
 
 class MyApp extends StatefulWidget {
   final TaskProvider taskProvider;
+  final SettingsProvider settingsProvider;
   final ReminderService reminderService;
 
-  const MyApp(
-      {super.key, required this.taskProvider, required this.reminderService});
+  const MyApp({
+    super.key,
+    required this.taskProvider,
+    required this.settingsProvider,
+    required this.reminderService,
+  });
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -192,6 +209,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: widget.taskProvider),
+        ChangeNotifierProvider.value(value: widget.settingsProvider),
         ChangeNotifierProvider.value(value: appSettings),
       ],
       child: Consumer<AppSettings>(

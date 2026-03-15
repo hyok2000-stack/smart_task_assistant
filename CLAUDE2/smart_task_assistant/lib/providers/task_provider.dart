@@ -51,10 +51,14 @@ class TaskProvider extends ChangeNotifier {
 
     if (_searchQuery.isNotEmpty) {
       result = result
-          .where((t) =>
-              t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              (t.content?.toLowerCase().contains(_searchQuery.toLowerCase()) ??
-                  false))
+          .where(
+            (t) =>
+                t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                (t.content?.toLowerCase().contains(
+                          _searchQuery.toLowerCase(),
+                        ) ??
+                    false),
+          )
           .toList();
     }
 
@@ -126,8 +130,12 @@ class TaskProvider extends ChangeNotifier {
       _tags = tags;
       // 逾期任务：未完成、未取消且已过截止时间
       _overdueTasks = tasks
-          .where((t) =>
-              !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue)
+          .where(
+            (t) =>
+                !t.isCompleted &&
+                t.status != TaskStatus.cancelled &&
+                t.isOverdue,
+          )
           .toList();
 
       // 今日任务 = 所有未完成的任务
@@ -210,8 +218,12 @@ class TaskProvider extends ChangeNotifier {
       // 重新计算今日任务和逾期任务
       _todayTasks = _tasks.where((t) => !t.isCompleted).toList();
       _overdueTasks = _tasks
-          .where((t) =>
-              !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue)
+          .where(
+            (t) =>
+                !t.isCompleted &&
+                t.status != TaskStatus.cancelled &&
+                t.isOverdue,
+          )
           .toList();
 
       debugPrint('任务列表长度: ${_tasks.length}');
@@ -230,8 +242,10 @@ class TaskProvider extends ChangeNotifier {
   Future<void> updateTask(Task task) async {
     try {
       // 检查是否是周期任务被标记为已完成
-      final oldTask =
-          _tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+      final oldTask = _tasks.firstWhere(
+        (t) => t.id == task.id,
+        orElse: () => task,
+      );
       final wasJustCompleted = oldTask.status != TaskStatus.completed &&
           task.status == TaskStatus.completed;
 
@@ -251,8 +265,12 @@ class TaskProvider extends ChangeNotifier {
       _recalculateTodayTasks();
       // 逾期任务：未完成、未取消且已过截止时间
       _overdueTasks = _tasks
-          .where((t) =>
-              !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue)
+          .where(
+            (t) =>
+                !t.isCompleted &&
+                t.status != TaskStatus.cancelled &&
+                t.isOverdue,
+          )
           .toList();
 
       notifyListeners();
@@ -269,11 +287,13 @@ class TaskProvider extends ChangeNotifier {
       // 通过检查是否有相同标题且刚创建的待处理任务
       final now = DateTime.now();
       final recentTasks = _tasks
-          .where((t) =>
-              t.title == completedTask.title &&
-              t.status == TaskStatus.pending &&
-              t.id != completedTask.id &&
-              now.difference(t.createdAt).inSeconds < 5)
+          .where(
+            (t) =>
+                t.title == completedTask.title &&
+                t.status == TaskStatus.pending &&
+                t.id != completedTask.id &&
+                now.difference(t.createdAt).inSeconds < 5,
+          )
           .toList();
 
       if (recentTasks.isNotEmpty) {
@@ -310,8 +330,14 @@ class TaskProvider extends ChangeNotifier {
           if (newDay > daysInNewMonth) {
             newDay = daysInNewMonth;
           }
-          newDueTime = DateTime(newYear, newMonth, newDay, baseTime.hour,
-              baseTime.minute, baseTime.second);
+          newDueTime = DateTime(
+            newYear,
+            newMonth,
+            newDay,
+            baseTime.hour,
+            baseTime.minute,
+            baseTime.second,
+          );
           break;
         default:
           newDueTime = baseTime.add(const Duration(days: 1));
@@ -331,7 +357,8 @@ class TaskProvider extends ChangeNotifier {
       _tasks.insert(0, newTask);
 
       debugPrint(
-          '周期任务已创建: ${newTask.title}, 原截止时间: ${completedTask.dueTime}, 新截止时间: $newDueTime');
+        '周期任务已创建: ${newTask.title}, 原截止时间: ${completedTask.dueTime}, 新截止时间: $newDueTime',
+      );
     } catch (e) {
       debugPrint('创建周期任务失败: $e');
     }
@@ -414,9 +441,7 @@ class TaskProvider extends ChangeNotifier {
     final index = _tasks.indexWhere((t) => t.id == id);
     if (index == -1) return;
 
-    final task = _tasks[index].copyWith(
-      status: TaskStatus.inProgress,
-    );
+    final task = _tasks[index].copyWith(status: TaskStatus.inProgress);
 
     await updateTask(task);
   }
@@ -491,8 +516,9 @@ class TaskProvider extends ChangeNotifier {
 
       // 先检查内存中是否已存在
       final existingById = _tags.any((t) => t.id == tag.id);
-      final existingByName =
-          _tags.any((t) => t.name.toLowerCase() == tag.name.toLowerCase());
+      final existingByName = _tags.any(
+        (t) => t.name.toLowerCase() == tag.name.toLowerCase(),
+      );
 
       if (existingById || existingByName) {
         debugPrint('标签已存在，跳过添加: ${tag.name}');
@@ -588,6 +614,12 @@ class TaskProvider extends ChangeNotifier {
       _overdueTasks = [];
       _tags = [];
 
+      // 如果是Web平台，清除自动备份数据
+      if (_storage is WebStorageService) {
+        await (_storage as WebStorageService).clearAutoBackup();
+        debugPrint('自动备份数据已清除');
+      }
+
       notifyListeners();
 
       debugPrint('所有数据已清除');
@@ -595,6 +627,50 @@ class TaskProvider extends ChangeNotifier {
       _error = e.toString();
       notifyListeners();
       debugPrint('清除数据失败: $e');
+    }
+  }
+
+  /// 导入数据
+  Future<void> importData(Map<String, dynamic> data) async {
+    try {
+      debugPrint('===== 开始导入数据 =====');
+
+      // 解析任务列表
+      final tasksData = data['tasks'] as List?;
+      if (tasksData != null) {
+        debugPrint('准备导入 ${tasksData.length} 个任务');
+
+        for (final taskData in tasksData) {
+          try {
+            final task = Task.fromJson(taskData as Map<String, dynamic>);
+            await _storage.insertTask(task);
+            debugPrint('导入任务: ${task.title}');
+          } catch (e) {
+            debugPrint('导入任务失败: $e');
+          }
+        }
+      }
+
+      // 解析标签列表
+      final tagsData = data['tags'] as List?;
+      if (tagsData != null) {
+        debugPrint('准备导入 ${tagsData.length} 个标签');
+
+        for (final tagData in tagsData) {
+          try {
+            final tag = Tag.fromJson(tagData as Map<String, dynamic>);
+            await _storage.insertTag(tag);
+            debugPrint('导入标签: ${tag.name}');
+          } catch (e) {
+            debugPrint('导入标签失败: $e');
+          }
+        }
+      }
+
+      debugPrint('数据导入完成');
+    } catch (e) {
+      debugPrint('导入数据失败: $e');
+      rethrow;
     }
   }
 }

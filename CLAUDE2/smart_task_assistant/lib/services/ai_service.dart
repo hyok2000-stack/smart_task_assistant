@@ -62,11 +62,11 @@ class ParsedTask {
 class AIService {
   static const String _configKey = 'ai_config';
   static final AIService _instance = AIService._internal();
-  
+
   factory AIService() => _instance;
-  
+
   AIService._internal();
-  
+
   AIConfig _config = AIConfig();
   bool _configLoaded = false;
 
@@ -75,16 +75,18 @@ class AIService {
   /// 加载配置
   Future<void> loadConfig() async {
     if (_configLoaded) {
-      debugPrint('AI配置已加载: enabled=${_config.enabled}, provider=${_config.provider}');
+      debugPrint(
+          'AI配置已加载: enabled=${_config.enabled}, provider=${_config.provider}');
       return;
     }
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final configJson = prefs.getString(_configKey);
       if (configJson != null) {
         _config = AIConfig.fromJson(jsonDecode(configJson));
-        debugPrint('AI配置加载成功: enabled=${_config.enabled}, provider=${_config.provider}, baseUrl=${_config.baseUrl}');
+        debugPrint(
+            'AI配置加载成功: enabled=${_config.enabled}, provider=${_config.provider}, baseUrl=${_config.baseUrl}');
       }
       _configLoaded = true;
     } catch (e) {
@@ -107,7 +109,8 @@ class AIService {
     _config = newConfig;
     _configLoaded = true; // 标记配置已加载
     await saveConfig();
-    debugPrint('AI配置已更新: enabled=${_config.enabled}, provider=${_config.provider}, baseUrl=${_config.baseUrl}');
+    debugPrint(
+        'AI配置已更新: enabled=${_config.enabled}, provider=${_config.provider}, baseUrl=${_config.baseUrl}');
   }
 
   /// 使用本地规则解析（公开方法，用于默认解析）
@@ -143,10 +146,38 @@ class AIService {
     List<String> tags = [];
 
     // 时间关键词，不应作为标签
-    final timeKeywords = ['今天', '今日', '明天', '后天', '大后天', '下周', '本周',
-        '周一', '周二', '周三', '周四', '周五', '周六', '周日', '周天',
-        '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日', '星期天',
-        '上午', '下午', '晚上', '中午', '早上', '早晨', '晚间'];
+    final timeKeywords = [
+      '今天',
+      '今日',
+      '明天',
+      '后天',
+      '大后天',
+      '下周',
+      '本周',
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+      '周天',
+      '星期一',
+      '星期二',
+      '星期三',
+      '星期四',
+      '星期五',
+      '星期六',
+      '星期日',
+      '星期天',
+      '上午',
+      '下午',
+      '晚上',
+      '中午',
+      '早上',
+      '早晨',
+      '晚间'
+    ];
 
     // 提取标签 #工作 #个人 等
     final tagRegex = RegExp(r'#(\S+)');
@@ -163,24 +194,33 @@ class AIService {
     // 提取负责人 @某人 或 "由XX负责"
     final assigneeRegex1 = RegExp(r'@(\S+)');
     final assigneeRegex2 = RegExp(r'由(\S+)负责');
-    final assigneeMatch = assigneeRegex1.firstMatch(input) ?? assigneeRegex2.firstMatch(input);
+    final assigneeMatch =
+        assigneeRegex1.firstMatch(input) ?? assigneeRegex2.firstMatch(input);
     if (assigneeMatch != null) {
       assignee = assigneeMatch.group(1);
-      title = title.replaceAll(assigneeRegex1, '').replaceAll(assigneeRegex2, '').trim();
+      title = title
+          .replaceAll(assigneeRegex1, '')
+          .replaceAll(assigneeRegex2, '')
+          .trim();
     }
 
     // 识别优先级关键词
-    if (title.contains('紧急') || title.contains('重要') || title.contains('急') || title.contains('尽快')) {
+    if (title.contains('紧急') ||
+        title.contains('重要') ||
+        title.contains('急') ||
+        title.contains('尽快')) {
       priority = TaskPriority.high;
       title = title.replaceAll(RegExp(r'(紧急|重要|急|尽快)'), '').trim();
-    } else if (title.contains('不急') || title.contains('有空') || title.contains('闲暇')) {
+    } else if (title.contains('不急') ||
+        title.contains('有空') ||
+        title.contains('闲暇')) {
       priority = TaskPriority.low;
       title = title.replaceAll(RegExp(r'(不急|有空|闲暇)'), '').trim();
     }
 
     // 识别时间
     final now = DateTime.now();
-    
+
     // 今天/明天/后天
     if (title.contains('今天') || title.contains('今日')) {
       dueTime = DateTime(now.year, now.month, now.day, 18, 0);
@@ -191,18 +231,26 @@ class AIService {
     } else if (title.contains('后天')) {
       dueTime = DateTime(now.year, now.month, now.day + 2, 18, 0);
       title = title.replaceAll('后天', '').trim();
-    } 
+    }
     // 下周几
     else if (title.contains('下周')) {
       final weekdayMatch = RegExp(r'下周([一二三四五六七日天])').firstMatch(title);
       if (weekdayMatch != null) {
         final weekdayMap = {
-          '一': 1, '二': 2, '三': 3, '四': 4,
-          '五': 5, '六': 6, '七': 7, '日': 7, '天': 7,
+          '一': 1,
+          '二': 2,
+          '三': 3,
+          '四': 4,
+          '五': 5,
+          '六': 6,
+          '七': 7,
+          '日': 7,
+          '天': 7,
         };
         final targetWeekday = weekdayMap[weekdayMatch.group(1)] ?? 1;
         final daysUntilNextWeek = 7 - now.weekday + targetWeekday;
-        dueTime = DateTime(now.year, now.month, now.day + daysUntilNextWeek, 18, 0);
+        dueTime =
+            DateTime(now.year, now.month, now.day + daysUntilNextWeek, 18, 0);
         title = title.replaceAll(weekdayMatch.group(0)!, '').trim();
       }
       title = title.replaceAll('下周', '').trim();
@@ -212,8 +260,15 @@ class AIService {
       final weekdayMatch = RegExp(r'本周([一二三四五六七日天])').firstMatch(title);
       if (weekdayMatch != null) {
         final weekdayMap = {
-          '一': 1, '二': 2, '三': 3, '四': 4,
-          '五': 5, '六': 6, '七': 7, '日': 7, '天': 7,
+          '一': 1,
+          '二': 2,
+          '三': 3,
+          '四': 4,
+          '五': 5,
+          '六': 6,
+          '七': 7,
+          '日': 7,
+          '天': 7,
         };
         final targetWeekday = weekdayMap[weekdayMatch.group(1)] ?? 1;
         var daysUntil = targetWeekday - now.weekday;
@@ -228,8 +283,15 @@ class AIService {
       final weekdayMatch = RegExp(r'[周星期]([一二三四五六七日天])').firstMatch(title);
       if (weekdayMatch != null) {
         final weekdayMap = {
-          '一': 1, '二': 2, '三': 3, '四': 4,
-          '五': 5, '六': 6, '七': 7, '日': 7, '天': 7,
+          '一': 1,
+          '二': 2,
+          '三': 3,
+          '四': 4,
+          '五': 5,
+          '六': 6,
+          '七': 7,
+          '日': 7,
+          '天': 7,
         };
         final targetWeekday = weekdayMap[weekdayMatch.group(1)] ?? 1;
         var daysUntil = targetWeekday - now.weekday;
@@ -247,7 +309,8 @@ class AIService {
       final day = int.tryParse(dateMatch.group(2)!) ?? now.day;
       var year = now.year;
       if (month < now.month) year++; // 如果月份已过，则为明年
-      dueTime = DateTime(year, month, day, dueTime?.hour ?? 18, dueTime?.minute ?? 0);
+      dueTime =
+          DateTime(year, month, day, dueTime?.hour ?? 18, dueTime?.minute ?? 0);
       title = title.replaceAll(dateRegex, '').trim();
     }
 
@@ -259,7 +322,8 @@ class AIService {
       final minute = int.tryParse(timeMatch.group(2) ?? '0') ?? 0;
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
         if (dueTime != null) {
-          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, hour, minute);
+          dueTime =
+              DateTime(dueTime.year, dueTime.month, dueTime.day, hour, minute);
         } else {
           // 没有日期，默认今天
           dueTime = DateTime(now.year, now.month, now.day, hour, minute);
@@ -270,14 +334,17 @@ class AIService {
 
     // 识别时段：上午/下午/晚上
     if (dueTime != null) {
-      if (title.contains('上午') || title.contains('早上') || title.contains('早晨')) {
+      if (title.contains('上午') ||
+          title.contains('早上') ||
+          title.contains('早晨')) {
         dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 9, 0);
         title = title.replaceAll(RegExp(r'(上午|早上|早晨)'), '').trim();
       } else if (title.contains('中午')) {
         dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 12, 0);
         title = title.replaceAll('中午', '').trim();
       } else if (title.contains('下午')) {
-        if (dueTime.hour == 18) dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 15, 0);
+        if (dueTime.hour == 18)
+          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 15, 0);
         title = title.replaceAll('下午', '').trim();
       } else if (title.contains('晚上') || title.contains('晚间')) {
         dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 20, 0);
@@ -360,7 +427,7 @@ class AIService {
       if (response.statusCode == 200) {
         final data = response.data;
         final content = data['choices'][0]['message']['content'] as String;
-        
+
         // 提取 JSON
         final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(content);
         if (jsonMatch != null) {
@@ -368,8 +435,8 @@ class AIService {
           return ParsedTask(
             title: json['title'] ?? input,
             content: json['content'],
-            dueTime: json['dueTime'] != null 
-                ? DateTime.tryParse(json['dueTime']) 
+            dueTime: json['dueTime'] != null
+                ? DateTime.tryParse(json['dueTime'])
                 : null,
             priority: _parsePriority(json['priority']),
             assignee: json['assignee'],
@@ -408,20 +475,24 @@ class AIService {
   }
 
   /// 发送聊天消息
-  Future<String> chat(String message, {List<Map<String, String>>? history}) async {
+  Future<String> chat(String message,
+      {List<Map<String, String>>? history}) async {
     if (!_config.enabled || _config.apiKey.isEmpty || _config.baseUrl.isEmpty) {
       return _chatWithRules(message);
     }
 
     try {
       final messages = <Map<String, String>>[
-        {'role': 'system', 'content': '你是一个智能任务助手，帮助用户管理任务、提供建议和解答问题。请用简洁友好的方式回复。'},
+        {
+          'role': 'system',
+          'content': '你是一个智能任务助手，帮助用户管理任务、提供建议和解答问题。请用简洁友好的方式回复。'
+        },
       ];
-      
+
       if (history != null && history.isNotEmpty) {
         messages.addAll(history);
       }
-      
+
       messages.add({'role': 'user', 'content': message});
 
       final dio = Dio();
@@ -455,23 +526,25 @@ class AIService {
   /// 本地规则聊天
   String _chatWithRules(String message) {
     final lowerMsg = message.toLowerCase();
-    
-    if (lowerMsg.contains('你好') || lowerMsg.contains('hi') || lowerMsg.contains('hello')) {
+
+    if (lowerMsg.contains('你好') ||
+        lowerMsg.contains('hi') ||
+        lowerMsg.contains('hello')) {
       return '你好！我是智能任务助手，有什么可以帮助你的吗？';
     }
-    
+
     if (lowerMsg.contains('帮助') || lowerMsg.contains('help')) {
       return '我可以帮助你：\n• 创建和管理任务\n• 设置提醒\n• 智能分析任务优先级\n• 提供工作效率建议\n\n试试说："明天下午3点开会"';
     }
-    
+
     if (lowerMsg.contains('建议') || lowerMsg.contains('推荐')) {
       return '建议你先完成高优先级的任务，合理安排时间，避免拖延。如果任务较多，可以按"四象限法则"分类处理。';
     }
-    
+
     if (lowerMsg.contains('统计') || lowerMsg.contains('概览')) {
       return '你可以在"统计"页面查看任务完成情况和数据概览。';
     }
-    
+
     return '我理解你的问题。目前使用本地规则引擎，功能有限。请在设置中配置AI服务以获得更智能的体验。';
   }
 
@@ -483,40 +556,40 @@ class AIService {
         'message': 'AI服务未启用',
       };
     }
-    
+
     if (_config.provider == 'local') {
       return {
         'success': true,
         'message': '使用本地规则引擎，无需连接测试',
       };
     }
-    
+
     if (_config.apiKey.isEmpty) {
       return {
         'success': false,
         'message': '请填写API Key',
       };
     }
-    
+
     if (_config.baseUrl.isEmpty) {
       return {
         'success': false,
         'message': '请填写API地址',
       };
     }
-    
+
     if (_config.model.isEmpty) {
       return {
         'success': false,
         'message': '请填写模型名称',
       };
     }
-    
+
     try {
       final dio = Dio();
       dio.options.connectTimeout = const Duration(seconds: 10);
       dio.options.receiveTimeout = const Duration(seconds: 10);
-      
+
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
         options: Options(
@@ -578,7 +651,7 @@ class AIService {
     if (!_config.enabled) {
       return '本地规则引擎';
     }
-    
+
     final providerNames = {
       'local': '本地规则引擎',
       'ollama': 'Ollama',
@@ -589,9 +662,9 @@ class AIService {
       'kimi': 'Kimi',
       'custom': '自定义API',
     };
-    
+
     final providerName = providerNames[_config.provider] ?? _config.provider;
-    
+
     if (_config.model.isNotEmpty) {
       return '$providerName (${_config.model})';
     }
@@ -602,13 +675,14 @@ class AIService {
   String _generateLocalSuggestion(List<Task> tasks) {
     final now = DateTime.now();
     final overdueTasks = tasks.where((t) => t.isOverdue).toList();
-    final highPriorityTasks = tasks.where((t) => 
-        !t.isCompleted && t.priority == TaskPriority.high).toList();
+    final highPriorityTasks = tasks
+        .where((t) => !t.isCompleted && t.priority == TaskPriority.high)
+        .toList();
     final todayTasks = tasks.where((t) {
       if (t.dueTime == null) return false;
-      return t.dueTime!.year == now.year && 
-             t.dueTime!.month == now.month && 
-             t.dueTime!.day == now.day;
+      return t.dueTime!.year == now.year &&
+          t.dueTime!.month == now.month &&
+          t.dueTime!.day == now.day;
     }).toList();
 
     if (overdueTasks.isNotEmpty) {
@@ -631,5 +705,65 @@ class AIService {
     }
 
     return '暂无紧急任务，可以规划新的工作安排。';
+  }
+
+  /// 测试本地LLM连接
+  Future<bool> testLocalLLMConnection(String address, String model) async {
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 10);
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+
+      final response = await dio.post(
+        '$address/api/generate',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: {
+          'model': model,
+          'prompt': 'Hi',
+          'stream': false,
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('本地LLM连接测试失败: $e');
+      return false;
+    }
+  }
+
+  /// 测试远程API连接
+  Future<bool> testAPIConnection(
+      String apiKey, String apiBase, String apiModel) async {
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 10);
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+
+      final response = await dio.post(
+        '$apiBase/chat/completions',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $apiKey',
+          },
+        ),
+        data: {
+          'model': apiModel,
+          'messages': [
+            {'role': 'user', 'content': 'Hi'}
+          ],
+          'max_tokens': 10,
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('API连接测试失败: $e');
+      return false;
+    }
   }
 }

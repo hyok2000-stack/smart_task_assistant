@@ -1,11 +1,22 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../providers/settings_provider.dart';
+import '../providers/task_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
-import '../widgets/log_viewer_dialog.dart';
+import '../widgets/tag_management_dialog.dart';
+import '../services/ai_service.dart';
+import '../database/storage_service.dart';
 
-/// 设置页面 - 通用AI配置和本地大模型支持
+// 条件导入：文件操作（Web和移动端）
+import '../utils/platform_file_stub.dart'
+    if (dart.library.html) '../utils/platform_file_web.dart'
+    if (dart.library.io) '../utils/platform_file_native.dart';
+
+/// 设置页面 - 传统列表布局
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -14,8 +25,39 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  int _currentIndex = 0;
+  bool _isTestingConnection = false;
+  final TextEditingController _localLLMAddressController =
+      TextEditingController();
+  final TextEditingController _localLLMModelController =
+      TextEditingController();
+  final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _apiBaseController = TextEditingController();
+  final TextEditingController _apiModelController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettingsToControllers();
+  }
+
+  @override
+  void dispose() {
+    _localLLMAddressController.dispose();
+    _localLLMModelController.dispose();
+    _apiKeyController.dispose();
+    _apiBaseController.dispose();
+    _apiModelController.dispose();
+    super.dispose();
+  }
+
+  void _loadSettingsToControllers() {
+    final settings = context.read<SettingsProvider>();
+    _localLLMAddressController.text = settings.localLLMAddress;
+    _localLLMModelController.text = settings.localLLMModel;
+    _apiKeyController.text = settings.apiKey;
+    _apiBaseController.text = settings.apiBase;
+    _apiModelController.text = settings.apiModel;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,90 +67,1063 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(l.navSettings),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
         elevation: 0,
+        foregroundColor: AppTheme.textPrimaryColor,
+        titleTextStyle: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.textPrimaryColor,
+        ),
       ),
-      body: Column(
+      body: ListView(
         children: [
-          _buildTabBar(context),
-          Expanded(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: [
-                _buildAISettingsTab(context),
-                _buildChatAISettingsTab(context),
-                _buildGeneralSettingsTab(context),
-                _buildAboutTab(context),
-              ],
+          _buildSectionHeader('外观'),
+          _buildAppearanceSettings(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('通知'),
+          _buildNotificationSettings(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('AI服务'),
+          _buildAISettings(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('标签管理'),
+          _buildTagManagement(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('数据'),
+          _buildDataManagement(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('设置管理'),
+          _buildSettingsManagement(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('关于'),
+          _buildAboutSection(context),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.primaryColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppearanceSettings(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.dark_mode_outlined,
+            title: '深色模式',
+            subtitle: '使用深色主题',
+            trailing: Switch(
+              value: settings.isDarkMode,
+              onChanged: (value) {
+                settings.toggleDarkMode(value);
+              },
+              activeColor: AppTheme.primaryColor,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabBar(BuildContext context) {
-    final l = context.l;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.language_outlined,
+            title: '语言',
+            subtitle: settings.isZh ? '简体中文' : 'English',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              _showLanguageDialog(context, settings);
+            },
           ),
         ],
       ),
-      child: Row(
-        children: [
-          _buildTabItem(0, Icons.psychology_rounded, l.aiService),
-          _buildTabItem(1, Icons.chat_rounded, l.chatAI),
-          _buildTabItem(2, Icons.settings_rounded, l.general),
-          _buildTabItem(3, Icons.info_rounded, l.about),
+    );
+  }
+
+  void _showLanguageDialog(BuildContext context, SettingsProvider settings) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('选择语言'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildLanguageOption(context, settings, 'zh', '简体中文'),
+            const SizedBox(height: 8),
+            _buildLanguageOption(context, settings, 'en', 'English'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTabItem(int index, IconData icon, String label) {
-    final isSelected = _currentIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _currentIndex = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? AppTheme.primaryColor.withOpacity(0.1)
-                : Colors.transparent,
-            border: Border(
-              bottom: BorderSide(
-                color: isSelected ? AppTheme.primaryColor : Colors.transparent,
-                width: 3,
+  Widget _buildLanguageOption(
+    BuildContext context,
+    SettingsProvider settings,
+    String languageCode,
+    String languageName,
+  ) {
+    final isSelected = settings.locale.languageCode == languageCode;
+    return InkWell(
+      onTap: () {
+        settings.setLocale(
+          Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US'),
+        );
+        Navigator.pop(context);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.05)
+              : Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? AppTheme.primaryColor : Colors.grey,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              languageName,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? AppTheme.primaryColor
+                    : AppTheme.textPrimaryColor,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationSettings(BuildContext context) {
+    final l = context.l;
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, _) {
+        return Container(
+          color: Colors.white,
+          child: Column(
+            children: [
+              _buildListTile(
+                icon: Icons.notifications_outlined,
+                title: '推送通知',
+                subtitle: '接收任务提醒通知',
+                trailing: Switch(
+                  value: settings.notificationsEnabled,
+                  onChanged: (value) {
+                    settings.setNotificationsEnabled(value);
+                  },
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ),
+              _buildDivider(),
+              _buildListTile(
+                icon: Icons.content_copy_outlined,
+                title: '剪贴板监视',
+                subtitle: '粘贴内容时自动弹出任务创建窗口',
+                trailing: Switch(
+                  value: settings.clipboardMonitor,
+                  onChanged: (value) {
+                    settings.setClipboardMonitor(value);
+                  },
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAISettings(BuildContext context) {
+    final l = context.l;
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, _) {
+        return Container(
+          color: Colors.white,
+          child: _buildListTile(
+            icon: Icons.psychology_outlined,
+            title: 'AI服务配置',
+            subtitle: '配置本地大模型或远程API',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              _showAISettingsDialog(context, settings);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTagManagement(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildDefaultTagsSection(),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.add_circle_outline,
+            title: '添加标签',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              showTagManagementDialog(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDefaultTagsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.label_outline,
+                color: AppTheme.textSecondaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                '默认标签',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildTagChip('工作', '#10B981'),
+              _buildTagChip('个人', '#3B82F6'),
+              _buildTagChip('紧急', '#EF4444'),
+              _buildTagChip('学习', '#8B5CF6'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagChip(String label, String colorCode) {
+    final color = Color(int.parse(colorCode.replaceFirst('#', '0xFF')));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDataManagement(BuildContext context) {
+    final l = context.l;
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.file_download_outlined,
+            title: l.exportData,
+            subtitle: '导出所有任务数据',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _exportData(context, l),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.file_upload_outlined,
+            title: l.importData,
+            subtitle: '导入任务数据',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _importData(context, l),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.delete_outline,
+            title: l.clearData,
+            subtitle: '清除所有数据',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _clearData(context, l),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsManagement(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.restore_outlined,
+            title: '重置所有设置',
+            subtitle: '恢复到默认配置',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _showResetSettingsDialog(context, settings),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutSection(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.info_outline,
+            title: '关于',
+            subtitle: '版本 ${settings.appVersion}',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              _showAboutDialog(context, settings);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    bool showTrailing = true,
+    VoidCallback? onTap,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: AppTheme.textSecondaryColor),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: AppTheme.textPrimaryColor,
+        ),
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(fontSize: 13, color: AppTheme.textHintColor),
+            )
+          : null,
+      trailing: trailing ??
+          (showTrailing
+              ? Icon(Icons.chevron_right, color: AppTheme.textHintColor)
+              : null),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Divider(height: 1, thickness: 0.5, indent: 68, endIndent: 0);
+  }
+
+  void _showAISettingsDialog(BuildContext context, SettingsProvider settings) {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('AI服务配置'),
+            content: SizedBox(
+              width: MediaQuery.of(context).size.width > 400
+                  ? 400
+                  : MediaQuery.of(context).size.width * 0.9,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '选择服务模式',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCompactAIModeOption(
+                      settings,
+                      AIMode.local,
+                      '本地规则',
+                      '使用本地规则引擎，无需网络连接',
+                      setState,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildCompactAIModeOption(
+                      settings,
+                      AIMode.localLLM,
+                      '本地大模型',
+                      '连接本地部署的LLM（如Ollama）',
+                      setState,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildCompactAIModeOption(
+                      settings,
+                      AIMode.remoteAPI,
+                      '远程API',
+                      '使用云端API服务（如OpenAI）',
+                      setState,
+                    ),
+                    const SizedBox(height: 24),
+                    if (settings.aiMode == AIMode.localLLM) ...[
+                      _buildConfigSection('本地大模型配置', Icons.cloud_outlined, [
+                        TextField(
+                          decoration: InputDecoration(
+                            labelText: '服务地址',
+                            hintText: 'http://localhost:11434',
+                            border: const OutlineInputBorder(),
+                            errorText:
+                                settings.isValidUrl(settings.localLLMAddress) ||
+                                        settings.localLLMAddress.isEmpty
+                                    ? null
+                                    : '请输入有效的URL地址',
+                          ),
+                          controller: _localLLMAddressController,
+                          onChanged: (value) {
+                            settings.setLocalLLMAddress(value);
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          decoration: InputDecoration(
+                            labelText: '模型名称',
+                            hintText: 'qwen2.5:7b',
+                            border: const OutlineInputBorder(),
+                            errorText: !settings.isValidModelName(
+                              settings.localLLMModel,
+                            )
+                                ? '请输入模型名称'
+                                : null,
+                          ),
+                          controller: _localLLMModelController,
+                          onChanged: (value) {
+                            settings.setLocalLLMModel(value);
+                          },
+                        ),
+                      ]),
+                    ],
+                    if (settings.aiMode == AIMode.remoteAPI) ...[
+                      _buildConfigSection(
+                        '远程API配置',
+                        Icons.cloud_queue_outlined,
+                        [
+                          _buildAPIKeyField(settings),
+                          const SizedBox(height: 12),
+                          TextField(
+                            decoration: InputDecoration(
+                              labelText: 'API地址',
+                              hintText: 'https://api.openai.com/v1',
+                              border: const OutlineInputBorder(),
+                              errorText:
+                                  !settings.isValidUrl(settings.apiBase) &&
+                                          settings.apiBase.isNotEmpty
+                                      ? '请输入有效的URL地址'
+                                      : null,
+                            ),
+                            controller: _apiBaseController,
+                            onChanged: (value) {
+                              settings.setAPIBase(value);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            decoration: InputDecoration(
+                              labelText: '模型名称',
+                              hintText: 'gpt-3.5-turbo',
+                              border: const OutlineInputBorder(),
+                              errorText:
+                                  !settings.isValidModelName(settings.apiModel)
+                                      ? '请输入模型名称'
+                                      : null,
+                            ),
+                            controller: _apiModelController,
+                            onChanged: (value) {
+                              settings.setAPIModel(value);
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (settings.aiMode != AIMode.local)
+                TextButton.icon(
+                  onPressed: _isTestingConnection
+                      ? null
+                      : () => _testConnection(settings, settings.aiMode),
+                  icon: _isTestingConnection
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi, size: 18),
+                  label: Text(_isTestingConnection ? '测试中...' : '测试连接'),
+                ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showConfigSavedMessage(context, settings.aiMode);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildConfigSection(
+    String title,
+    IconData icon,
+    List<Widget> children,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: AppTheme.primaryColor),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactAIModeOption(
+    SettingsProvider settings,
+    AIMode mode,
+    String title,
+    String subtitle,
+    StateSetter setState,
+  ) {
+    final isSelected = settings.aiMode == mode;
+    return InkWell(
+      onTap: () {
+        settings.setAIMode(mode);
+        setState(() {});
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.05)
+              : Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? AppTheme.primaryColor : Colors.grey,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAPIKeyField(SettingsProvider settings) {
+    bool _obscureText = true;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return TextField(
+          decoration: InputDecoration(
+            labelText: 'API Key',
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureText ? Icons.visibility : Icons.visibility_off,
+              ),
+              onPressed: () {
+                setState(() {
+                  _obscureText = !_obscureText;
+                });
+              },
+            ),
+          ),
+          controller: _apiKeyController,
+          onChanged: (value) {
+            settings.setAPIKey(value);
+          },
+          obscureText: _obscureText,
+        );
+      },
+    );
+  }
+
+  Widget _buildAIModeOption(
+    BuildContext context,
+    SettingsProvider settings,
+    AIMode mode,
+    String title,
+    String subtitle,
+  ) {
+    final isSelected = settings.aiMode == mode;
+    return InkWell(
+      onTap: () {
+        settings.setAIMode(mode);
+        Navigator.pop(context);
+        _showAISettingsDialog(context, settings);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.05)
+              : Colors.transparent,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: isSelected ? AppTheme.primaryColor : Colors.grey,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? AppTheme.primaryColor
+                              : AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _testConnection(settings, mode),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                icon: const Icon(Icons.wifi, size: 18),
+                label: const Text('测试连接', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _testConnection(SettingsProvider settings, AIMode mode) async {
+    setState(() => _isTestingConnection = true);
+
+    try {
+      final aiService = AIService();
+      bool isConnected;
+
+      if (mode == AIMode.localLLM) {
+        isConnected = await aiService.testLocalLLMConnection(
+          settings.localLLMAddress,
+          settings.localLLMModel,
+        );
+      } else if (mode == AIMode.remoteAPI) {
+        isConnected = await aiService.testAPIConnection(
+          settings.apiKey,
+          settings.apiBase,
+          settings.apiModel,
+        );
+      } else {
+        isConnected = true;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isConnected ? '连接成功！' : '连接失败，请检查配置'),
+            backgroundColor:
+                isConnected ? AppTheme.successColor : AppTheme.errorColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('连接测试失败: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTestingConnection = false);
+      }
+    }
+  }
+
+  void _exportData(BuildContext context, AppLocalizations l) async {
+    try {
+      // 获取存储服务
+      final storageService = getStorageService();
+
+      // 生成导出数据
+      String exportData;
+      if (kIsWeb && storageService is WebStorageService) {
+        exportData = storageService.getExportData();
+      } else {
+        // 移动端或其他平台，从数据库获取数据
+        final taskProvider = context.read<TaskProvider>();
+        final tasks = taskProvider.tasks;
+        final tags = taskProvider.tags;
+
+        final data = {
+          'tasks': tasks.map((t) => t.toJson()).toList(),
+          'tags': tags.map((t) => t.toJson()).toList(),
+          'exportTime': DateTime.now().toIso8601String(),
+        };
+        exportData = jsonEncode(data);
+      }
+
+      // 生成文件名：任务列表_YYYYMMDD_HHMMSS.json
+      final now = DateTime.now();
+      final timestamp =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+      final fileName = '任务列表_$timestamp.json';
+
+      // 生成文件大小
+      final bytes = utf8.encode(exportData);
+      final kbSize = (bytes.length / 1024).toStringAsFixed(2);
+
+      if (kIsWeb) {
+        // Web平台使用下载方式
+        downloadFile(exportData, fileName, 'application/json');
+      } else {
+        // 移动端使用分享方式
+        await exportDataNative(
+          data: exportData,
+          fileName: fileName,
+        );
+      }
+
+      // 显示成功对话框
+      _showExportSuccessDialog(context, fileName, kbSize, exportData);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${l.exportFailed}: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
+
+  void _showExportSuccessDialog(
+    BuildContext context,
+    String fileName,
+    String size,
+    String exportData,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? AppTheme.primaryColor
-                    : AppTheme.textSecondaryColor,
-                size: 24,
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.successColor,
+                      AppTheme.successColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.file_download_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '导出数据',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : AppTheme.textSecondaryColor,
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 64,
+                      color: AppTheme.successColor,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '导出成功！',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '数据已导出为以下文件',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.successColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.insert_drive_file_rounded,
+                                color: AppTheme.successColor,
+                                size: 32,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      fileName,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimaryColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'JSON格式',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondaryColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: const Text('完成'),
                 ),
               ),
             ],
@@ -118,636 +1133,262 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildAISettingsTab(BuildContext context) {
-    final l = context.l;
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, _) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle(l.aiServiceConfig),
-              const SizedBox(height: 16),
+  void _importData(BuildContext context, AppLocalizations l) async {
+    try {
+      String? content;
+      String? fileName;
 
-              // AI服务模式选择
-              _buildRadioGroup(
-                l.serviceMode,
-                settings.aiMode,
-                (value) {
-                  settings.setAIMode(value);
-                },
-                [
-                  (AIMode.local, l.localRuleMode, l.localRuleModeDesc),
-                  (AIMode.localLLM, l.localLLMMode, l.localLLMModeDesc),
-                  (AIMode.remoteAPI, l.remoteAPIMode, l.remoteAPIModeDesc),
-                ],
-              ),
+      if (kIsWeb) {
+        // Web平台使用文件选择器
+        bool fileSelected = false;
 
-              const SizedBox(height: 24),
-
-              // 本地大模型配置
-              if (settings.aiMode == AIMode.localLLM) ...[
-                _buildSectionTitle(l.localLLMConfig),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.serviceAddress,
-                  settings.localLLMAddress,
-                  (value) => settings.setLocalLLMAddress(value),
-                  hint: 'http://localhost:11434',
+        selectFile(
+          accept: '.json',
+          onFileSelected: (selectedContent, selectedFileName) async {
+            content = selectedContent;
+            fileName = selectedFileName;
+            fileSelected = true;
+          },
+          onError: (error) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${l.importFailed}: $error'),
+                  backgroundColor: AppTheme.errorColor,
                 ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.modelName,
-                  settings.localLLMModel,
-                  (value) => settings.setLocalLLMModel(value),
-                  hint: 'qwen2.5:7b',
-                ),
-                const SizedBox(height: 16),
-                _buildHelpText(l.localLLMHelp),
-              ],
-
-              // 远程API配置
-              if (settings.aiMode == AIMode.remoteAPI) ...[
-                _buildSectionTitle(l.remoteAPIConfig),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiServiceName,
-                  settings.apiServiceName,
-                  (value) => settings.setAPIServiceName(value),
-                  hint: 'OpenAI',
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiKey,
-                  settings.apiKey,
-                  (value) => settings.setAPIKey(value),
-                  obscure: true,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiBase,
-                  settings.apiBase,
-                  (value) => settings.setAPIBase(value),
-                  hint: 'https://api.openai.com/v1',
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiModel,
-                  settings.apiModel,
-                  (value) => settings.setAPIModel(value),
-                  hint: 'gpt-3.5-turbo',
-                ),
-                const SizedBox(height: 16),
-                _buildHelpText(l.apiHelp),
-              ],
-            ],
-          ),
+              );
+            }
+          },
         );
-      },
-    );
-  }
 
-  Widget _buildChatAISettingsTab(BuildContext context) {
-    final l = context.l;
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, _) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle(l.chatAIConfig),
-              const SizedBox(height: 16),
+        // 等待文件选择完成
+        await Future.delayed(const Duration(milliseconds: 100));
 
-              // 智答AI服务模式选择
-              _buildRadioGroup(
-                l.serviceMode,
-                settings.chatMode,
-                (value) {
-                  settings.setChatMode(value);
-                },
-                [
-                  (ChatAIMode.localLLM, l.localLLMMode, l.localLLMModeDesc),
-                  (ChatAIMode.remoteAPI, l.remoteAPIMode, l.remoteAPIModeDesc),
-                ],
-              ),
+        // 如果没有选择文件，直接返回
+        if (!fileSelected) {
+          return;
+        }
+      } else {
+        // 移动端使用文件选择器
+        final result = await importDataNative();
+        if (result != null) {
+          content = result['content'];
+          fileName = result['fileName'];
+        }
+      }
 
-              const SizedBox(height: 24),
+      // 检查是否获取到内容
+      if (content == null) {
+        return;
+      }
 
-              // 本地大模型配置
-              if (settings.chatMode == ChatAIMode.localLLM) ...[
-                _buildSectionTitle(l.localLLMConfig),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.serviceAddress,
-                  settings.chatLocalLLMAddress,
-                  (value) => settings.setChatLocalLLMAddress(value),
-                  hint: 'http://localhost:11434',
+      try {
+        final data = jsonDecode(content!) as Map<String, dynamic>;
+
+        // 验证数据格式
+        if (!data.containsKey('tasks') || !data.containsKey('tags')) {
+          throw Exception('无效的数据格式');
+        }
+
+        // 导入数据
+        final taskProvider = context.read<TaskProvider>();
+
+        if (kIsWeb) {
+          // Web平台使用存储服务
+          final storageService = getStorageService();
+          if (storageService is! WebStorageService) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(l.importFailed),
+                  backgroundColor: AppTheme.errorColor,
                 ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.modelName,
-                  settings.chatLocalLLMModel,
-                  (value) => settings.setChatLocalLLMModel(value),
-                  hint: 'qwen2.5:7b',
+              );
+            }
+            return;
+          }
+
+          final success = await (storageService as WebStorageService)
+              .restoreFromBackup(data);
+
+          if (!success) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(l.importFailed),
+                  backgroundColor: AppTheme.errorColor,
                 ),
-              ],
+              );
+            }
+            return;
+          }
+        } else {
+          // 移动端直接导入数据
+          await taskProvider.importData(data);
+        }
 
-              // 远程API配置
-              if (settings.chatMode == ChatAIMode.remoteAPI) ...[
-                _buildSectionTitle(l.remoteAPIConfig),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiServiceName,
-                  settings.chatAPIServiceName,
-                  (value) => settings.setChatAPIServiceName(value),
-                  hint: 'OpenAI',
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiKey,
-                  settings.chatAPIKey,
-                  (value) => settings.setChatAPIKey(value),
-                  obscure: true,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiBase,
-                  settings.chatAPIBase,
-                  (value) => settings.setChatAPIBase(value),
-                  hint: 'https://api.openai.com/v1',
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  l.apiModel,
-                  settings.chatAPIModel,
-                  (value) => settings.setChatAPIModel(value),
-                  hint: 'gpt-3.5-turbo',
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildGeneralSettingsTab(BuildContext context) {
-    final l = context.l;
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, _) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle(l.generalSettings),
-              const SizedBox(height: 16),
-
-              // 剪贴板监听
-              _buildSwitchTile(
-                Icons.content_copy_rounded,
-                l.clipboardMonitor,
-                settings.clipboardMonitor,
-                (value) => settings.setClipboardMonitor(value),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 任务提醒
-              _buildSectionTitle(l.reminderSettings),
-              const SizedBox(height: 16),
-              _buildSwitchTile(
-                Icons.notifications_rounded,
-                l.enableReminder,
-                settings.reminderEnabled,
-                (value) => settings.setReminderEnabled(value),
-              ),
-
-              if (settings.reminderEnabled) ...[
-                const SizedBox(height: 16),
-                _buildReminderMinutesDropdown(settings, l),
-              ],
-
-              const SizedBox(height: 24),
-
-              // 数据管理
-              _buildSectionTitle(l.dataManagement),
-              const SizedBox(height: 16),
-              _buildExportButton(context, l),
-              const SizedBox(height: 12),
-              _buildImportButton(context, l),
-              const SizedBox(height: 12),
-              _buildClearDataButton(context, l),
-
-              const SizedBox(height: 24),
-
-              // 日志查看
-              _buildSectionTitle(l.logViewer),
-              const SizedBox(height: 16),
-              _buildLogViewerButton(context, l),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildAboutTab(BuildContext context) {
-    final l = context.l;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.task_alt_rounded,
-                    size: 50,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Smart Task Assistant',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'v1.0.0',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppTheme.textSecondaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-          _buildSectionTitle(l.appDescription),
-          const SizedBox(height: 16),
-          Text(
-            l.appDescriptionText,
-            style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondaryColor,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionTitle(l.features),
-          const SizedBox(height: 16),
-          _buildFeatureItem(Icons.task_rounded, l.feature1),
-          _buildFeatureItem(Icons.psychology_rounded, l.feature2),
-          _buildFeatureItem(Icons.notifications_rounded, l.feature3),
-          _buildFeatureItem(Icons.sync_rounded, l.feature4),
-          const SizedBox(height: 24),
-          _buildSectionTitle(l.contact),
-          const SizedBox(height: 16),
-          Text(
-            'GitHub: https://github.com/smarttask/assistant',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.primaryColor,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: AppTheme.textPrimaryColor,
-      ),
-    );
-  }
-
-  Widget _buildTextField(
-    String label,
-    String value,
-    Function(String) onChanged, {
-    bool obscure = false,
-    String? hint,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: value,
-          obscureText: obscure,
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            hintText: hint,
-            filled: true,
-            fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRadioGroup<T>(
-    String label,
-    T value,
-    Function(T) onChanged,
-    List<(T, String, String)> options,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...options.map((option) {
-          final (optionValue, optionLabel, optionDesc) = option;
-          return RadioListTile<T>(
-            value: optionValue,
-            groupValue: value,
-            onChanged: (val) {
-              if (val != null) onChanged(val);
-            },
-            title: Text(
-              optionLabel,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            subtitle: Text(
-              optionDesc,
-              style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondaryColor,
-              ),
-            ),
-            activeColor: AppTheme.primaryColor,
-            contentPadding: EdgeInsets.zero,
+        // 重新加载数据
+        if (context.mounted) {
+          await taskProvider.loadData();
+          _showImportSuccessDialog(
+            context,
+            fileName!,
+            data['tasks']?.length ?? 0,
+            data['tags']?.length ?? 0,
           );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildSwitchTile(
-    IconData icon,
-    String title,
-    bool value,
-    Function(bool) onChanged,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${l.importFailed}: $e'),
+              backgroundColor: AppTheme.errorColor,
             ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppTheme.primaryColor,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReminderMinutesDropdown(
-      SettingsProvider settings, AppLocalizations l) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.access_time_rounded,
-              color: AppTheme.primaryColor, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              l.reminderTime,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          DropdownButton<int>(
-            value: settings.reminderMinutes,
-            items: const [
-              DropdownMenuItem(value: 5, child: Text('提前5分钟')),
-              DropdownMenuItem(value: 10, child: Text('提前10分钟')),
-              DropdownMenuItem(value: 15, child: Text('提前15分钟')),
-              DropdownMenuItem(value: 30, child: Text('提前30分钟')),
-              DropdownMenuItem(value: 60, child: Text('提前1小时')),
-              DropdownMenuItem(value: 120, child: Text('提前2小时')),
-            ],
-            onChanged: (value) {
-              if (value != null) settings.setReminderMinutes(value);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExportButton(BuildContext context, AppLocalizations l) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () => _exportData(context, l),
-        icon: const Icon(Icons.file_download_rounded),
-        label: Text(l.exportData),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryColor,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImportButton(BuildContext context, AppLocalizations l) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => _importData(context, l),
-        icon: const Icon(Icons.file_upload_rounded),
-        label: Text(l.importData),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          side: const BorderSide(color: AppTheme.primaryColor),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClearDataButton(BuildContext context, AppLocalizations l) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => _clearData(context, l),
-        icon: const Icon(Icons.delete_rounded),
-        label: Text(l.clearData),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.errorColor,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          side: BorderSide(color: AppTheme.errorColor),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLogViewerButton(BuildContext context, AppLocalizations l) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) => const LogViewerDialog(),
           );
-        },
-        icon: const Icon(Icons.description_rounded),
-        label: Text(l.viewLog),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.textSecondaryColor,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${l.importFailed}: $e'),
+            backgroundColor: AppTheme.errorColor,
           ),
-          side: BorderSide(color: AppTheme.textSecondaryColor),
-        ),
-      ),
-    );
+        );
+      }
+    }
   }
 
-  Widget _buildFeatureItem(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: AppTheme.primaryColor, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14),
-            ),
+  void _showImportSuccessDialog(
+    BuildContext context,
+    String fileName,
+    int taskCount,
+    int tagCount,
+  ) {
+    final l = context.l;
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHelpText(String text) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.infoColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          color: AppTheme.infoColor,
-          height: 1.5,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.successColor,
+                      AppTheme.successColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  size: 64,
+                  color: Colors.white,
+                ),
+              ),
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Text(
+                      '导入成功！',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l.restoreSuccessCount('$taskCount', '$tagCount'),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.successColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.insert_drive_file_rounded,
+                            color: AppTheme.successColor,
+                            size: 32,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  fileName,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: const Text('完成'),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
-
-  void _exportData(BuildContext context, AppLocalizations l) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l.exportSuccess),
-        backgroundColor: AppTheme.successColor,
-      ),
-    );
-  }
-
-  void _importData(BuildContext context, AppLocalizations l) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l.importSuccess),
-        backgroundColor: AppTheme.successColor,
       ),
     );
   }
@@ -755,31 +1396,467 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _clearData(BuildContext context, AppLocalizations l) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l.confirmClear),
-        content: Text(l.confirmClearHint),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l.cancel),
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(l.clearSuccess),
-                  backgroundColor: AppTheme.successColor,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.errorColor,
+                      AppTheme.errorColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
                 ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.errorColor,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(l.confirm),
+                child: Icon(
+                  Icons.warning_rounded,
+                  size: 64,
+                  color: Colors.white,
+                ),
+              ),
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Text(
+                      '确认清除所有数据',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '此操作将永久删除所有任务和标签，无法恢复！',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+
+                          try {
+                            final taskProvider = context.read<TaskProvider>();
+                            await taskProvider.clearAllData();
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('所有数据已清除'),
+                                  backgroundColor: AppTheme.successColor,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('清除失败: $e'),
+                                  backgroundColor: AppTheme.errorColor,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.errorColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('确认清除'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  void _showResetSettingsDialog(
+    BuildContext context,
+    SettingsProvider settings,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.warningColor,
+                      AppTheme.warningColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Icon(
+                  Icons.restore_rounded,
+                  size: 64,
+                  color: Colors.white,
+                ),
+              ),
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Text(
+                      '重置所有设置',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '此操作将恢复所有设置到默认值，您的任务数据不会受影响。',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await settings.resetToDefault();
+                          _loadSettingsToControllers();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('设置已重置'),
+                                backgroundColor: AppTheme.successColor,
+                              ),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.warningColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('确认重置'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAboutDialog(BuildContext context, SettingsProvider settings) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.task_alt_rounded,
+                        size: 48,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '智能任务助手',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '版本 ${settings.appVersion}',
+                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildAboutItem(
+                      Icons.description_outlined,
+                      '应用介绍',
+                      '一款智能的任务管理应用，帮助您高效管理日常任务。支持AI智能识别、周期任务、提醒通知等功能。',
+                    ),
+                    const SizedBox(height: 20),
+                    _buildAboutItem(
+                      Icons.new_releases_outlined,
+                      '新功能',
+                      '• AI智能识别任务内容\n• 支持周期任务设置\n• 剪贴板监视功能\n• 数据导入导出\n• 设置重置功能',
+                    ),
+                    const SizedBox(height: 20),
+                    _buildAboutItem(
+                      Icons.update_outlined,
+                      '更新日志',
+                      'v${settings.appVersion} - 当前版本\n• 完善设置管理功能\n• 添加输入验证\n• 改进用户界面',
+                    ),
+                    const SizedBox(height: 20),
+                    _buildAboutItem(
+                      Icons.contact_support_outlined,
+                      '联系我们',
+                      '如有问题或建议，欢迎反馈',
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: const Text('关闭'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAboutItem(IconData icon, String title, String content) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                content,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondaryColor,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showConfigSavedMessage(BuildContext context, AIMode mode) {
+    String modeText;
+    IconData modeIcon;
+
+    switch (mode) {
+      case AIMode.local:
+        modeText = '本地规则模式';
+        modeIcon = Icons.check_circle_outlined;
+        break;
+      case AIMode.localLLM:
+        modeText = '本地大模型';
+        modeIcon = Icons.cloud_outlined;
+        break;
+      case AIMode.remoteAPI:
+        modeText = '远程API服务';
+        modeIcon = Icons.cloud_queue_outlined;
+        break;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(modeIcon, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '配置已保存：$modeText',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppTheme.successColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 2),
       ),
     );
   }

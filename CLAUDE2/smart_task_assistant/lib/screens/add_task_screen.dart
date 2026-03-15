@@ -161,9 +161,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               // 任务标题
               Text(
                 l.taskTitle,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -183,9 +183,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               // 任务详情
               Text(
                 l.taskDetails,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -205,9 +205,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               // 截止时间
               Text(
                 l.deadline,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               InkWell(
@@ -342,11 +342,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   decoration: InputDecoration(
                                     hintText: l.enterMinutes,
                                     hintStyle: TextStyle(
-                                        fontSize: 13,
-                                        color: AppTheme.textHintColor),
+                                      fontSize: 13,
+                                      color: AppTheme.textHintColor,
+                                    ),
                                     isDense: true,
                                     contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 10),
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -376,30 +379,39 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               // 优先级
               Text(
                 l.priority,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  _buildPriorityChip(TaskPriority.low, l.priorityLowShort,
-                      AppTheme.lowPriorityColor),
+                  _buildPriorityChip(
+                    TaskPriority.low,
+                    l.priorityLowShort,
+                    AppTheme.lowPriorityColor,
+                  ),
                   const SizedBox(width: 12),
-                  _buildPriorityChip(TaskPriority.medium, l.priorityMediumShort,
-                      AppTheme.mediumPriorityColor),
+                  _buildPriorityChip(
+                    TaskPriority.medium,
+                    l.priorityMediumShort,
+                    AppTheme.mediumPriorityColor,
+                  ),
                   const SizedBox(width: 12),
-                  _buildPriorityChip(TaskPriority.high, l.priorityHighShort,
-                      AppTheme.highPriorityColor),
+                  _buildPriorityChip(
+                    TaskPriority.high,
+                    l.priorityHighShort,
+                    AppTheme.highPriorityColor,
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
               // 标签选择
               Text(
                 l.tagsLabel,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Consumer<TaskProvider>(
@@ -407,25 +419,29 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   // 默认标签
                   final defaultTags = [
                     Tag(
-                        id: 'default_work',
-                        name: l.tagWork,
-                        color: '#3B82F6',
-                        isDefault: true),
+                      id: 'default_work',
+                      name: l.tagWork,
+                      color: '#3B82F6',
+                      isDefault: true,
+                    ),
                     Tag(
-                        id: 'default_personal',
-                        name: l.tagPersonal,
-                        color: '#10B981',
-                        isDefault: true),
+                      id: 'default_personal',
+                      name: l.tagPersonal,
+                      color: '#10B981',
+                      isDefault: true,
+                    ),
                     Tag(
-                        id: 'default_urgent',
-                        name: l.tagUrgent,
-                        color: '#EF4444',
-                        isDefault: true),
+                      id: 'default_urgent',
+                      name: l.tagUrgent,
+                      color: '#EF4444',
+                      isDefault: true,
+                    ),
                     Tag(
-                        id: 'default_study',
-                        name: l.tagStudy,
-                        color: '#8B5CF6',
-                        isDefault: true),
+                      id: 'default_study',
+                      name: l.tagStudy,
+                      color: '#8B5CF6',
+                      isDefault: true,
+                    ),
                   ];
 
                   // 合并默认标签和自定义标签（去重）
@@ -445,15 +461,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.label_outline,
-                              color: AppTheme.textHintColor, size: 20),
+                          Icon(
+                            Icons.label_outline,
+                            color: AppTheme.textHintColor,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             l.isZh
                                 ? '暂无标签，请在设置中添加'
                                 : 'No tags, please add in settings',
                             style: TextStyle(
-                                color: AppTheme.textHintColor, fontSize: 14),
+                              color: AppTheme.textHintColor,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
@@ -472,12 +493,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 默认标签组
-                      if (defaultTags.any((t) =>
-                          _selectedTagIds.contains(t.id) ||
-                          !provider.tags.any((pt) => pt.id == t.id))) ...[
+                      if (defaultTags.any(
+                        (t) =>
+                            _selectedTagIds.contains(t.id) ||
+                            !provider.tags.any((pt) => pt.id == t.id),
+                      )) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 8),
+                            horizontal: 4,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.grey.shade50,
                             borderRadius: BorderRadius.circular(8),
@@ -486,8 +511,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(left: 4, bottom: 4),
+                                padding: const EdgeInsets.only(
+                                  left: 4,
+                                  bottom: 4,
+                                ),
                                 child: Text(
                                   l.defaultTags,
                                   style: TextStyle(
@@ -501,8 +528,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: defaultTags.map((tag) {
-                                  final isSelected =
-                                      _selectedTagIds.contains(tag.id);
+                                  final isSelected = _selectedTagIds.contains(
+                                    tag.id,
+                                  );
                                   return _buildTagChip(tag, isSelected);
                                 }).toList(),
                               ),
@@ -515,7 +543,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       if (provider.tags.isNotEmpty) ...[
                         Padding(
                           padding: const EdgeInsets.only(
-                              left: 4, right: 4, bottom: 4),
+                            left: 4,
+                            right: 4,
+                            bottom: 4,
+                          ),
                           child: Text(
                             l.customTags,
                             style: TextStyle(
@@ -542,9 +573,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               const SizedBox(height: 20),
               Text(
                 l.recurringTaskSettings,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Container(
@@ -644,20 +675,36 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Widget _buildStatusSelector(AppLocalizations l) {
     return Row(
       children: [
-        _buildStatusChip(TaskStatus.pending, l.statusPending,
-            AppTheme.warningColor, Icons.schedule_rounded),
+        _buildStatusChip(
+          TaskStatus.pending,
+          l.statusPending,
+          AppTheme.warningColor,
+          Icons.schedule_rounded,
+        ),
         const SizedBox(width: 8),
-        _buildStatusChip(TaskStatus.inProgress, l.statusInProgress,
-            AppTheme.infoColor, Icons.play_arrow_rounded),
+        _buildStatusChip(
+          TaskStatus.inProgress,
+          l.statusInProgress,
+          AppTheme.infoColor,
+          Icons.play_arrow_rounded,
+        ),
         const SizedBox(width: 8),
-        _buildStatusChip(TaskStatus.completed, l.completed,
-            AppTheme.successColor, Icons.check_circle_rounded),
+        _buildStatusChip(
+          TaskStatus.completed,
+          l.completed,
+          AppTheme.successColor,
+          Icons.check_circle_rounded,
+        ),
       ],
     );
   }
 
   Widget _buildStatusChip(
-      TaskStatus status, String label, Color color, IconData icon) {
+    TaskStatus status,
+    String label,
+    Color color,
+    IconData icon,
+  ) {
     final isSelected = _status == status;
     return Expanded(
       child: GestureDetector(
@@ -729,14 +776,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   /// 构建提醒选项芯片
-  Widget _buildReminderChip(int? minutes, String label,
-      {bool isCustom = false}) {
+  Widget _buildReminderChip(
+    int? minutes,
+    String label, {
+    bool isCustom = false,
+  }) {
     bool isSelected;
     if (isCustom) {
       isSelected = _showCustomReminder ||
           (_customReminderMinutes != null &&
-              !_reminderOptions
-                  .any((opt) => opt['minutes'] == _reminderMinutes));
+              !_reminderOptions.any(
+                (opt) => opt['minutes'] == _reminderMinutes,
+              ));
     } else if (minutes == null) {
       // "不提醒"选项
       isSelected = _reminderMinutes == null &&
@@ -846,15 +897,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Future<void> _saveTask() async {
     final l = context.l;
     if (_titleController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l.pleaseEnterTitle)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.pleaseEnterTitle)));
       return;
     }
 
     setState(() => _isProcessing = true);
 
     final provider = context.read<TaskProvider>();
+
+    // 调试日志：输出选中的标签ID
+    print('===== 保存任务 =====');
+    print('任务标题: ${_titleController.text.trim()}');
+    print('选中的标签ID: $_selectedTagIds');
+    print('标签数量: ${_selectedTagIds.length}');
 
     if (widget.isEditing) {
       // 编辑模式：更新现有任务
@@ -887,9 +944,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.taskUpdated)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l.taskUpdated)));
       }
     } else {
       // 新建模式：创建新任务
@@ -947,7 +1004,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         });
       },
       selectedColor: color.withOpacity(0.2),
-      checkmarkColor: color,
+      checkmarkColor: Colors.white, // 改为白色打勾号
       backgroundColor: Colors.grey.shade100,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );

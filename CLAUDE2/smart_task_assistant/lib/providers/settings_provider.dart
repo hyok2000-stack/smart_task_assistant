@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+// 条件导入：Web平台使用 html 库
+import '../utils/platform_stub.dart'
+    if (dart.library.html) '../utils/platform_web.dart';
 
 /// AI服务模式枚举
 enum AIMode { local, localLLM, remoteAPI }
@@ -17,7 +23,7 @@ class SettingsProvider extends ChangeNotifier {
   int _reminderMinutes = 30;
 
   // AI服务配置
-  AIMode _aiMode = AIMode.remoteAPI;
+  AIMode _aiMode = AIMode.local;
   String _localLLMAddress = 'http://localhost:11434';
   String _localLLMModel = 'qwen2.5:7b';
   String _apiServiceName = 'OpenAI';
@@ -34,6 +40,10 @@ class SettingsProvider extends ChangeNotifier {
   String _chatAPIBase = 'https://api.openai.com/v1';
   String _chatAPIModel = 'gpt-3.5-turbo';
 
+  // 版本信息
+  String _appVersion = '1.0.0';
+
+  // Getters
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   bool get clipboardMonitorEnabled => _clipboardMonitorEnabled;
@@ -66,6 +76,9 @@ class SettingsProvider extends ChangeNotifier {
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get isZh => _locale.languageCode == 'zh';
 
+  /// 获取应用版本号
+  String get appVersion => _appVersion;
+
   /// 从存储加载设置
   Future<void> loadSettings() async {
     if (kIsWeb) {
@@ -73,6 +86,7 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       await _loadFromNative();
     }
+    await _loadAppVersion();
     notifyListeners();
   }
 
@@ -101,30 +115,227 @@ class SettingsProvider extends ChangeNotifier {
       if (notificationsEnabled != null) {
         _notificationsEnabled = notificationsEnabled == 'true';
       }
+
+      // 加载AI配置
+      final aiModeStr = _getWebStorage('aiMode');
+      if (aiModeStr != null) {
+        _aiMode = AIMode.values.firstWhere(
+          (m) => m.toString() == aiModeStr,
+          orElse: () => AIMode.local,
+        );
+      }
+
+      final localLLMAddress = _getWebStorage('localLLMAddress');
+      if (localLLMAddress != null) {
+        _localLLMAddress = localLLMAddress;
+      }
+
+      final localLLMModel = _getWebStorage('localLLMModel');
+      if (localLLMModel != null) {
+        _localLLMModel = localLLMModel;
+      }
+
+      final apiServiceName = _getWebStorage('apiServiceName');
+      if (apiServiceName != null) {
+        _apiServiceName = apiServiceName;
+      }
+
+      final apiKey = _getWebStorage('apiKey');
+      if (apiKey != null) {
+        _apiKey = apiKey;
+      }
+
+      final apiBase = _getWebStorage('apiBase');
+      if (apiBase != null) {
+        _apiBase = apiBase;
+      }
+
+      final apiModel = _getWebStorage('apiModel');
+      if (apiModel != null) {
+        _apiModel = apiModel;
+      }
+
+      // 加载ChatAI配置
+      final chatModeStr = _getWebStorage('chatMode');
+      if (chatModeStr != null) {
+        _chatMode = ChatAIMode.values.firstWhere(
+          (m) => m.toString() == chatModeStr,
+          orElse: () => ChatAIMode.remoteAPI,
+        );
+      }
+
+      final chatLocalLLMAddress = _getWebStorage('chatLocalLLMAddress');
+      if (chatLocalLLMAddress != null) {
+        _chatLocalLLMAddress = chatLocalLLMAddress;
+      }
+
+      final chatLocalLLMModel = _getWebStorage('chatLocalLLMModel');
+      if (chatLocalLLMModel != null) {
+        _chatLocalLLMModel = chatLocalLLMModel;
+      }
+
+      final chatAPIServiceName = _getWebStorage('chatAPIServiceName');
+      if (chatAPIServiceName != null) {
+        _chatAPIServiceName = chatAPIServiceName;
+      }
+
+      final chatAPIKey = _getWebStorage('chatAPIKey');
+      if (chatAPIKey != null) {
+        _chatAPIKey = chatAPIKey;
+      }
+
+      final chatAPIBase = _getWebStorage('chatAPIBase');
+      if (chatAPIBase != null) {
+        _chatAPIBase = chatAPIBase;
+      }
+
+      final chatAPIModel = _getWebStorage('chatAPIModel');
+      if (chatAPIModel != null) {
+        _chatAPIModel = chatAPIModel;
+      }
     } catch (e) {
       debugPrint('加载设置失败: $e');
     }
   }
 
   Future<void> _loadFromNative() async {
-    // 原生平台暂时使用默认值
-    // 后续可以使用 shared_preferences
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 加载主题模式
+      final themeModeStr = prefs.getString('themeMode');
+      if (themeModeStr != null) {
+        _themeMode = ThemeMode.values.firstWhere(
+          (m) => m.toString() == themeModeStr,
+          orElse: () => ThemeMode.system,
+        );
+      }
+
+      // 加载语言
+      final languageCode = prefs.getString('language');
+      if (languageCode != null) {
+        _locale = Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US');
+      }
+
+      // 加载剪贴板监视
+      _clipboardMonitorEnabled =
+          prefs.getBool('clipboardMonitorEnabled') ?? true;
+
+      // 加载通知设置
+      _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+
+      // 加载AI配置
+      final aiModeStr = prefs.getString('aiMode');
+      if (aiModeStr != null) {
+        _aiMode = AIMode.values.firstWhere(
+          (m) => m.toString() == aiModeStr,
+          orElse: () => AIMode.local,
+        );
+      }
+
+      _localLLMAddress =
+          prefs.getString('localLLMAddress') ?? 'http://localhost:11434';
+      _localLLMModel = prefs.getString('localLLMModel') ?? 'qwen2.5:7b';
+      _apiServiceName = prefs.getString('apiServiceName') ?? 'OpenAI';
+      _apiKey = prefs.getString('apiKey') ?? '';
+      _apiBase = prefs.getString('apiBase') ?? 'https://api.openai.com/v1';
+      _apiModel = prefs.getString('apiModel') ?? 'gpt-3.5-turbo';
+
+      // 加载ChatAI配置
+      final chatModeStr = prefs.getString('chatMode');
+      if (chatModeStr != null) {
+        _chatMode = ChatAIMode.values.firstWhere(
+          (m) => m.toString() == chatModeStr,
+          orElse: () => ChatAIMode.remoteAPI,
+        );
+      }
+
+      _chatLocalLLMAddress =
+          prefs.getString('chatLocalLLMAddress') ?? 'http://localhost:11434';
+      _chatLocalLLMModel = prefs.getString('chatLocalLLMModel') ?? 'qwen2.5:7b';
+      _chatAPIServiceName = prefs.getString('chatAPIServiceName') ?? 'OpenAI';
+      _chatAPIKey = prefs.getString('chatAPIKey') ?? '';
+      _chatAPIBase =
+          prefs.getString('chatAPIBase') ?? 'https://api.openai.com/v1';
+      _chatAPIModel = prefs.getString('chatAPIModel') ?? 'gpt-3.5-turbo';
+    } catch (e) {
+      debugPrint('加载设置失败: $e');
+    }
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _appVersion = packageInfo.version;
+    } catch (e) {
+      debugPrint('获取应用版本失败: $e');
+    }
   }
 
   /// 保存设置
   Future<void> _saveSettings() async {
     if (kIsWeb) {
       _saveToWeb();
+    } else {
+      await _saveToNative();
     }
-    // 原生平台保存逻辑
   }
 
   void _saveToWeb() {
     _setWebStorage('themeMode', _themeMode.toString());
     _setWebStorage('language', _locale.languageCode);
     _setWebStorage(
-        'clipboardMonitorEnabled', _clipboardMonitorEnabled.toString());
+      'clipboardMonitorEnabled',
+      _clipboardMonitorEnabled.toString(),
+    );
     _setWebStorage('notificationsEnabled', _notificationsEnabled.toString());
+
+    // 保存AI配置
+    _setWebStorage('aiMode', _aiMode.toString());
+    _setWebStorage('localLLMAddress', _localLLMAddress);
+    _setWebStorage('localLLMModel', _localLLMModel);
+    _setWebStorage('apiServiceName', _apiServiceName);
+    _setWebStorage('apiKey', _apiKey);
+    _setWebStorage('apiBase', _apiBase);
+    _setWebStorage('apiModel', _apiModel);
+
+    // 保存ChatAI配置
+    _setWebStorage('chatMode', _chatMode.toString());
+    _setWebStorage('chatLocalLLMAddress', _chatLocalLLMAddress);
+    _setWebStorage('chatLocalLLMModel', _chatLocalLLMModel);
+    _setWebStorage('chatAPIServiceName', _chatAPIServiceName);
+    _setWebStorage('chatAPIKey', _chatAPIKey);
+    _setWebStorage('chatAPIBase', _chatAPIBase);
+    _setWebStorage('chatAPIModel', _chatAPIModel);
+  }
+
+  Future<void> _saveToNative() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString('themeMode', _themeMode.toString());
+      await prefs.setString('language', _locale.languageCode);
+      await prefs.setBool('clipboardMonitorEnabled', _clipboardMonitorEnabled);
+      await prefs.setBool('notificationsEnabled', _notificationsEnabled);
+
+      await prefs.setString('aiMode', _aiMode.toString());
+      await prefs.setString('localLLMAddress', _localLLMAddress);
+      await prefs.setString('localLLMModel', _localLLMModel);
+      await prefs.setString('apiServiceName', _apiServiceName);
+      await prefs.setString('apiKey', _apiKey);
+      await prefs.setString('apiBase', _apiBase);
+      await prefs.setString('apiModel', _apiModel);
+
+      await prefs.setString('chatMode', _chatMode.toString());
+      await prefs.setString('chatLocalLLMAddress', _chatLocalLLMAddress);
+      await prefs.setString('chatLocalLLMModel', _chatLocalLLMModel);
+      await prefs.setString('chatAPIServiceName', _chatAPIServiceName);
+      await prefs.setString('chatAPIKey', _chatAPIKey);
+      await prefs.setString('chatAPIBase', _chatAPIBase);
+      await prefs.setString('chatAPIModel', _chatAPIModel);
+    } catch (e) {
+      debugPrint('保存设置失败: $e');
+    }
   }
 
   /// 设置主题模式
@@ -279,33 +490,62 @@ class SettingsProvider extends ChangeNotifier {
     setClipboardMonitorEnabled(value);
   }
 
+  /// 重置为默认设置
+  Future<void> resetToDefault() async {
+    _themeMode = ThemeMode.system;
+    _locale = const Locale('zh', 'CN');
+    _clipboardMonitorEnabled = true;
+    _notificationsEnabled = true;
+    _reminderEnabled = true;
+    _reminderMinutes = 30;
+
+    _aiMode = AIMode.local;
+    _localLLMAddress = 'http://localhost:11434';
+    _localLLMModel = 'qwen2.5:7b';
+    _apiServiceName = 'OpenAI';
+    _apiKey = '';
+    _apiBase = 'https://api.openai.com/v1';
+    _apiModel = 'gpt-3.5-turbo';
+
+    _chatMode = ChatAIMode.remoteAPI;
+    _chatLocalLLMAddress = 'http://localhost:11434';
+    _chatLocalLLMModel = 'qwen2.5:7b';
+    _chatAPIServiceName = 'OpenAI';
+    _chatAPIKey = '';
+    _chatAPIBase = 'https://api.openai.com/v1';
+    _chatAPIModel = 'gpt-3.5-turbo';
+
+    await _saveSettings();
+    notifyListeners();
+  }
+
+  /// 验证URL格式
+  bool isValidUrl(String url) {
+    if (url.isEmpty) return false;
+    try {
+      final uri = Uri.parse(url);
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 验证模型名称
+  bool isValidModelName(String modelName) {
+    return modelName.isNotEmpty && modelName.trim().isNotEmpty;
+  }
+
   // Web 存储辅助方法
   String? _getWebStorage(String key) {
     if (kIsWeb) {
-      // 使用 dart:html 实现
-      try {
-        final storage = _getWebStorageImpl();
-        return storage[key];
-      } catch (e) {
-        return null;
-      }
+      return getWebStorage(key);
     }
     return null;
   }
 
   void _setWebStorage(String key, String value) {
     if (kIsWeb) {
-      try {
-        final storage = _getWebStorageImpl();
-        storage[key] = value;
-      } catch (e) {
-        debugPrint('保存设置失败: $e');
-      }
+      setWebStorage(key, value);
     }
-  }
-
-  dynamic _getWebStorageImpl() {
-    // 使用动态调用避免编译错误
-    return null; // 实际实现在 web 平台
   }
 }
