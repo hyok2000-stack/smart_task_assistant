@@ -18,10 +18,84 @@ void selectFile({
   onError('移动端请使用系统文件选择器');
 }
 
-/// 导出数据（移动端实现）
+/// 获取程序文档目录
+Future<Directory> getAppDocumentsDirectory() async {
+  return await getApplicationDocumentsDirectory();
+}
+
+/// 导出数据到程序目录（移动端实现）
 /// [data] 要导出的数据字符串
 /// [fileName] 文件名
 /// [mimeType] MIME类型
+/// 返回保存的文件路径
+Future<String> exportDataToAppDir({
+  required String data,
+  required String fileName,
+  String mimeType = 'application/json',
+}) async {
+  // 获取程序文档目录
+  final directory = await getAppDocumentsDirectory();
+  final file = File('${directory.path}/$fileName');
+  await file.writeAsString(data);
+  return file.path;
+}
+
+/// 获取程序目录下的所有导出文件列表
+/// 返回文件信息列表：[{'fileName': 'xxx.json', 'filePath': '/path/to/xxx.json', 'fileSize': 12345, 'modifiedTime': DateTime}]
+Future<List<Map<String, dynamic>>> getExportFilesList() async {
+  try {
+    final directory = await getAppDocumentsDirectory();
+
+    // 扫描目录下所有JSON文件
+    final files = await directory.list().toList();
+    final exportFiles = <Map<String, dynamic>>[];
+
+    for (var file in files) {
+      if (file is File && file.path.endsWith('.json')) {
+        final stat = await file.stat();
+        exportFiles.add({
+          'fileName': file.uri.pathSegments.last,
+          'filePath': file.path,
+          'fileSize': stat.size,
+          'modifiedTime': stat.modified,
+        });
+      }
+    }
+
+    // 按修改时间降序排序
+    exportFiles.sort((a, b) => (b['modifiedTime'] as DateTime)
+        .compareTo(a['modifiedTime'] as DateTime));
+
+    return exportFiles;
+  } catch (e) {
+    print('获取导出文件列表失败: $e');
+    return [];
+  }
+}
+
+/// 从指定路径导入数据
+/// [filePath] 文件路径
+/// 返回包含文件内容和文件名的Map
+Future<Map<String, String>?> importDataFromPath(String filePath) async {
+  try {
+    final file = File(filePath);
+    final content = await file.readAsString();
+    final fileName = file.uri.pathSegments.last;
+    return {
+      'content': content,
+      'fileName': fileName,
+    };
+  } catch (e) {
+    print('导入数据失败: $e');
+    return null;
+  }
+}
+
+/// 导出数据（移动端实现 - 已废弃）
+/// [data] 要导出的数据字符串
+/// [fileName] 文件名
+/// [mimeType] MIME类型
+@Deprecated('请使用 exportDataToAppDir 替代')
 Future<void> exportDataNative({
   required String data,
   required String fileName,
@@ -39,8 +113,9 @@ Future<void> exportDataNative({
   );
 }
 
-/// 导入数据（移动端实现）
+/// 导入数据（移动端实现 - 已废弃）
 /// 返回包含文件内容和文件名的Map
+@Deprecated('请使用 getExportFilesList 和 importDataFromPath 替代')
 Future<Map<String, String>?> importDataNative() async {
   // 移动端使用文件选择器
   FilePickerResult? result = await FilePicker.platform.pickFiles(

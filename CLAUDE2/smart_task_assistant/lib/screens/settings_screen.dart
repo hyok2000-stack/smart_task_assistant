@@ -944,8 +944,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Web平台使用下载方式
         downloadFile(exportData, fileName, 'application/json');
       } else {
-        // 移动端使用分享方式
-        await exportDataNative(
+        // 移动端保存到程序目录
+        final filePath = await exportDataToAppDir(
           data: exportData,
           fileName: fileName,
         );
@@ -1169,8 +1169,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return;
         }
       } else {
-        // 移动端使用文件选择器
-        final result = await importDataNative();
+        // 移动端：获取程序目录下的所有导出文件
+        final filesList = await getExportFilesList();
+
+        if (filesList.isEmpty) {
+          // 如果没有文件，显示提示
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('没有找到可导入的备份文件'),
+                backgroundColor: AppTheme.warningColor,
+              ),
+            );
+          }
+          return;
+        }
+
+        // 显示文件选择对话框
+        final selectedFile = await _showImportFilesDialog(context, filesList);
+        if (selectedFile == null) {
+          // 用户取消选择
+          return;
+        }
+
+        // 从选择的文件导入数据
+        final result = await importDataFromPath(selectedFile['filePath']);
         if (result != null) {
           content = result['content'];
           fileName = result['fileName'];
@@ -1256,6 +1279,215 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
+    }
+  }
+
+  /// 显示导入文件选择对话框
+  Future<Map<String, dynamic>?> _showImportFilesDialog(
+    BuildContext context,
+    List<Map<String, dynamic>> filesList,
+  ) async {
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          height: MediaQuery.of(context).size.height * 0.6,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.folder_open_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '选择备份文件',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 文件列表
+              Expanded(
+                child: filesList.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.inbox_rounded,
+                              size: 64,
+                              color: AppTheme.textHintColor,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              '暂无备份文件',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: AppTheme.textSecondaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filesList.length,
+                        itemBuilder: (context, index) {
+                          final file = filesList[index];
+                          final modifiedTime = file['modifiedTime'] as DateTime;
+                          final fileSize = (file['fileSize'] as int) / 1024;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                Navigator.pop(context, file);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor
+                                            .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(
+                                        Icons.description_rounded,
+                                        color: AppTheme.primaryColor,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            file['fileName'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.textPrimaryColor,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${_formatDateTime(modifiedTime)} · ${fileSize.toStringAsFixed(1)} KB',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color:
+                                                  AppTheme.textSecondaryColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: AppTheme.textHintColor,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 格式化日期时间
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays == 0) {
+      return '今天 ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      return '昨天 ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}天前';
+    } else {
+      return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
     }
   }
 
