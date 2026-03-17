@@ -2135,15 +2135,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   children: [
                     Container(
-                      width: 80,
-                      height: 80,
+                      width: 60,
+                      height: 60,
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Icon(
                         Icons.task_alt_rounded,
-                        size: 48,
+                        size: 32,
                         color: Colors.white,
                       ),
                     ),
@@ -2161,6 +2161,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       '版本 ${settings.appVersion}',
                       style: TextStyle(fontSize: 14, color: Colors.white70),
                     ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '作者：黄勇',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '222582@qq.com',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2173,13 +2189,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildAboutItem(
                       Icons.description_outlined,
                       '应用介绍',
-                      '一款智能的任务管理应用，帮助您高效管理日常任务。支持AI智能识别、周期任务、提醒通知等功能。',
+                      '智能任务助手是一款功能强大的任务管理应用，集成了AI智能识别、周期任务管理、智能提醒通知等核心功能。支持任务优先级设置、标签分类、数据导入导出等高级特性，帮助您高效规划和完成各类任务。',
                     ),
                     const SizedBox(height: 20),
                     _buildAboutItem(
                       Icons.new_releases_outlined,
-                      '新功能',
-                      '• AI智能识别任务内容\n• 支持周期任务设置\n• 剪贴板监视功能\n• 数据导入导出\n• 设置重置功能',
+                      '核心功能',
+                      '• AI智能识别：自动解析任务内容和时间\n• 周期任务：支持日、周、月循环提醒\n• 剪贴板监视：自动识别粘贴内容\n• 智能提醒：多级通知系统\n• 数据管理：支持导入导出备份\n• 标签系统：灵活的任务分类\n• 统计分析：任务完成度可视化',
                     ),
                     const SizedBox(height: 20),
                     _buildAboutItem(
