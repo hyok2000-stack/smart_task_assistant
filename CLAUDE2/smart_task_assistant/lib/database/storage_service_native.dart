@@ -15,18 +15,25 @@ class NativeStorageService implements StorageService {
   Future<void> init() async {
     debugPrint('===== NativeStorageService.init 开始 =====');
 
-    // 检查数据库文件是否存在
-    final dbExists = await _db.databaseExists();
-    debugPrint('数据库文件存在: $dbExists');
-    debugPrint('数据库路径: ${await _db.getDatabasePath()}');
+    try {
+      // 检查数据库文件是否存在
+      final dbExists = await _db.databaseExists();
+      debugPrint('数据库文件存在: $dbExists');
+      debugPrint('数据库路径: ${await _db.getDatabasePath()}');
 
-    await _db.database;
-    debugPrint('数据库连接已建立');
+      // 获取数据库实例（会自动初始化）
+      await _db.database;
+      debugPrint('数据库连接已建立');
 
-    // 确保默认标签存在
-    await _ensureDefaultTags();
+      // 确保默认标签存在
+      await _ensureDefaultTags();
 
-    debugPrint('===== NativeStorageService.init 完成 =====');
+      debugPrint('===== NativeStorageService.init 完成 =====');
+    } catch (e) {
+      debugPrint('❌ NativeStorageService.init 出错: $e');
+      debugPrint('❌ 错误堆栈: ${StackTrace.current}');
+      rethrow; // 重新抛出错误，让上层处理
+    }
   }
 
   /// 确保默认标签存在

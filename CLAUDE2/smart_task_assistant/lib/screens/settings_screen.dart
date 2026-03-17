@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:file_picker/file_picker.dart';
 
 import '../providers/settings_provider.dart';
 import '../providers/task_provider.dart';
@@ -1169,7 +1171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return;
         }
       } else {
-        // 移动端：获取程序目录下的所有导出文件
+        // 移动端：直接从应用内部目录导入
         final filesList = await getExportFilesList();
 
         if (filesList.isEmpty) {
@@ -1177,7 +1179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('没有找到可导入的备份文件'),
+                content: Text('应用目录中没有备份文件，请先导出数据'),
                 backgroundColor: AppTheme.warningColor,
               ),
             );
@@ -1279,6 +1281,216 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
+    }
+  }
+
+  /// 显示导入来源选择对话框
+  Future<String?> _showImportSourceDialog(BuildContext context) async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width > 400
+              ? 400
+              : MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 标题栏
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.file_upload_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '选择导入方式',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _buildImportSourceOption(
+                      context,
+                      'internal',
+                      Icons.folder_rounded,
+                      '从应用目录导入',
+                      '选择应用内部保存的备份文件',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildImportSourceOption(
+                      context,
+                      'external',
+                      Icons.sd_card_rounded,
+                      '从外部导入',
+                      '从手机存储或其他应用选择文件',
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('取消'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建导入来源选项
+  Widget _buildImportSourceOption(
+    BuildContext context,
+    String source,
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return InkWell(
+      onTap: () => Navigator.pop(context, source),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: AppTheme.primaryColor,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: AppTheme.textHintColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 从外部文件导入
+  Future<Map<String, String>?> _importFromExternalFile(
+      BuildContext context) async {
+    try {
+      // 使用文件选择器
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final content = await file.readAsString();
+        final fileName = result.files.single.name;
+        return {
+          'content': content,
+          'fileName': fileName,
+        };
+      }
+
+      return null;
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('导入失败: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+      return null;
     }
   }
 
@@ -1421,8 +1633,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               fontWeight: FontWeight.w600,
                                               color: AppTheme.textPrimaryColor,
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 4),
                                           Text(

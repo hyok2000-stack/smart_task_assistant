@@ -136,9 +136,27 @@ Future<Map<String, String>?> importDataNative() async {
   return null;
 }
 
-/// 获取文件名（移动端实现）
-/// 返回选择的文件名（已废弃，请使用 importDataNative）
-@Deprecated('请使用 importDataNative 替代')
-Future<String?> pickFileNameNative() async {
-  return null;
+/// 清除所有导出文件
+/// 删除程序目录下所有的JSON导出文件
+Future<void> clearExportFiles() async {
+  try {
+    final directory = await getAppDocumentsDirectory();
+
+    // 扫描目录下所有JSON文件
+    final files = await directory.list().toList();
+    int deletedCount = 0;
+
+    for (var file in files) {
+      if (file is File && file.path.endsWith('.json')) {
+        await file.delete();
+        deletedCount++;
+        print('已删除导出文件: ${file.uri.pathSegments.last}');
+      }
+    }
+
+    print('共删除 $deletedCount 个导出文件');
+  } catch (e) {
+    print('清除导出文件失败: $e');
+    rethrow;
+  }
 }

@@ -2,17 +2,17 @@ import 'dart:convert';
 
 /// 任务状态枚举
 enum TaskStatus {
-  pending,     // 待处理
-  inProgress,  // 进行中
-  completed,   // 已完成
-  cancelled,   // 已取消
+  pending, // 待处理
+  inProgress, // 进行中
+  completed, // 已完成
+  cancelled, // 已取消
 }
 
 /// 任务优先级枚举
 enum TaskPriority {
-  low,    // 低
+  low, // 低
   medium, // 中
-  high,   // 高
+  high, // 高
 }
 
 /// 任务模型
@@ -26,7 +26,7 @@ class Task {
   DateTime? dueTime;
   DateTime? completedAt;
   String? assignee;
-  String? parentId;  // 父任务ID，用于子任务
+  String? parentId; // 父任务ID，用于子任务
   bool isRecurring;
   String? recurringRule;
   DateTime createdAt;
@@ -91,12 +91,12 @@ class Task {
   String get dueTimeDescription {
     if (dueTime == null) return '';
     if (isOverdue) return '已逾期';
-    
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final dueDate = DateTime(dueTime!.year, dueTime!.month, dueTime!.day);
     final tomorrow = today.add(const Duration(days: 1));
-    
+
     if (dueDate == today) {
       return '今天 ${dueTime!.hour.toString().padLeft(2, '0')}:${dueTime!.minute.toString().padLeft(2, '0')}';
     }
@@ -125,7 +125,9 @@ class Task {
           : null,
       assignee: json['assignee'] as String?,
       parentId: json['parent_id'] as String?,
-      isRecurring: json['is_recurring'] as bool? ?? false,
+      isRecurring: json['is_recurring'] is bool
+          ? json['is_recurring'] as bool
+          : (json['is_recurring'] as int? ?? 0) == 1,
       recurringRule: json['recurring_rule'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -136,7 +138,9 @@ class Task {
           ? List<String>.from(jsonDecode(json['attachment_paths'] as String))
           : [],
       reminderMinutes: json['reminder_minutes'] as int?,
-      reminderDismissed: json['reminder_dismissed'] as bool? ?? false,
+      reminderDismissed: json['reminder_dismissed'] is bool
+          ? json['reminder_dismissed'] as bool
+          : (json['reminder_dismissed'] as int? ?? 0) == 1,
     );
   }
 

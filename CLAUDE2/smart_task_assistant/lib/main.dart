@@ -166,12 +166,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// 重新加载数据，并强制重置数据库连接
   Future<void> _reloadDataWithReset() async {
-    // 避免重复加载
-    if (_isLoading) {
-      debugPrint('正在加载数据中，跳过重复加载');
-      return;
-    }
-
     debugPrint('开始重新加载数据（强制重置数据库连接）');
     setState(() {
       _isLoading = true;
@@ -187,7 +181,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('重置数据库连接失败: $e');
     }
 
-    await _loadData();
+    // 执行实际的数据加载
+    try {
+      debugPrint('===== _loadData 开始 =====');
+      await widget.taskProvider.loadData();
+      debugPrint('===== taskProvider.loadData 完成 =====');
+      debugPrint('任务数: ${widget.taskProvider.tasks.length}');
+      debugPrint('isLoading: ${widget.taskProvider.isLoading}');
+
+      // 数据加载完成后初始化提醒服务
+      widget.reminderService.init(widget.taskProvider, navigatorKey);
+
+      // 初始化剪贴板监视服务，默认开启
+      clipboardMonitorService.init(navigatorKey, (content) {
+        _showQuickAddWithContent(content);
+      });
+      // 默认启用剪贴板监视
+      clipboardMonitorService.setEnabled(true);
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        debugPrint('===== setState 完成，_isLoading = false =====');
+      }
+    } catch (e) {
+      debugPrint('加载数据失败: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = e.toString();
+        });
+      }
+    }
   }
 
   Future<void> _reloadData() async {

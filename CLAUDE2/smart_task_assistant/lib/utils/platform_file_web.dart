@@ -53,3 +53,9 @@ void selectFile({
     onError('创建文件选择器失败: $e');
   }
 }
+
+/// 清除所有导出文件
+/// Web平台没有本地文件，此方法为空实现
+Future<void> clearExportFiles() async {
+  // Web平台使用下载方式，没有本地文件需要清除
+}

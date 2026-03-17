@@ -75,3 +75,9 @@ Future<Map<String, String>?> importDataNative() async {
 Future<String?> pickFileNameNative() async {
   throw UnimplementedError('此功能需要在移动端实现');
 }
+
+/// 清除所有导出文件
+/// 删除程序目录下所有的JSON导出文件
+Future<void> clearExportFiles() async {
+  throw UnimplementedError('此功能需要在移动端实现');
+}
