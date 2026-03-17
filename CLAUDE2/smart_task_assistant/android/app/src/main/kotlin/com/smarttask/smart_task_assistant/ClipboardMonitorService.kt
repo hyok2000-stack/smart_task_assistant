@@ -6,19 +6,13 @@ import android.os.*
 import android.content.ClipboardManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.dart.DartExecutor
-import io.flutter.plugin.common.MethodChannel
 
 class ClipboardMonitorService : Service() {
     private val TAG = "ClipboardMonitorService"
-    private val CHANNEL = "com.smarttask.smart_task_assistant/clipboard_monitor"
     
     private var clipboardManager: ClipboardManager? = null
     private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
     private var lastClipboardContent: String? = null
-    private var flutterEngine: FlutterEngine? = null
-    private var methodChannel: MethodChannel? = null
     
     private val handler = Handler(Looper.getMainLooper())
     private var monitorRunnable: Runnable? = null
@@ -28,18 +22,6 @@ class ClipboardMonitorService : Service() {
         Log.d(TAG, "ClipboardMonitorService created")
         
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        
-        // 初始化 Flutter Engine
-        flutterEngine = FlutterEngine(this)
-        flutterEngine?.dartExecutor?.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault()
-        )
-        
-        // 处理可空的 BinaryMessenger
-        val binaryMessenger = flutterEngine?.dartExecutor?.binaryMessenger
-        if (binaryMessenger != null) {
-            methodChannel = MethodChannel(binaryMessenger, CHANNEL)
-        }
         
         // 创建剪贴板监听器
         clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -92,8 +74,10 @@ class ClipboardMonitorService : Service() {
                 lastClipboardContent = text
                 Log.d(TAG, "Clipboard changed: $text")
                 
-                // 通知 Flutter 层
-                methodChannel?.invokeMethod("onClipboardChanged", text)
+                // 发送广播通知 Flutter 层
+                val intent = Intent("com.smarttask.smart_task_assistant.CLIPBOARD_CHANGED")
+                intent.putExtra("content", text)
+                sendBroadcast(intent)
             }
         }
     }
@@ -133,9 +117,6 @@ class ClipboardMonitorService : Service() {
         
         // 停止定期检查
         monitorRunnable?.let { handler.removeCallbacks(it) }
-        
-        // 清理 Flutter Engine
-        flutterEngine?.destroy()
     }
     
     companion object {
