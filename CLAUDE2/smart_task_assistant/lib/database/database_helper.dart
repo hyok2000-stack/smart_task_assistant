@@ -15,19 +15,30 @@ class DatabaseHelper {
 
   /// 获取数据库实例
   Future<Database> get database async {
+    // 每次都检查数据库连接状态，确保应用重启后能正确连接
     if (_database != null) {
       // 检查数据库是否已关闭
       try {
         await _database!.query('sqlite_master', limit: 1);
+        debugPrint('数据库连接正常');
         return _database!;
       } catch (e) {
         // 数据库已关闭，需要重新初始化
-        debugPrint('数据库已关闭，重新初始化');
+        debugPrint('⚠️ 数据库连接已关闭或无效，正在重新初始化: $e');
         _database = null;
+        // 继续执行下面的初始化代码
       }
     }
-    _database = await _initDatabase();
-    return _database!;
+
+    debugPrint('📦 正在初始化数据库...');
+    try {
+      _database = await _initDatabase();
+      debugPrint('✅ 数据库初始化完成');
+      return _database!;
+    } catch (e) {
+      debugPrint('❌ 数据库初始化失败: $e');
+      rethrow;
+    }
   }
 
   /// 初始化数据库
@@ -413,9 +424,35 @@ class DatabaseHelper {
 
   /// 重置数据库连接（用于应用重启时）
   Future<void> resetConnection() async {
-    debugPrint('重置数据库连接');
-    await close();
-    _database = null;
+    debugPrint('===== DatabaseHelper.resetConnection 开始 =====');
+
+    try {
+      // 如果数据库已打开，先关闭
+      if (_database != null) {
+        try {
+          debugPrint('正在关闭现有数据库连接...');
+          await _database!.close();
+          debugPrint('数据库连接已关闭');
+        } catch (e) {
+          debugPrint('关闭数据库连接时出错（可能已经关闭）: $e');
+        }
+        _database = null;
+        debugPrint('数据库引用已清空');
+      } else {
+        debugPrint('数据库连接为空，无需关闭');
+      }
+
+      // 清除任何缓存的查询结果
+      debugPrint('清除数据库缓存...');
+
+      debugPrint('===== DatabaseHelper.resetConnection 完成 =====');
+      debugPrint('下次访问数据库时将重新建立连接');
+    } catch (e) {
+      debugPrint('重置数据库连接失败: $e');
+      // 即使出错，也要确保_database为null
+      _database = null;
+      rethrow;
+    }
   }
 
   /// 获取数据库路径（用于调试）

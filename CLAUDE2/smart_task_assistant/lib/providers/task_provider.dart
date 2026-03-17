@@ -3,6 +3,12 @@ import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../database/storage_service.dart';
+import '../database/database_helper.dart';
+
+// 条件导入：文件操作
+import '../utils/platform_file_stub.dart'
+    if (dart.library.html) '../utils/platform_file_web.dart'
+    if (dart.library.io) '../utils/platform_file_native.dart';
 
 /// 任务状态管理
 class TaskProvider extends ChangeNotifier {
@@ -154,6 +160,7 @@ class TaskProvider extends ChangeNotifier {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
+      rethrow; // 重新抛出异常，让上层知道加载失败
     }
   }
 
@@ -620,6 +627,16 @@ class TaskProvider extends ChangeNotifier {
         debugPrint('自动备份数据已清除');
       }
 
+      // 如果是移动端，清除导出的文件
+      if (kIsWeb == false) {
+        try {
+          await clearExportFiles();
+          debugPrint('导出文件已清除');
+        } catch (e) {
+          debugPrint('清除导出文件失败: $e');
+        }
+      }
+
       notifyListeners();
 
       debugPrint('所有数据已清除');
@@ -667,9 +684,43 @@ class TaskProvider extends ChangeNotifier {
         }
       }
 
-      debugPrint('数据导入完成');
+      debugPrint('数据导入完成，正在重新加载所有数据...');
+
+      // 重新从数据库加载所有数据，确保数据一致性和正确的排序
+      await loadData();
+
+      // 确保UI更新
+      debugPrint('导入后任务数量: ${_tasks.length}');
+      debugPrint('导入后标签数量: ${_tags.length}');
+      notifyListeners();
+
+      debugPrint('导入数据流程完成');
     } catch (e) {
       debugPrint('导入数据失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 重置数据库连接（用于应用重启或恢复时）
+  Future<void> resetDatabaseConnection() async {
+    debugPrint('===== TaskProvider.resetDatabaseConnection 开始 =====');
+    try {
+      // 如果是原生平台，重置数据库连接
+      if (_storage is! WebStorageService) {
+        // 导入DatabaseHelper
+        final dbHelper = DatabaseHelper();
+        await dbHelper.resetConnection();
+        debugPrint('数据库连接已重置');
+
+        // 重新初始化存储服务
+        await _storage.init();
+        debugPrint('存储服务已重新初始化');
+      } else {
+        debugPrint('Web平台，无需重置数据库连接');
+      }
+      debugPrint('===== TaskProvider.resetDatabaseConnection 完成 =====');
+    } catch (e) {
+      debugPrint('重置数据库连接失败: $e');
       rethrow;
     }
   }

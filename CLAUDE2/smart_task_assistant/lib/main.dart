@@ -9,6 +9,7 @@ import 'services/reminder_service.dart';
 import 'services/clipboard_monitor_service.dart';
 import 'widgets/quick_add_modal.dart';
 import 'utils/app_localizations.dart';
+import 'database/database_helper.dart';
 
 // 全局导航键，用于提醒服务显示弹窗
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -124,16 +125,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         // 应用从后台恢复
-        debugPrint('应用恢复，重新加载数据...');
-        _reloadData();
+        debugPrint('应用恢复，重置数据库连接并重新加载数据...');
+        _reloadDataWithReset();
         break;
       case AppLifecycleState.paused:
         // 应用进入后台
         debugPrint('应用进入后台');
         break;
       case AppLifecycleState.detached:
-        // 应用即将被终止
-        debugPrint('应用即将被终止');
+        // 应用即将被终止 - 重置所有单例连接
+        debugPrint('应用即将被终止，重置所有单例连接');
+        _resetAllConnections();
         break;
       case AppLifecycleState.inactive:
         // 应用处于非活动状态
@@ -144,6 +146,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         debugPrint('应用被隐藏');
         break;
     }
+  }
+
+  /// 重置所有单例连接（数据库、存储服务等）
+  Future<void> _resetAllConnections() async {
+    try {
+      debugPrint('===== _resetAllConnections 开始 =====');
+
+      // 重置数据库连接
+      final dbHelper = DatabaseHelper();
+      await dbHelper.resetConnection();
+      debugPrint('数据库连接已重置');
+
+      debugPrint('===== _resetAllConnections 完成 =====');
+    } catch (e) {
+      debugPrint('重置连接失败: $e');
+    }
+  }
+
+  /// 重新加载数据，并强制重置数据库连接
+  Future<void> _reloadDataWithReset() async {
+    // 避免重复加载
+    if (_isLoading) {
+      debugPrint('正在加载数据中，跳过重复加载');
+      return;
+    }
+
+    debugPrint('开始重新加载数据（强制重置数据库连接）');
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    // 强制重置数据库连接
+    try {
+      debugPrint('正在重置数据库连接...');
+      await widget.taskProvider.resetDatabaseConnection();
+      debugPrint('数据库连接已重置');
+    } catch (e) {
+      debugPrint('重置数据库连接失败: $e');
+    }
+
+    await _loadData();
   }
 
   Future<void> _reloadData() async {
