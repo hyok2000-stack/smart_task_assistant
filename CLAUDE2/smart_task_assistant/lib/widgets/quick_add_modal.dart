@@ -46,12 +46,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
   void initState() {
     super.initState();
 
-    // 如果有初始内容，设置到输入框并解析
+    // 如果有初始内容，设置到输入框并自动解析
     if (widget.initialContent != null && widget.initialContent!.isNotEmpty) {
       _controller.text = widget.initialContent!;
       // 延迟解析，确保组件已构建完成
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _parseInputLocal(widget.initialContent!);
+        _parseInputAuto(widget.initialContent!);
       });
     }
   }
@@ -63,7 +63,45 @@ class _QuickAddModalState extends State<QuickAddModal> {
     super.dispose();
   }
 
-  /// 使用本地规则解析输入（默认）
+  /// 自动解析输入（优先使用AI，失败回退到本地规则）
+  Future<void> _parseInputAuto(String input) async {
+    if (input.trim().isEmpty) {
+      setState(() => _parsedTask = null);
+      return;
+    }
+
+    setState(() => _isAILoading = true);
+
+    try {
+      // 加载 AI 配置
+      await _aiService.loadConfig();
+
+      // 尝试使用 AI 解析
+      final result = await _aiService.parseTask(input);
+
+      if (result != null && mounted) {
+        setState(() {
+          _parsedTask = result;
+          _selectedPriority = result.priority;
+          _selectedDueTime = result.dueTime;
+          _selectedTags = result.tags;
+        });
+      } else {
+        // AI 解析失败，回退到本地规则
+        _parseInputLocal(input);
+      }
+    } catch (e) {
+      debugPrint('AI解析失败，使用本地规则: $e');
+      // AI 解析失败，回退到本地规则
+      _parseInputLocal(input);
+    } finally {
+      if (mounted) {
+        setState(() => _isAILoading = false);
+      }
+    }
+  }
+
+  /// 使用本地规则解析输入（手动调用）
   void _parseInputLocal(String input) {
     if (input.trim().isEmpty) {
       setState(() => _parsedTask = null);
@@ -83,7 +121,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
     });
   }
 
-  /// 使用AI智能识别
+  /// 使用AI智能识别（手动调用）
   Future<void> _parseInputWithAI() async {
     if (_controller.text.trim().isEmpty) return;
 

@@ -184,6 +184,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 执行实际的数据加载
     try {
       debugPrint('===== _loadData 开始 =====');
+
+      // 先加载设置（包括 AI 配置）
+      await widget.settingsProvider.loadSettings();
+      debugPrint('===== settingsProvider.loadSettings 完成 =====');
+
+      // 同步 AI 配置到 AIService
+      await widget.settingsProvider.syncAIConfig();
+      debugPrint('===== settingsProvider.syncAIConfig 完成 =====');
+
       await widget.taskProvider.loadData();
       debugPrint('===== taskProvider.loadData 完成 =====');
       debugPrint('任务数: ${widget.taskProvider.tasks.length}');
@@ -234,6 +243,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _loadData() async {
     try {
       debugPrint('===== _loadData 开始 =====');
+
+      // 先加载设置（包括 AI 配置）
+      await widget.settingsProvider.loadSettings();
+      debugPrint('===== settingsProvider.loadSettings 完成 =====');
+
+      // 同步 AI 配置到 AIService
+      await widget.settingsProvider.syncAIConfig();
+      debugPrint('===== settingsProvider.syncAIConfig 完成 =====');
+
       await widget.taskProvider.loadData();
       debugPrint('===== taskProvider.loadData 完成 =====');
       debugPrint('任务数: ${widget.taskProvider.tasks.length}');

@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 // 条件导入：Web平台使用 html 库
 import '../utils/platform_stub.dart'
     if (dart.library.html) '../utils/platform_web.dart';
+import '../services/ai_service.dart';
 
 /// AI服务模式枚举
 enum AIMode { local, localLLM, remoteAPI }
@@ -533,6 +534,61 @@ class SettingsProvider extends ChangeNotifier {
   /// 验证模型名称
   bool isValidModelName(String modelName) {
     return modelName.isNotEmpty && modelName.trim().isNotEmpty;
+  }
+
+  /// 同步 AI 配置到 AIService
+  Future<void> syncAIConfig() async {
+    final aiService = AIService();
+    await aiService.loadConfig();
+
+    String provider;
+    String baseUrl;
+    String apiKey;
+    String model;
+    bool enabled;
+
+    switch (_aiMode) {
+      case AIMode.local:
+        provider = 'local';
+        baseUrl = '';
+        apiKey = '';
+        model = '';
+        enabled = false;
+        break;
+      case AIMode.localLLM:
+        provider = 'ollama';
+        baseUrl = _localLLMAddress;
+        apiKey = '';
+        model = _localLLMModel;
+        enabled = true;
+        break;
+      case AIMode.remoteAPI:
+        provider = _apiServiceName.toLowerCase();
+        baseUrl = _apiBase;
+        apiKey = _apiKey;
+        model = _apiModel;
+        enabled = true;
+        break;
+    }
+
+    final newConfig = AIConfig(
+      provider: provider,
+      apiKey: apiKey,
+      baseUrl: baseUrl,
+      model: model,
+      enabled: enabled,
+    );
+
+    await aiService.updateConfig(newConfig);
+
+    // 通知监听器，刷新界面显示的当前模型信息
+    notifyListeners();
+  }
+
+  /// 获取当前使用的 AI 模型显示名称
+  String getCurrentAIModelName() {
+    final aiService = AIService();
+    return aiService.currentModelDisplayName;
   }
 
   // Web 存储辅助方法

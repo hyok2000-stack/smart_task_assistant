@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
+import '../services/ai_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 

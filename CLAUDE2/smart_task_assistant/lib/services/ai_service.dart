@@ -20,6 +20,22 @@ class AIConfig {
     this.enabled = false,
   });
 
+  AIConfig copyWith({
+    String? provider,
+    String? apiKey,
+    String? baseUrl,
+    String? model,
+    bool? enabled,
+  }) {
+    return AIConfig(
+      provider: provider ?? this.provider,
+      apiKey: apiKey ?? this.apiKey,
+      baseUrl: baseUrl ?? this.baseUrl,
+      model: model ?? this.model,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'provider': provider,
         'apiKey': apiKey,
@@ -390,23 +406,34 @@ class AIService {
     }
 
     final prompt = '''
-请从以下文本中提取任务信息，返回 JSON 格式：
+请从以下文本中提取任务信息，重点识别：
+1. **任务标题**（必需）：简明扼要地总结任务内容
+2. **截止时间**（必需）：识别日期和时间，格式为 YYYY-MM-DD HH:mm
+3. **优先级**（必需）：根据紧急程度判断，high（高）/medium（中）/low（低）
+
+返回 JSON 格式：
 {
   "title": "任务标题",
-  "content": "任务详情（可选）",
-  "dueTime": "YYYY-MM-DD HH:mm（可选）",
+  "dueTime": "YYYY-MM-DD HH:mm",
   "priority": "high/medium/low",
+  "content": "任务详情（可选）",
   "assignee": "负责人（可选）",
   "tags": ["标签1", "标签2"]
 }
 
 文本：$input
 
-只返回 JSON，不要其他内容。
+要求：
+- title、dueTime、priority 三个字段必须有值
+- 时间格式必须严格遵循 YYYY-MM-DD HH:mm（如：2026-03-19 15:30）
+- 只返回 JSON，不要其他内容
 ''';
 
     try {
       final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 10);
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
         options: Options(
@@ -446,9 +473,21 @@ class AIService {
       }
     } catch (e) {
       debugPrint('AI API 调用失败: $e');
+      // 连接失败时自动切换回本地规则引擎
+      _fallbackToRules();
+      return _parseWithRules(input);
     }
 
     return _parseWithRules(input);
+  }
+
+  /// 回退到本地规则引擎
+  void _fallbackToRules() {
+    if (_config.enabled) {
+      debugPrint('AI 服务连接失败，自动切换回本地规则引擎');
+      _config = _config.copyWith(enabled: false);
+      saveConfig();
+    }
   }
 
   TaskPriority _parsePriority(String? value) {
