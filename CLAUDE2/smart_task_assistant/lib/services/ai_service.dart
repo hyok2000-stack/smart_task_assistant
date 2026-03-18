@@ -330,12 +330,45 @@ class AIService {
       title = title.replaceAll(dateRegex, '').trim();
     }
 
+    // 记录时段标志，用于调整小时数
+    bool isAfternoon = false;
+    bool isMorning = false;
+    bool isEvening = false;
+    bool isNoon = false;
+
+    // 先识别时段标志（在时间识别之前）
+    if (title.contains('上午') || title.contains('早上') || title.contains('早晨')) {
+      isMorning = true;
+      title = title.replaceAll(RegExp(r'(上午|早上|早晨)'), '').trim();
+    } else if (title.contains('中午')) {
+      isNoon = true;
+      title = title.replaceAll('中午', '').trim();
+    } else if (title.contains('下午')) {
+      isAfternoon = true;
+      title = title.replaceAll('下午', '').trim();
+    } else if (title.contains('晚上') || title.contains('晚间')) {
+      isEvening = true;
+      title = title.replaceAll(RegExp(r'(晚上|晚间)'), '').trim();
+    }
+
     // 识别具体时间 HH:mm 或 X点X分
     final timeRegex = RegExp(r'(\d{1,2})[:点时](\d{0,2})?分?');
     final timeMatch = timeRegex.firstMatch(title);
     if (timeMatch != null) {
-      final hour = int.tryParse(timeMatch.group(1)!) ?? 18;
+      var hour = int.tryParse(timeMatch.group(1)!) ?? 18;
       final minute = int.tryParse(timeMatch.group(2) ?? '0') ?? 0;
+
+      // 根据时段调整小时数
+      if (isAfternoon && hour <= 12) {
+        hour += 12; // 下午时间，如5点改为17点
+      } else if (isMorning && hour == 12) {
+        hour = 0; // 上午12点改为0点
+      } else if (isNoon && hour != 12) {
+        hour = 12; // 中午改为12点
+      } else if (isEvening && hour <= 12 && hour < 6) {
+        hour += 12; // 晚上时间，如5点改为17点
+      }
+
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
         if (dueTime != null) {
           dueTime =
@@ -346,25 +379,18 @@ class AIService {
         }
       }
       title = title.replaceAll(timeRegex, '').trim();
-    }
-
-    // 识别时段：上午/下午/晚上
-    if (dueTime != null) {
-      if (title.contains('上午') ||
-          title.contains('早上') ||
-          title.contains('早晨')) {
-        dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 9, 0);
-        title = title.replaceAll(RegExp(r'(上午|早上|早晨)'), '').trim();
-      } else if (title.contains('中午')) {
-        dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 12, 0);
-        title = title.replaceAll('中午', '').trim();
-      } else if (title.contains('下午')) {
-        if (dueTime.hour == 18)
+    } else {
+      // 没有具体时间，根据时段设置默认时间
+      if (dueTime != null) {
+        if (isMorning) {
+          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 9, 0);
+        } else if (isNoon) {
+          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 12, 0);
+        } else if (isAfternoon) {
           dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 15, 0);
-        title = title.replaceAll('下午', '').trim();
-      } else if (title.contains('晚上') || title.contains('晚间')) {
-        dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 20, 0);
-        title = title.replaceAll(RegExp(r'(晚上|晚间)'), '').trim();
+        } else if (isEvening) {
+          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 20, 0);
+        }
       }
     }
 
