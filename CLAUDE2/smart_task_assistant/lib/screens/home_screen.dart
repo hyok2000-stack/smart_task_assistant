@@ -78,12 +78,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
 
     try {
+      // 使用getWeather（带缓存）或refreshWeather（强制刷新）
       final weather = await _weatherService.getWeather();
       setState(() {
         _weatherInfo = weather;
         _isLoadingWeather = false;
       });
     } catch (e) {
+      debugPrint('加载天气失败: $e');
+      setState(() {
+        _isLoadingWeather = false;
+      });
+    }
+  }
+
+  /// 强制刷新天气
+  Future<void> _forceRefreshWeather() async {
+    if (_isLoadingWeather) return;
+
+    setState(() {
+      _isLoadingWeather = true;
+    });
+
+    try {
+      final weather = await _weatherService.refreshWeather();
+      setState(() {
+        _weatherInfo = weather;
+        _isLoadingWeather = false;
+      });
+    } catch (e) {
+      debugPrint('强制刷新天气失败: $e');
       setState(() {
         _isLoadingWeather = false;
       });
@@ -953,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               size: 20,
               color: AppTheme.primaryColor,
             ),
-            onPressed: _isLoadingWeather ? null : _loadWeather,
+            onPressed: _isLoadingWeather ? null : _forceRefreshWeather,
           ),
         ],
       ),
