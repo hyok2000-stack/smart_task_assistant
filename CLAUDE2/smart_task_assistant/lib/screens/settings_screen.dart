@@ -1350,19 +1350,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return;
           }
         } else {
-          // 移动端直接导入数据
+          // 移动端直接导入数据（importData内部已经调用了loadData）
           await taskProvider.importData(data);
-        }
 
-        // 重新加载数据
-        if (context.mounted) {
-          await taskProvider.loadData();
-          _showImportSuccessDialog(
-            context,
-            fileName!,
-            data['tasks']?.length ?? 0,
-            data['tags']?.length ?? 0,
-          );
+          // 显示导入成功对话框
+          if (context.mounted) {
+            _showImportSuccessDialog(
+              context,
+              fileName!,
+              data['tasks']?.length ?? 0,
+              data['tags']?.length ?? 0,
+            );
+          }
         }
       } catch (e) {
         if (context.mounted) {
