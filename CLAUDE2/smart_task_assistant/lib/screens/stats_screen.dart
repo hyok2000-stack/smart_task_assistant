@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/task.dart';
+import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
@@ -28,6 +30,7 @@ class StatsScreen extends StatelessWidget {
       child: Consumer<TaskProvider>(
         builder: (context, provider, child) {
           final stats = provider.stats;
+          final tasks = provider.tasks;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -46,14 +49,20 @@ class StatsScreen extends StatelessWidget {
                 // 总览卡片
                 _buildOverviewCard(context, stats, l),
                 const SizedBox(height: 24),
+                // 今日任务统计
+                _buildTodayStatsCard(context, provider, l),
+                const SizedBox(height: 24),
                 // 完成率
                 _buildCompletionRateCard(context, stats, l),
                 const SizedBox(height: 24),
-                // 本周任务
-                _buildWeeklyStatsCard(context, l),
+                // 逾期任务统计
+                _buildOverdueStatsCard(context, provider, l),
                 const SizedBox(height: 24),
                 // 优先级分布
                 _buildPriorityDistributionCard(context, provider, l),
+                const SizedBox(height: 24),
+                // 标签使用统计
+                _buildTagStatsCard(context, provider, l),
               ],
             ),
           );
@@ -248,19 +257,14 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWeeklyStatsCard(BuildContext context, AppLocalizations l) {
-    // 模拟本周数据
-    final weekDays = [
-      l.monday,
-      l.tuesday,
-      l.wednesday,
-      l.thursday,
-      l.friday,
-      l.saturday,
-      l.sunday
-    ];
-    final completedTasks = [3, 5, 2, 7, 4, 6, 1];
-    final max = completedTasks.reduce((a, b) => a > b ? a : b);
+  Widget _buildTodayStatsCard(
+      BuildContext context, TaskProvider provider, AppLocalizations l) {
+    final todayTasks = provider.todayTasks;
+    final completedToday = todayTasks.where((t) => t.isCompleted).length;
+    final pendingToday = todayTasks.where((t) => !t.isCompleted).length;
+    final highPriorityToday = todayTasks
+        .where((t) => t.priority == TaskPriority.high && !t.isCompleted)
+        .length;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -293,56 +297,337 @@ class StatsScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                l.weeklyCompletionTrend,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.infoColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: const Icon(
+                      Icons.today_rounded,
+                      color: AppTheme.infoColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    l.navToday,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 150,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: List.generate(7, (index) {
-                    final height =
-                        max > 0 ? (completedTasks[index] / max * 100) : 0.0;
-                    final isToday = index == DateTime.now().weekday - 1;
-
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          width: 28,
-                          height: height + 20,
-                          decoration: BoxDecoration(
-                            color: isToday
-                                ? AppTheme.primaryColor
-                                : AppTheme.primaryColor.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          weekDays[index],
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isToday
-                                ? AppTheme.primaryColor
-                                : AppTheme.textHintColor,
-                            fontWeight: isToday ? FontWeight.w600 : null,
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStatItem(
+                      '今日任务',
+                      '${todayTasks.length}',
+                      AppTheme.infoColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      '已完成',
+                      '$completedToday',
+                      AppTheme.successColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      '待处理',
+                      '$pendingToday',
+                      AppTheme.warningColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      '高优先级',
+                      '$highPriorityToday',
+                      AppTheme.errorColor,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildOverdueStatsCard(
+      BuildContext context, TaskProvider provider, AppLocalizations l) {
+    final overdueTasks = provider.overdueTasks;
+    final highPriorityOverdue =
+        overdueTasks.where((t) => t.priority == TaskPriority.high).length;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.9),
+                Colors.white.withOpacity(0.7),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 15,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: AppTheme.errorColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    l.overdueTasks,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStatItem(
+                      '逾期任务',
+                      '${overdueTasks.length}',
+                      AppTheme.errorColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      '高优先级',
+                      '$highPriorityOverdue',
+                      Colors.red.shade700,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      '紧急处理',
+                      '需要关注',
+                      Colors.orange.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTagStatsCard(
+      BuildContext context, TaskProvider provider, AppLocalizations l) {
+    final tasks = provider.tasks;
+    final tags = provider.tags;
+
+    // 统计每个标签的任务数量
+    final tagStats = <String, int>{};
+    for (final task in tasks) {
+      for (final tagId in task.tagIds) {
+        tagStats[tagId] = (tagStats[tagId] ?? 0) + 1;
+      }
+    }
+
+    // 按任务数量排序，取前5个
+    final sortedTags = tagStats.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topTags = sortedTags.take(5).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.9),
+                Colors.white.withOpacity(0.7),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 15,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.local_offer_rounded,
+                      color: AppTheme.primaryColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    l.tagManagement,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (topTags.isEmpty)
+                Center(
+                  child: Text(
+                    '暂无标签数据',
+                    style: TextStyle(
+                      color: AppTheme.textHintColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                )
+              else
+                ...topTags.map((entry) {
+                  final tag = tags.firstWhere(
+                    (t) => t.id == entry.key,
+                    orElse: () =>
+                        Tag(id: entry.key, name: '未知标签', color: '#999999'),
+                  );
+                  final percentage = tasks.isNotEmpty
+                      ? (entry.value / tasks.length * 100).toStringAsFixed(1)
+                      : '0.0';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Color(
+                              int.parse(tag.color.replaceFirst('#', '0xFF')),
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            tag.name,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Text(
+                          '${entry.value}个',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '($percentage%)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textHintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppTheme.textSecondaryColor,
+          ),
+        ),
+      ],
     );
   }
 
