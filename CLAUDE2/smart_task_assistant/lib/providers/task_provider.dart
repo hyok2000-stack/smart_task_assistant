@@ -144,8 +144,8 @@ class TaskProvider extends ChangeNotifier {
           )
           .toList();
 
-      // 今日任务 = 所有未完成的任务
-      _todayTasks = tasks.where((t) => !t.isCompleted).toList();
+      // 今日任务：使用统一的计算方法
+      _recalculateTodayTasks();
 
       debugPrint('待处理任务: ${_todayTasks.length}');
       debugPrint('内存中的任务列表长度: ${_tasks.length}');
