@@ -175,70 +175,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 顶部问候
+                    // 顶部工具栏
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${_getGreeting()} 👋',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimaryColor,
-                                  height: 1.2,
-                                ),
+                        Row(
+                          children: [
+                            Text(
+                              _getDateDescription(),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimaryColor,
                               ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Text(
-                                    _getDateDescription(),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: AppTheme.textSecondaryColor,
+                            ),
+                            if (_currentTime.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.access_time_rounded,
+                                      size: 14,
+                                      color: AppTheme.primaryColor,
                                     ),
-                                  ),
-                                  if (_currentTime.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryColor
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.access_time_rounded,
-                                            size: 12,
-                                            color: AppTheme.primaryColor,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            _currentTime,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.primaryColor,
-                                            ),
-                                          ),
-                                        ],
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _currentTime,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryColor,
                                       ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
                             ],
-                          ),
+                          ],
                         ),
                         Row(
                           children: [
