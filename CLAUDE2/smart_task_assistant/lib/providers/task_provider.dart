@@ -375,14 +375,19 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 重新计算今日任务列表
-  /// 显示今天的所有任务（包括已完成和未完成）
+  /// 显示所有未完成的任务 + 今天创建或截止的任务（包括已完成）
   void _recalculateTodayTasks() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
 
     _todayTasks = _tasks.where((t) {
-      // 包含今天创建的任务
+      // 优先包含所有未完成的任务（这样导入的历史任务也能显示）
+      if (!t.isCompleted) {
+        return true;
+      }
+
+      // 包含今天创建的任务（即使已完成）
       if (t.createdAt != null) {
         final createdDate = t.createdAt!;
         if (createdDate.year == now.year &&
@@ -391,17 +396,15 @@ class TaskProvider extends ChangeNotifier {
           return true;
         }
       }
-      // 包含今天截止的任务
+
+      // 包含今天截止的任务（即使已完成）
       if (t.dueTime != null) {
         final due = t.dueTime!;
         if (due.isAfter(today) && due.isBefore(tomorrow)) {
           return true;
         }
       }
-      // 包含所有未完成的任务（作为默认显示）
-      if (!t.isCompleted) {
-        return true;
-      }
+
       return false;
     }).toList();
   }
