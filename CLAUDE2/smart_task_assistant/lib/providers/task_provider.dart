@@ -222,8 +222,8 @@ class TaskProvider extends ChangeNotifier {
       // 直接添加到内存列表
       _tasks.insert(0, task);
 
-      // 重新计算今日任务和逾期任务
-      _todayTasks = _tasks.where((t) => !t.isCompleted).toList();
+      // 重新计算今日任务和逾期任务（使用统一的计算方法）
+      _recalculateTodayTasks();
       _overdueTasks = _tasks
           .where(
             (t) =>
@@ -363,6 +363,9 @@ class TaskProvider extends ChangeNotifier {
       await _storage.insertTask(newTask);
       _tasks.insert(0, newTask);
 
+      // 重新计算今日任务，确保新创建的周期任务能立即显示
+      _recalculateTodayTasks();
+
       debugPrint(
         '周期任务已创建: ${newTask.title}, 原截止时间: ${completedTask.dueTime}, 新截止时间: $newDueTime',
       );
@@ -408,8 +411,18 @@ class TaskProvider extends ChangeNotifier {
     try {
       await _storage.deleteTask(id);
       _tasks.removeWhere((t) => t.id == id);
-      _todayTasks.removeWhere((t) => t.id == id);
-      _overdueTasks.removeWhere((t) => t.id == id);
+
+      // 重新计算今日任务和逾期任务（使用统一的计算方法）
+      _recalculateTodayTasks();
+      _overdueTasks = _tasks
+          .where(
+            (t) =>
+                !t.isCompleted &&
+                t.status != TaskStatus.cancelled &&
+                t.isOverdue,
+          )
+          .toList();
+
       notifyListeners();
     } catch (e) {
       _error = e.toString();
