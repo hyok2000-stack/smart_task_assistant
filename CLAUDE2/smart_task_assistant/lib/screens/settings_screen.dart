@@ -82,9 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
-          _buildSectionHeader('外观'),
-          _buildAppearanceSettings(context),
-          const SizedBox(height: 32),
           _buildSectionHeader('通知'),
           _buildNotificationSettings(context),
           const SizedBox(height: 32),
