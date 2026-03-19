@@ -17,12 +17,22 @@ class _AIChatDialogState extends State<AIChatDialog> {
   final List<_ChatMessage> _messages = [];
   bool _isLoading = false;
   String _currentModelName = '本地规则引擎';
+  final _focusNode = FocusNode(); // 添加焦点节点
 
   @override
   void initState() {
     super.initState();
     _loadAIConfig();
     _addWelcomeMessage();
+
+    // 监听焦点变化，自动滚动到底部
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _scrollToBottom();
+        });
+      }
+    });
   }
 
   Future<void> _loadAIConfig() async {
@@ -44,6 +54,7 @@ class _AIChatDialogState extends State<AIChatDialog> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _focusNode.dispose(); // 释放焦点节点
     super.dispose();
   }
 
@@ -105,6 +116,9 @@ class _AIChatDialogState extends State<AIChatDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 获取键盘高度
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -222,10 +236,10 @@ class _AIChatDialogState extends State<AIChatDialog> {
               16,
               12,
               16,
-              MediaQuery.of(context).padding.bottom + 12,
+              keyboardHeight + 12, // 使用键盘高度动态调整底部间距
             ),
             decoration: BoxDecoration(
-              color: Colors.grey.shade50,
+              color: Colors.white,
               border: Border(
                 top: BorderSide(color: Colors.grey.shade200),
               ),
@@ -233,23 +247,43 @@ class _AIChatDialogState extends State<AIChatDialog> {
             child: Row(
               children: [
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: TextField(
-                      controller: _controller,
-                      decoration: const InputDecoration(
-                        hintText: '输入消息...',
-                        border: InputBorder.none,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    decoration: InputDecoration(
+                      hintText: '输入消息...',
+                      hintStyle: TextStyle(color: Colors.grey.shade400),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(
+                          color: const Color(0xFF6366F1),
+                          width: 2,
+                        ),
+                      ),
                     ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    onTap: () {
+                      // 点击输入框时自动滚动到底部
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        _scrollToBottom();
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),

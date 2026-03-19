@@ -2208,10 +2208,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : MediaQuery.of(context).size.width * 0.9,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withOpacity(0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -2222,119 +2222,351 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               // 标题栏
               Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.8),
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Column(
                   children: [
+                    // 应用Logo
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 56,
+                      height: 56,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
+                        color: const Color(0xFF6366F1),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
-                        Icons.task_alt_rounded,
-                        size: 20,
+                        Icons.check_circle_rounded,
+                        size: 34,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 10),
+                    // 应用名称
                     const Text(
                       '智能任务助手',
                       style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
                       ),
                     ),
                     const SizedBox(height: 4),
+                    // 版本号
                     Text(
                       '版本 ${settings.appVersion}',
-                      style: TextStyle(fontSize: 14, color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '作者：黄勇',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      '222582@qq.com',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white70,
+                        color: Colors.grey.shade500,
                       ),
                     ),
                   ],
                 ),
               ),
-              // 内容
+
+              const Divider(height: 1),
+
+              // 内容区域
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildAboutItem(
-                      Icons.description_outlined,
-                      '应用介绍',
-                      '智能任务助手是一款功能强大的任务管理应用，集成了AI智能识别、周期任务管理、智能提醒通知等核心功能。支持任务优先级设置、标签分类、数据导入导出等高级特性，帮助您高效规划和完成各类任务。',
+                    // AI标识
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F3FF),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.auto_awesome,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'AI 完全编写',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF6366F1),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '由 CLL+GLM5 大模型独立完成所有代码开发',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 20),
-                    _buildAboutItem(
-                      Icons.new_releases_outlined,
-                      '核心功能',
-                      '• AI智能识别：自动解析任务内容和时间\n• 周期任务：支持日、周、月循环提醒\n• 剪贴板监视：自动识别粘贴内容\n• 智能提醒：多级通知系统\n• 数据管理：支持导入导出备份\n• 标签系统：灵活的任务分类\n• 统计分析：任务完成度可视化',
+
+                    const SizedBox(height: 24),
+
+                    // 功能列表
+                    _buildAboutListItem(
+                      Icons.psychology_outlined,
+                      'AI智能识别',
+                      '智能解析任务内容和时间',
                     ),
-                    const SizedBox(height: 20),
-                    _buildAboutItem(
-                      Icons.update_outlined,
-                      '更新日志',
-                      'v${settings.appVersion} - 当前版本\n• 完善设置管理功能\n• 添加输入验证\n• 改进用户界面',
+                    _buildAboutListItem(
+                      Icons.notifications_active_outlined,
+                      '智能提醒',
+                      '多级通知系统，不错过任何任务',
                     ),
-                    const SizedBox(height: 20),
-                    _buildAboutItem(
-                      Icons.contact_support_outlined,
-                      '联系我们',
-                      '如有问题或建议，欢迎反馈',
+                    _buildAboutListItem(
+                      Icons.content_copy_outlined,
+                      '剪贴板监视',
+                      '自动识别粘贴内容',
+                    ),
+                    _buildAboutListItem(
+                      Icons.sync_alt_outlined,
+                      '周期任务',
+                      '支持日/周/月循环提醒',
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 技术信息
+                    _buildAboutListItem(
+                      Icons.code_outlined,
+                      '技术栈',
+                      'Flutter + Dart 跨平台开发',
+                    ),
+                    _buildAboutListItem(
+                      Icons.person_outline,
+                      '开发者',
+                      '黄勇',
+                    ),
+                    _buildAboutListItem(
+                      Icons.email_outlined,
+                      '联系邮箱',
+                      '222582@qq.com',
                     ),
                   ],
                 ),
               ),
+
               // 底部按钮
               Padding(
-                padding: const EdgeInsets.all(20),
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
                     ),
-                    minimumSize: const Size(double.infinity, 48),
+                    child: const Text(
+                      '关闭',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                  child: const Text('关闭'),
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAboutListItem(
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: const Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade500,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernCard({
+    Gradient? gradient,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        color: gradient == null ? Colors.grey.shade50 : null,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.shade200,
+          width: 1,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildFeatureCard(
+    IconData icon,
+    String title,
+    Color color,
+    String subtitle,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

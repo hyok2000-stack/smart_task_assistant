@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import '../widgets/task_card.dart';
 import '../widgets/quick_add_modal.dart';
 import '../widgets/ai_chat_dialog.dart';
 import '../utils/app_localizations.dart';
+import '../services/weather_service.dart';
 import 'add_task_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
@@ -27,6 +29,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _fabAnimationController;
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
 
+  // 时间和天气相关
+  Timer? _timeTimer;
+  String _currentTime = '';
+  final WeatherService _weatherService = WeatherService();
+  WeatherInfo? _weatherInfo;
+  bool _isLoadingWeather = false;
+
   @override
   void initState() {
     super.initState();
@@ -34,12 +43,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+
+    // 初始化时间
+    _updateTime();
+    _timeTimer =
+        Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
+
+    // 加载天气信息
+    _loadWeather();
   }
 
   @override
   void dispose() {
     _fabAnimationController.dispose();
+    _timeTimer?.cancel();
     super.dispose();
+  }
+
+  /// 更新时间
+  void _updateTime() {
+    final now = DateTime.now();
+    setState(() {
+      _currentTime =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    });
+  }
+
+  /// 加载天气信息
+  Future<void> _loadWeather() async {
+    if (_isLoadingWeather) return;
+
+    setState(() {
+      _isLoadingWeather = true;
+    });
+
+    try {
+      final weather = await _weatherService.getWeather();
+      setState(() {
+        _weatherInfo = weather;
+        _isLoadingWeather = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingWeather = false;
+      });
+    }
   }
 
   @override
@@ -121,12 +169,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Text(
-                                _getDateDescription(),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppTheme.textSecondaryColor,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    _getDateDescription(),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textSecondaryColor,
+                                    ),
+                                  ),
+                                  if (_currentTime.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor
+                                            .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.access_time_rounded,
+                                            size: 12,
+                                            color: AppTheme.primaryColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _currentTime,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ],
                           ),
@@ -150,6 +235,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    // 天气信息卡片
+                    _buildWeatherCard(),
+                    const SizedBox(height: 12),
                     // 进度卡片 - 紧凑版
                     _buildProgressCard(provider),
                   ],
@@ -775,6 +863,125 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: const Icon(Icons.add_rounded, size: 32, color: Colors.white),
       ),
     );
+  }
+
+  /// 构建天气卡片
+  Widget _buildWeatherCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryColor.withOpacity(0.15),
+            AppTheme.primaryColor.withOpacity(0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 天气图标
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              _getWeatherIcon(),
+              size: 24,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 天气信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_rounded,
+                      size: 14,
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _weatherInfo?.cityName ?? '加载中...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      _weatherInfo?.temperatureText ?? '--°C',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _weatherInfo?.description ?? '天气信息',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // 刷新按钮
+          IconButton(
+            icon: Icon(
+              _isLoadingWeather ? Icons.refresh_rounded : Icons.refresh,
+              size: 20,
+              color: AppTheme.primaryColor,
+            ),
+            onPressed: _isLoadingWeather ? null : _loadWeather,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 根据天气描述获取图标
+  IconData _getWeatherIcon() {
+    if (_weatherInfo == null) return Icons.cloud_rounded;
+
+    final description = _weatherInfo!.description.toLowerCase();
+    if (description.contains('rain') || description.contains('雨')) {
+      return Icons.water_drop_rounded;
+    } else if (description.contains('cloud') ||
+        description.contains('云') ||
+        description.contains('阴')) {
+      return Icons.cloud_rounded;
+    } else if (description.contains('sun') || description.contains('晴')) {
+      return Icons.wb_sunny_rounded;
+    } else if (description.contains('snow') || description.contains('雪')) {
+      return Icons.ac_unit_rounded;
+    } else if (description.contains('thunder') || description.contains('雷')) {
+      return Icons.flash_on_rounded;
+    } else if (description.contains('fog') || description.contains('雾')) {
+      return Icons.cloud_queue_rounded;
+    } else {
+      return Icons.wb_sunny_rounded;
+    }
   }
 
   /// 构建进度卡片 - 紧凑版
