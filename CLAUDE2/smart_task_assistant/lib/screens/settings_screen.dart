@@ -647,7 +647,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     TextButton.icon(
                       onPressed: _isTestingConnection
                           ? null
-                          : () => _testConnection(settings, settings.aiMode),
+                          : () => _testConnection(
+                              settings, settings.aiMode, setState),
                       icon: _isTestingConnection
                           ? const SizedBox(
                               width: 16,
@@ -936,7 +937,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _testConnection(settings, mode),
+                onPressed: () => _testConnection(settings, mode, null),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
@@ -955,7 +956,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _testConnection(SettingsProvider settings, AIMode mode) async {
+  void _testConnection(
+    SettingsProvider settings,
+    AIMode mode,
+    StateSetter? dialogSetState,
+  ) async {
+    final setState = dialogSetState ?? this.setState;
     setState(() {
       _isTestingConnection = true;
       _testConnectionResult = null;

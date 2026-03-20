@@ -197,14 +197,60 @@ class WeatherService {
   /// 获取当前位置（带超时）
   Future<Position?> _getCurrentPositionWithTimeout() async {
     try {
+      // 检查位置服务是否启用
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('天气服务：位置服务未启用');
+        // 尝试打开位置服务设置
+        bool opened = await Geolocator.openLocationSettings();
+        if (!opened) {
+          debugPrint('天气服务：无法打开位置服务设置');
+          return null;
+        }
+        // 重新检查
+        serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          return null;
+        }
+      }
+
+      // 检查位置权限
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('天气服务：位置权限被拒绝，正在请求权限');
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('天气服务：位置权限被拒绝');
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('天气服务：位置权限被永久拒绝');
+        return null;
+      }
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        debugPrint('天气服务：已获得位置权限');
+      }
+
       // 使用超时控制位置获取
-      return await Geolocator.getCurrentPosition(
+      debugPrint('天气服务：开始获取位置...');
+      final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: _timeout,
       ).timeout(_timeout, onTimeout: () {
         debugPrint('天气服务：获取位置超时');
         return Future.value(null);
       });
+
+      if (position != null) {
+        debugPrint(
+            '天气服务：位置获取成功 - 纬度: ${position.latitude}, 经度: ${position.longitude}');
+      }
+
+      return position;
     } catch (e) {
       debugPrint('天气服务：获取位置失败 - $e');
       return null;
