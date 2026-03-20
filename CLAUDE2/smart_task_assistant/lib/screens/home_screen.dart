@@ -49,8 +49,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _timeTimer =
         Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
 
-    // 加载天气信息
-    _loadWeather();
+    // 强制刷新天气信息（不使用缓存，以获取最新位置）
+    _forceRefreshWeather();
   }
 
   @override
