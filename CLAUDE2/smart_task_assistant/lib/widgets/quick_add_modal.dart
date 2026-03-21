@@ -789,38 +789,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
             ],
           ),
           const SizedBox(height: 10),
-          // 第一行：不提醒、10分钟前、自定义
-          Row(
+          // 使用 Wrap 布局，自动换行
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Flexible(
-                flex: 1,
-                child: _buildReminderChip('不提醒', null),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                flex: 2,
-                child: _buildReminderChip('提前10分钟', 10),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                flex: 1,
-                child: _buildReminderChip('自定义', -1),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // 第二行：30分钟前、1小时前
-          Row(
-            children: [
-              Flexible(
-                flex: 2,
-                child: _buildReminderChip('提前30分钟', 30),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                flex: 2,
-                child: _buildReminderChip('提前1小时', 60),
-              ),
+              _buildReminderChip('不提醒', null),
+              _buildReminderChip('提前10分钟', 10),
+              _buildReminderChip('自定义', -1),
+              _buildReminderChip('提前30分钟', 30),
+              _buildReminderChip('提前1小时', 60),
             ],
           ),
           // 自定义输入区域
