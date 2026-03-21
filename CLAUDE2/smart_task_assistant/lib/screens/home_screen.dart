@@ -11,6 +11,8 @@ import '../widgets/quick_add_modal.dart';
 import '../widgets/ai_chat_dialog.dart';
 import '../utils/app_localizations.dart';
 import '../services/weather_service.dart';
+import '../models/city.dart';
+import '../widgets/city_selector_dialog.dart';
 import 'add_task_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
@@ -32,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // 时间和天气相关
   Timer? _timeTimer;
   String _currentTime = '';
-  final WeatherService _weatherService = WeatherService();
+  static final WeatherService _weatherService = WeatherService();
   WeatherInfo? _weatherInfo;
   bool _isLoadingWeather = false;
 
@@ -94,7 +96,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// 强制刷新天气
   Future<void> _forceRefreshWeather() async {
-    if (_isLoadingWeather) return;
+    if (_isLoadingWeather) {
+      return;
+    }
 
     setState(() {
       _isLoadingWeather = true;
@@ -107,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _isLoadingWeather = false;
       });
     } catch (e) {
-      debugPrint('强制刷新天气失败: $e');
       setState(() {
         _isLoadingWeather = false;
       });
@@ -912,23 +915,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_rounded,
-                      size: 14,
-                      color: AppTheme.textSecondaryColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _weatherInfo?.cityName ?? '加载中...',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimaryColor,
+                GestureDetector(
+                  onTap: _showCitySelector,
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.location_on_rounded,
+                        size: 14,
+                        color: AppTheme.textSecondaryColor,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        _weatherInfo?.cityName ?? '加载中...',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.edit_rounded,
+                        size: 12,
+                        color: AppTheme.textHintColor,
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -966,6 +978,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  /// 显示城市选择对话框
+  Future<void> _showCitySelector() async {
+    final selectedCity = await showDialog<CityInfo>(
+      context: context,
+      builder: (context) => CitySelectorDialog(
+        initialSelectedCity: _weatherService.selectedCity,
+      ),
+    );
+
+    if (selectedCity != null) {
+      setState(() {
+        _isLoadingWeather = true;
+      });
+
+      // setSelectedCity内部会自动调用getWeather(forceRefresh: true)
+      // 它会返回获取到的天气数据
+      final weather = await _weatherService.setSelectedCity(selectedCity);
+
+      if (mounted) {
+        setState(() {
+          _weatherInfo = weather;
+          _isLoadingWeather = false;
+        });
+      }
+    }
   }
 
   /// 根据天气描述获取图标

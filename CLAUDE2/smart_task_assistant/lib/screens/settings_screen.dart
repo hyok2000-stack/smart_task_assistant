@@ -2307,7 +2307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '由 CLL+GLM5 大模型独立完成所有代码开发',
+                                  '由 CLI+GLM5 大模型独立完成所有代码开发',
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: Colors.grey.shade600,
