@@ -904,13 +904,13 @@ class AIService {
 
   /// 发送聊天消息
   Future<ChatResult> chatWithEngineInfo(String message,
-      {List<Map<String, String>>? history}) async {
+      {List<Map<String, String>>? history, List<Task>? tasks}) async {
     // 先检查AI模型是否可用
     final aiAvailable = await isAIModelAvailable();
 
     if (!aiAvailable) {
       // 使用本地规则引擎
-      final response = _chatWithRules(message);
+      final response = _chatWithRules(message, tasks);
       return ChatResult(
         content: response,
         engineType: '本地规则引擎',
@@ -919,11 +919,50 @@ class AIService {
     }
 
     try {
+      // 构建包含任务信息的系统提示
+      String systemPrompt = '你是一个智能任务助手，帮助用户管理任务、提供建议和解答问题。请用简洁友好的方式回复。';
+
+      // 如果有任务列表，添加任务信息
+      if (tasks != null && tasks.isNotEmpty) {
+        final uncompletedTasks = tasks.where((t) => !t.isCompleted).toList();
+        if (uncompletedTasks.isNotEmpty) {
+          systemPrompt += '\n\n用户当前有 ${uncompletedTasks.length} 个未完成任务：\n';
+          for (var i = 0; i < uncompletedTasks.length; i++) {
+            final task = uncompletedTasks[i];
+            final taskInfo = '${i + 1}. ${task.title}';
+            final details = <String>[];
+            if (task.priority != TaskPriority.medium) {
+              details.add('优先级: ${_priorityToString(task.priority)}');
+            }
+            if (task.dueTime != null) {
+              final now = DateTime.now();
+              final hoursUntilDue = task.dueTime!.difference(now).inHours;
+              if (task.isOverdue) {
+                details.add('已逾期');
+              } else if (hoursUntilDue < 24) {
+                details.add('截止: 今天');
+              } else if (hoursUntilDue < 48) {
+                details.add('截止: 明天');
+              } else {
+                details.add('截止: ${task.dueTime!.toString().substring(0, 10)}');
+              }
+            }
+            if (task.tagIds.isNotEmpty) {
+              details.add('标签: ${task.tagIds.join(', ')}');
+            }
+
+            systemPrompt += details.isEmpty
+                ? '$taskInfo\n'
+                : '$taskInfo (${details.join(', ')})\n';
+          }
+          systemPrompt += '\n请根据这些任务信息，结合用户的问题，提供更有针对性的建议。';
+        } else {
+          systemPrompt += '\n\n用户目前没有未完成的任务。';
+        }
+      }
+
       final messages = <Map<String, String>>[
-        {
-          'role': 'system',
-          'content': '你是一个智能任务助手，帮助用户管理任务、提供建议和解答问题。请用简洁友好的方式回复。'
-        },
+        {'role': 'system', 'content': systemPrompt},
       ];
 
       if (history != null && history.isNotEmpty) {
@@ -966,7 +1005,7 @@ class AIService {
     } catch (e) {
       debugPrint('AI 聊天失败: $e');
       // AI失败，回退到本地规则引擎
-      final response = _chatWithRules(message);
+      final response = _chatWithRules(message, tasks);
       return ChatResult(
         content: response,
         engineType: '本地规则引擎',
@@ -975,7 +1014,7 @@ class AIService {
     }
 
     // 其他情况，使用本地规则引擎
-    final response = _chatWithRules(message);
+    final response = _chatWithRules(message, tasks);
     return ChatResult(
       content: response,
       engineType: '本地规则引擎',
@@ -991,7 +1030,7 @@ class AIService {
   }
 
   /// 本地规则聊天
-  String _chatWithRules(String message) {
+  String _chatWithRules(String message, [List<Task>? tasks]) {
     final lowerMsg = message.toLowerCase();
 
     if (lowerMsg.contains('你好') ||
@@ -1005,6 +1044,12 @@ class AIService {
     }
 
     if (lowerMsg.contains('建议') || lowerMsg.contains('推荐')) {
+      if (tasks != null && tasks.isNotEmpty) {
+        final uncompletedTasks = tasks.where((t) => !t.isCompleted).toList();
+        if (uncompletedTasks.isNotEmpty) {
+          return '建议你先完成高优先级的任务，合理安排时间，避免拖延。你当前有 ${uncompletedTasks.length} 个未完成任务需要处理。';
+        }
+      }
       return '建议你先完成高优先级的任务，合理安排时间，避免拖延。如果任务较多，可以按"四象限法则"分类处理。';
     }
 

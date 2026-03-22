@@ -156,6 +156,10 @@ class _AIChatDialogState extends State<AIChatDialog>
       // 加载AI配置
       await _aiService.loadConfig();
 
+      // 获取任务列表
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      final tasks = taskProvider.tasks;
+
       // 构建历史消息
       final history = _messages
           .take(_messages.length - 1)
@@ -165,9 +169,12 @@ class _AIChatDialogState extends State<AIChatDialog>
               })
           .toList();
 
-      // 使用新的API获取响应和引擎信息
-      final result =
-          await _aiService.chatWithEngineInfo(message, history: history);
+      // 使用新的API获取响应和引擎信息，传递任务列表
+      final result = await _aiService.chatWithEngineInfo(
+        message,
+        history: history,
+        tasks: tasks,
+      );
 
       setState(() {
         _messages.add(_ChatMessage(
