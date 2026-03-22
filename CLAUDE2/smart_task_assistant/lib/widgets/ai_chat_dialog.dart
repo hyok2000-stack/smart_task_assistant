@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
+import '../models/task_suggestion.dart';
+import '../providers/task_provider.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 
 /// AI聊天对话框
@@ -10,20 +13,31 @@ class AIChatDialog extends StatefulWidget {
   State<AIChatDialog> createState() => _AIChatDialogState();
 }
 
-class _AIChatDialogState extends State<AIChatDialog> {
+class _AIChatDialogState extends State<AIChatDialog>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _aiService = AIService();
   final List<_ChatMessage> _messages = [];
   bool _isLoading = false;
   String _currentModelName = '本地规则引擎';
-  final _focusNode = FocusNode(); // 添加焦点节点
+  final _focusNode = FocusNode();
+  late AnimationController _typingAnimationController;
+  final List<int> _dotIndices = [0, 1, 2];
 
   @override
   void initState() {
     super.initState();
     _loadAIConfig();
+    _checkUrgentTasks(); // 自动检测紧急任务
     _addWelcomeMessage();
+
+    // 初始化打字动画控制器
+    _typingAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _typingAnimationController.repeat();
 
     // 监听焦点变化，自动滚动到底部
     _focusNode.addListener(() {
@@ -42,6 +56,66 @@ class _AIChatDialogState extends State<AIChatDialog> {
     });
   }
 
+  /// 自动检测紧急任务
+  Future<void> _checkUrgentTasks() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+    final tasks = taskProvider.tasks;
+
+    // 检查是否有逾期任务或即将到期的任务
+    final now = DateTime.now();
+    final overdueTasks =
+        tasks.where((t) => !t.isCompleted && t.isOverdue).toList();
+    final urgentTasks = tasks.where((t) {
+      if (t.isCompleted || t.isOverdue) return false;
+      if (t.dueTime == null) return false;
+      final hoursUntilDue = t.dueTime!.difference(now).inHours;
+      return hoursUntilDue <= 24; // 24小时内到期
+    }).toList();
+
+    if (overdueTasks.isNotEmpty || urgentTasks.isNotEmpty) {
+      setState(() {
+        _messages.add(_ChatMessage(
+          content: _buildUrgentTaskMessage(overdueTasks, urgentTasks),
+          isUser: false,
+          type: ChatMessageType.urgent,
+        ));
+      });
+      _scrollToBottom();
+    }
+  }
+
+  String _buildUrgentTaskMessage(
+      List<dynamic> overdueTasks, List<dynamic> urgentTasks) {
+    String message = '⚠️ 检测到紧急任务：\n\n';
+
+    if (overdueTasks.isNotEmpty) {
+      message += '🔴 逾期任务 (${overdueTasks.length}个)\n';
+      for (var i = 0; i < overdueTasks.length && i < 3; i++) {
+        message += '  • ${overdueTasks[i].title}\n';
+      }
+      if (overdueTasks.length > 3) {
+        message += '  • 还有 ${overdueTasks.length - 3} 个逾期任务...\n';
+      }
+      message += '\n';
+    }
+
+    if (urgentTasks.isNotEmpty) {
+      message += '🟡 即将到期 (${urgentTasks.length}个)\n';
+      for (var i = 0; i < urgentTasks.length && i < 3; i++) {
+        message += '  • ${urgentTasks[i].title}\n';
+      }
+      if (urgentTasks.length > 3) {
+        message += '  • 还有 ${urgentTasks.length - 3} 个即将到期任务...\n';
+      }
+    }
+
+    message += '\n点击下方"📊 分析任务优先级"获取处理建议';
+    return message;
+  }
+
   void _addWelcomeMessage() {
     _messages.add(_ChatMessage(
       content:
@@ -54,7 +128,8 @@ class _AIChatDialogState extends State<AIChatDialog> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
-    _focusNode.dispose(); // 释放焦点节点
+    _focusNode.dispose();
+    _typingAnimationController.dispose();
     super.dispose();
   }
 
@@ -62,9 +137,16 @@ class _AIChatDialogState extends State<AIChatDialog> {
     final text = _controller.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    await _sendQuickMessage(text);
+    _controller.clear();
+  }
+
+  /// 发送快捷消息（用于快捷按钮）
+  Future<void> _sendQuickMessage(String message) async {
+    if (_isLoading) return;
+
     setState(() {
-      _messages.add(_ChatMessage(content: text, isUser: true));
-      _controller.clear();
+      _messages.add(_ChatMessage(content: message, isUser: true));
       _isLoading = true;
     });
 
@@ -83,10 +165,16 @@ class _AIChatDialogState extends State<AIChatDialog> {
               })
           .toList();
 
-      final response = await _aiService.chat(text, history: history);
+      // 使用新的API获取响应和引擎信息
+      final result =
+          await _aiService.chatWithEngineInfo(message, history: history);
 
       setState(() {
-        _messages.add(_ChatMessage(content: response, isUser: false));
+        _messages.add(_ChatMessage(
+          content: result.content,
+          isUser: false,
+          engineType: result.engineType,
+        ));
         _isLoading = false;
       });
 
@@ -95,6 +183,52 @@ class _AIChatDialogState extends State<AIChatDialog> {
       setState(() {
         _messages.add(_ChatMessage(
           content: '抱歉，处理您的请求时出现错误。请稍后重试。',
+          isUser: false,
+          engineType: '本地规则引擎',
+        ));
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// 分析任务优先级
+  Future<void> _analyzeTaskPriority() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      final tasks = taskProvider.tasks;
+
+      // 显示用户消息
+      setState(() {
+        _messages.add(_ChatMessage(
+          content: '帮我分析任务优先级',
+          isUser: true,
+        ));
+      });
+      _scrollToBottom();
+
+      // 获取优先级建议
+      final suggestion = await _aiService.generatePrioritySuggestion(tasks);
+
+      // 显示AI建议
+      setState(() {
+        _messages.add(_ChatMessage(
+          content: '',
+          isUser: false,
+          type: ChatMessageType.prioritySuggestion,
+          suggestion: suggestion,
+        ));
+        _isLoading = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _messages.add(_ChatMessage(
+          content: '抱歉，分析任务优先级时出现错误：$e',
           isUser: false,
         ));
         _isLoading = false;
@@ -219,7 +353,7 @@ class _AIChatDialogState extends State<AIChatDialog> {
                       left: 16,
                       right: 16,
                       top: 16,
-                      bottom: 80, // 添加底部间距，防止被输入框遮挡
+                      bottom: 80,
                     ),
                     itemCount: _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
@@ -230,13 +364,15 @@ class _AIChatDialogState extends State<AIChatDialog> {
                     },
                   ),
           ),
+          // 快捷操作区域
+          _buildQuickActions(),
           // 输入区域
           Container(
             padding: EdgeInsets.fromLTRB(
               16,
               12,
               16,
-              keyboardHeight + 12, // 使用键盘高度动态调整底部间距
+              keyboardHeight + 12,
             ),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -279,7 +415,6 @@ class _AIChatDialogState extends State<AIChatDialog> {
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),
                     onTap: () {
-                      // 点击输入框时自动滚动到底部
                       Future.delayed(const Duration(milliseconds: 300), () {
                         _scrollToBottom();
                       });
@@ -310,6 +445,80 @@ class _AIChatDialogState extends State<AIChatDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _buildQuickActionButton(
+            icon: Icons.analytics,
+            label: '分析任务优先级',
+            onTap: _analyzeTaskPriority,
+          ),
+          _buildQuickActionButton(
+            icon: Icons.tips_and_updates,
+            label: '效率建议',
+            onTap: () async {
+              await _sendQuickMessage('请给我一些提高工作效率的建议');
+            },
+          ),
+          _buildQuickActionButton(
+            icon: Icons.help_outline,
+            label: '使用帮助',
+            onTap: () async {
+              await _sendQuickMessage('如何使用这个应用？');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: _isLoading ? null : onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: _isLoading ? Colors.grey : const Color(0xFF6366F1),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: _isLoading ? Colors.grey : AppTheme.textPrimaryColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -352,6 +561,12 @@ class _AIChatDialogState extends State<AIChatDialog> {
   }
 
   Widget _buildMessageBubble(_ChatMessage message) {
+    // 处理优先级建议消息
+    if (message.type == ChatMessageType.prioritySuggestion &&
+        message.suggestion != null) {
+      return _buildPrioritySuggestionCard(message.suggestion!);
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -369,8 +584,10 @@ class _AIChatDialogState extends State<AIChatDialog> {
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
-                Icons.auto_awesome,
+              child: Icon(
+                message.type == ChatMessageType.urgent
+                    ? Icons.warning
+                    : Icons.auto_awesome,
                 color: Colors.white,
                 size: 20,
               ),
@@ -378,25 +595,65 @@ class _AIChatDialogState extends State<AIChatDialog> {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: message.isUser
-                    ? const Color(0xFF6366F1)
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomRight: message.isUser ? const Radius.circular(4) : null,
-                  bottomLeft: !message.isUser ? const Radius.circular(4) : null,
+            child: Column(
+              crossAxisAlignment: message.isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: message.type == ChatMessageType.urgent
+                        ? Colors.red.shade50
+                        : (message.isUser
+                            ? const Color(0xFF6366F1)
+                            : Colors.grey.shade100),
+                    borderRadius: BorderRadius.circular(16).copyWith(
+                      bottomRight:
+                          message.isUser ? const Radius.circular(4) : null,
+                      bottomLeft:
+                          !message.isUser ? const Radius.circular(4) : null,
+                    ),
+                    border: message.type == ChatMessageType.urgent
+                        ? Border.all(color: Colors.red.shade200)
+                        : null,
+                  ),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      color: message.type == ChatMessageType.urgent
+                          ? Colors.red.shade900
+                          : (message.isUser
+                              ? Colors.white
+                              : AppTheme.textPrimaryColor),
+                      height: 1.5,
+                    ),
+                  ),
                 ),
-              ),
-              child: Text(
-                message.content,
-                style: TextStyle(
-                  color:
-                      message.isUser ? Colors.white : AppTheme.textPrimaryColor,
-                  height: 1.5,
-                ),
-              ),
+                if (!message.isUser && message.engineType != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        message.engineType == '本地规则引擎'
+                            ? Icons.computer
+                            : Icons.cloud,
+                        size: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        message.engineType!,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
           if (message.isUser) ...[
@@ -416,6 +673,243 @@ class _AIChatDialogState extends State<AIChatDialog> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildPrioritySuggestionCard(TaskPrioritySuggestion suggestion) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.analytics,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 总体建议
+                  Row(
+                    children: [
+                      Icon(
+                        suggestion.isFromAI
+                            ? Icons.auto_awesome
+                            : Icons.lightbulb,
+                        size: 16,
+                        color: const Color(0xFF6366F1),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        suggestion.isFromAI ? 'AI 智能分析' : '智能建议',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6366F1),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    suggestion.summary,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  if (suggestion.items.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Text(
+                      '推荐处理顺序：',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...suggestion.items
+                        .take(5)
+                        .map((item) => _buildSuggestionItem(item)),
+                    if (suggestion.items.length > 5)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '...还有 ${suggestion.items.length - 5} 个任务',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondaryColor,
+                          ),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionItem(TaskSuggestionItem item) {
+    Color priorityColor;
+    switch (item.priorityLevel) {
+      case '高':
+        priorityColor = Colors.red;
+        break;
+      case '中':
+        priorityColor = Colors.orange;
+        break;
+      default:
+        priorityColor = Colors.green;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(
+                  '${item.recommendedOrder}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: priorityColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          item.priorityLevel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: priorityColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 12,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.reason,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textSecondaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 12,
+                        color: const Color(0xFF6366F1),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.suggestion,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: const Color(0xFF6366F1),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -466,12 +960,22 @@ class _AIChatDialogState extends State<AIChatDialog> {
   }
 
   Widget _buildDot(int index) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 600 + (index * 200)),
-      builder: (context, value, child) {
+    return AnimatedBuilder(
+      animation: _typingAnimationController,
+      builder: (context, child) {
+        // 创建延迟效果：每个点延迟 200ms
+        final delay = index * 0.2;
+        final value = _typingAnimationController.value;
+
+        // 计算动画值，考虑延迟
+        double animatedValue = (value - delay) % 1.0;
+        if (animatedValue < 0) animatedValue += 1.0;
+
+        // 使用正弦波创建平滑的淡入淡出效果
+        final opacity = 0.4 + (0.6 * (1 - (animatedValue - 0.5).abs() * 2));
+
         return Opacity(
-          opacity: 0.4 + (value * 0.6),
+          opacity: opacity.clamp(0.4, 1.0),
           child: Container(
             width: 8,
             height: 8,
@@ -486,11 +990,26 @@ class _AIChatDialogState extends State<AIChatDialog> {
   }
 }
 
+enum ChatMessageType {
+  normal,
+  urgent,
+  prioritySuggestion,
+}
+
 class _ChatMessage {
   final String content;
   final bool isUser;
+  final ChatMessageType type;
+  final TaskPrioritySuggestion? suggestion;
+  final String? engineType;
 
-  _ChatMessage({required this.content, required this.isUser});
+  _ChatMessage({
+    required this.content,
+    required this.isUser,
+    this.type = ChatMessageType.normal,
+    this.suggestion,
+    this.engineType,
+  });
 }
 
 /// 显示AI聊天对话框

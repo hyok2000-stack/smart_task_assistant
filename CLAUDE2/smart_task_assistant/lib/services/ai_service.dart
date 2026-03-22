@@ -3,6 +3,20 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
+import '../models/task_suggestion.dart';
+
+/// AI聊天结果
+class ChatResult {
+  final String content;
+  final String engineType; // 'local' 或 AI模型名称
+  final bool isFromAI;
+
+  ChatResult({
+    required this.content,
+    required this.engineType,
+    required this.isFromAI,
+  });
+}
 
 /// AI 服务配置
 class AIConfig {
@@ -63,6 +77,7 @@ class ParsedTask {
   final TaskPriority priority;
   final String? assignee;
   final List<String> tags;
+  final int? recommendedReminderMinutes; // 推荐的提醒分钟数
 
   ParsedTask({
     required this.title,
@@ -71,6 +86,7 @@ class ParsedTask {
     this.priority = TaskPriority.medium,
     this.assignee,
     this.tags = const [],
+    this.recommendedReminderMinutes,
   });
 }
 
@@ -416,13 +432,61 @@ class AIService {
     title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
     title = title.replaceAll(RegExp(r'[，。！？、]'), '').trim();
 
+    // 智能推荐提醒时间
+    final recommendedReminderMinutes =
+        _calculateRecommendedReminder(dueTime, priority);
+
     return ParsedTask(
       title: title.isNotEmpty ? title : input,
       dueTime: dueTime,
       priority: priority,
       assignee: assignee,
       tags: tags,
+      recommendedReminderMinutes: recommendedReminderMinutes,
     );
+  }
+
+  /// 根据截止时间和优先级计算推荐的提醒时间
+  int? _calculateRecommendedReminder(DateTime? dueTime, TaskPriority priority) {
+    if (dueTime == null) return null;
+
+    final now = DateTime.now();
+    final hoursUntilDue = dueTime.difference(now).inHours;
+
+    // 如果时间已经过去，不推荐提醒
+    if (hoursUntilDue <= 0) return null;
+
+    int baseReminderMinutes;
+
+    // 根据时间距离计算基础提醒时间
+    if (hoursUntilDue < 12) {
+      // 今天内：提前15分钟
+      baseReminderMinutes = 15;
+    } else if (hoursUntilDue < 24) {
+      // 明天：提前1小时
+      baseReminderMinutes = 60;
+    } else if (hoursUntilDue < 72) {
+      // 3天内：提前1天
+      baseReminderMinutes = 24 * 60;
+    } else if (hoursUntilDue < 168) {
+      // 本周内：提前2天
+      baseReminderMinutes = 48 * 60;
+    } else {
+      // 下周及以后：提前3天
+      baseReminderMinutes = 72 * 60;
+    }
+
+    // 根据优先级调整
+    switch (priority) {
+      case TaskPriority.high:
+        // 高优先级：提前更多（1.5倍）
+        return (baseReminderMinutes * 1.5).toInt();
+      case TaskPriority.low:
+        // 低优先级：提前较少（0.8倍）
+        return (baseReminderMinutes * 0.8).toInt();
+      default:
+        return baseReminderMinutes;
+    }
   }
 
   /// 使用 AI 服务解析
@@ -529,6 +593,232 @@ class AIService {
     }
   }
 
+  /// 生成任务优先级建议
+  Future<TaskPrioritySuggestion> generatePrioritySuggestion(
+      List<Task> tasks) async {
+    if (!_config.enabled || _config.apiKey.isEmpty || _config.baseUrl.isEmpty) {
+      return _generateLocalPrioritySuggestion(tasks);
+    }
+
+    try {
+      return await _generateAIPrioritySuggestion(tasks);
+    } catch (e) {
+      debugPrint('AI 生成优先级建议失败: $e');
+      // AI 失败时回退到本地规则
+      return _generateLocalPrioritySuggestion(tasks);
+    }
+  }
+
+  /// 使用 AI 生成优先级建议
+  Future<TaskPrioritySuggestion> _generateAIPrioritySuggestion(
+      List<Task> tasks) async {
+    // 过滤未完成的任务
+    final uncompletedTasks = tasks.where((t) => !t.isCompleted).toList();
+
+    if (uncompletedTasks.isEmpty) {
+      return TaskPrioritySuggestion(
+        summary: '太棒了！您目前没有未完成的任务。',
+        items: [],
+        isFromAI: true,
+      );
+    }
+
+    // 准备任务数据
+    final tasksData = uncompletedTasks.map((t) {
+      return {
+        'id': t.id,
+        'title': t.title,
+        'priority': _priorityToString(t.priority),
+        'status': _statusToString(t.status),
+        'dueTime': t.dueTime?.toIso8601String(),
+        'isOverdue': t.isOverdue,
+        'createdAt': t.createdAt?.toIso8601String(),
+      };
+    }).toList();
+
+    final prompt = '''
+分析以下未完成的任务，给出处理优先级建议。请考虑：
+1. 任务的紧急程度（是否逾期）
+2. 截止时间
+3. 任务优先级
+4. 任务状态
+
+任务列表：${jsonEncode(tasksData)}
+
+请返回JSON格式：
+{
+  "summary": "总体建议概述（50字以内）",
+  "items": [
+    {
+      "taskId": "任务ID",
+      "title": "任务标题",
+      "recommendedOrder": 1,
+      "reason": "推荐理由（30字以内）",
+      "suggestion": "具体建议（30字以内）",
+      "priorityLevel": "高/中/低"
+    }
+  ]
+}
+
+要求：
+- summary 要简洁明了
+- 按推荐顺序排列
+- 每个任务都要有明确的理由和建议
+- 只返回JSON，不要其他内容
+''';
+
+    final dio = Dio();
+    dio.options.connectTimeout = const Duration(seconds: 15);
+    dio.options.receiveTimeout = const Duration(seconds: 15);
+
+    final response = await dio.post(
+      '${_config.baseUrl}/chat/completions',
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${_config.apiKey}',
+        },
+      ),
+      data: {
+        'model': _config.model,
+        'messages': [
+          {'role': 'system', 'content': '你是一个专业的任务管理助手，擅长分析任务优先级并给出实用建议。'},
+          {'role': 'user', 'content': prompt}
+        ],
+        'temperature': 0.5,
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = response.data;
+      final content = data['choices'][0]['message']['content'] as String;
+
+      // 提取 JSON
+      final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(content);
+      if (jsonMatch != null) {
+        final json = jsonDecode(jsonMatch.group(0)!);
+        final items = (json['items'] as List)
+            .map((item) => TaskSuggestionItem(
+                  taskId: item['taskId'],
+                  title: item['title'],
+                  recommendedOrder: item['recommendedOrder'],
+                  reason: item['reason'],
+                  suggestion: item['suggestion'],
+                  priorityLevel: item['priorityLevel'],
+                ))
+            .toList();
+
+        return TaskPrioritySuggestion(
+          summary: json['summary'] ?? '基于AI分析的建议',
+          items: items,
+          isFromAI: true,
+        );
+      }
+    }
+
+    // AI 解析失败，回退到本地规则
+    return _generateLocalPrioritySuggestion(uncompletedTasks);
+  }
+
+  /// 本地规则生成优先级建议
+  TaskPrioritySuggestion _generateLocalPrioritySuggestion(List<Task> tasks) {
+    final uncompletedTasks = tasks.where((t) => !t.isCompleted).toList();
+
+    if (uncompletedTasks.isEmpty) {
+      return TaskPrioritySuggestion(
+        summary: '太棒了！您目前没有未完成的任务。',
+        items: [],
+        isFromAI: false,
+      );
+    }
+
+    final now = DateTime.now();
+    final overdueTasks = uncompletedTasks.where((t) => t.isOverdue).toList();
+    final highPriorityTasks = uncompletedTasks
+        .where((t) => t.priority == TaskPriority.high && !t.isOverdue)
+        .toList();
+    final mediumPriorityTasks = uncompletedTasks
+        .where((t) => t.priority == TaskPriority.medium && !t.isOverdue)
+        .toList();
+    final lowPriorityTasks = uncompletedTasks
+        .where((t) => t.priority == TaskPriority.low && !t.isOverdue)
+        .toList();
+
+    // 按截止时间排序
+    highPriorityTasks.sort((a, b) =>
+        (a.dueTime ?? DateTime(2099)).compareTo(b.dueTime ?? DateTime(2099)));
+    mediumPriorityTasks.sort((a, b) =>
+        (a.dueTime ?? DateTime(2099)).compareTo(b.dueTime ?? DateTime(2099)));
+    lowPriorityTasks.sort((a, b) =>
+        (a.dueTime ?? DateTime(2099)).compareTo(b.dueTime ?? DateTime(2099)));
+
+    // 组合排序后的任务
+    final sortedTasks = [
+      ...overdueTasks,
+      ...highPriorityTasks,
+      ...mediumPriorityTasks,
+      ...lowPriorityTasks
+    ];
+
+    // 生成建议
+    String summary;
+    if (overdueTasks.isNotEmpty) {
+      summary = '您有 ${overdueTasks.length} 个逾期任务，建议优先处理。';
+    } else if (highPriorityTasks.isNotEmpty) {
+      summary = '当前有 ${highPriorityTasks.length} 个高优先级任务需要关注。';
+    } else {
+      summary = '您有 ${uncompletedTasks.length} 个未完成任务，建议合理安排时间。';
+    }
+
+    // 生成建议项
+    final items = <TaskSuggestionItem>[];
+    for (var i = 0; i < sortedTasks.length; i++) {
+      final task = sortedTasks[i];
+      final order = i + 1;
+      String reason;
+      String suggestion;
+
+      if (task.isOverdue) {
+        final daysOverdue = now.difference(task.dueTime ?? now).inDays;
+        reason = '已逾期 ${daysOverdue > 0 ? "$daysOverdue天" : ""}，需要紧急处理';
+        suggestion = '立即开始处理';
+      } else if (task.priority == TaskPriority.high) {
+        reason = '高优先级任务';
+        suggestion = '建议今天完成';
+      } else if (task.dueTime != null) {
+        final hoursUntilDue = task.dueTime!.difference(now).inHours;
+        if (hoursUntilDue < 24) {
+          reason = '截止时间在24小时内';
+          suggestion = '尽快安排时间';
+        } else if (hoursUntilDue < 72) {
+          reason = '截止时间在3天内';
+          suggestion = '本周完成';
+        } else {
+          reason = '有充裕时间';
+          suggestion = '按计划进行';
+        }
+      } else {
+        reason = '常规任务';
+        suggestion = '合理安排时间';
+      }
+
+      items.add(TaskSuggestionItem(
+        taskId: task.id,
+        title: task.title,
+        recommendedOrder: order,
+        reason: reason,
+        suggestion: suggestion,
+        priorityLevel: _priorityToString(task.priority),
+      ));
+    }
+
+    return TaskPrioritySuggestion(
+      summary: summary,
+      items: items,
+      isFromAI: false,
+    );
+  }
+
   /// 生成智能建议
   Future<String> generateSuggestion(List<Task> tasks) async {
     if (!_config.enabled) {
@@ -539,11 +829,93 @@ class AIService {
     return _generateLocalSuggestion(tasks);
   }
 
+  /// 转换优先级为字符串
+  String _priorityToString(TaskPriority priority) {
+    switch (priority) {
+      case TaskPriority.high:
+        return '高';
+      case TaskPriority.low:
+        return '低';
+      default:
+        return '中';
+    }
+  }
+
+  /// 转换状态为字符串
+  String _statusToString(TaskStatus status) {
+    switch (status) {
+      case TaskStatus.pending:
+        return '待处理';
+      case TaskStatus.inProgress:
+        return '进行中';
+      case TaskStatus.completed:
+        return '已完成';
+      case TaskStatus.cancelled:
+        return '已取消';
+      default:
+        return '待处理';
+    }
+  }
+
+  /// 检查AI模型是否可用
+  Future<bool> isAIModelAvailable() async {
+    if (!_config.enabled) {
+      return false;
+    }
+
+    if (_config.provider == 'local') {
+      return false;
+    }
+
+    if (_config.apiKey.isEmpty ||
+        _config.baseUrl.isEmpty ||
+        _config.model.isEmpty) {
+      return false;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 5);
+      dio.options.receiveTimeout = const Duration(seconds: 5);
+
+      final response = await dio.post(
+        '${_config.baseUrl}/chat/completions',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${_config.apiKey}',
+          },
+        ),
+        data: {
+          'model': _config.model,
+          'messages': [
+            {'role': 'user', 'content': 'Hi'}
+          ],
+          'max_tokens': 5,
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('AI模型可用性检查失败: $e');
+      return false;
+    }
+  }
+
   /// 发送聊天消息
-  Future<String> chat(String message,
+  Future<ChatResult> chatWithEngineInfo(String message,
       {List<Map<String, String>>? history}) async {
-    if (!_config.enabled || _config.apiKey.isEmpty || _config.baseUrl.isEmpty) {
-      return _chatWithRules(message);
+    // 先检查AI模型是否可用
+    final aiAvailable = await isAIModelAvailable();
+
+    if (!aiAvailable) {
+      // 使用本地规则引擎
+      final response = _chatWithRules(message);
+      return ChatResult(
+        content: response,
+        engineType: '本地规则引擎',
+        isFromAI: false,
+      );
     }
 
     try {
@@ -561,6 +933,9 @@ class AIService {
       messages.add({'role': 'user', 'content': message});
 
       final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 15);
+      dio.options.receiveTimeout = const Duration(seconds: 15);
+
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
         options: Options(
@@ -579,13 +954,40 @@ class AIService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        return data['choices'][0]['message']['content'] as String;
+        final content = data['choices'][0]['message']['content'] as String;
+        final engineName = currentModelDisplayName;
+
+        return ChatResult(
+          content: content,
+          engineType: engineName,
+          isFromAI: true,
+        );
       }
     } catch (e) {
       debugPrint('AI 聊天失败: $e');
+      // AI失败，回退到本地规则引擎
+      final response = _chatWithRules(message);
+      return ChatResult(
+        content: response,
+        engineType: '本地规则引擎',
+        isFromAI: false,
+      );
     }
 
-    return _chatWithRules(message);
+    // 其他情况，使用本地规则引擎
+    final response = _chatWithRules(message);
+    return ChatResult(
+      content: response,
+      engineType: '本地规则引擎',
+      isFromAI: false,
+    );
+  }
+
+  /// 发送聊天消息（保持向后兼容）
+  Future<String> chat(String message,
+      {List<Map<String, String>>? history}) async {
+    final result = await chatWithEngineInfo(message, history: history);
+    return result.content;
   }
 
   /// 本地规则聊天
