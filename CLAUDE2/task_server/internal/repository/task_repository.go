@@ -114,3 +114,10 @@ func (r *TaskRepository) FindPendingReminders() ([]model.Task, error) {
 func (r *TaskRepository) UpdateReminded(taskID uint) error {
 	return r.db.Model(&model.Task{}).Where("id = ?", taskID).Update("reminded", true).Error
 }
+
+// FindByIDs finds tasks by multiple IDs
+func (r *TaskRepository) FindByIDs(ids []uint) ([]model.Task, error) {
+	var tasks []model.Task
+	err := r.db.Where("id IN ?", ids).Find(&tasks).Error
+	return tasks, err
+}
