@@ -187,3 +187,32 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, user)
 }
+
+// SearchUsers 搜索用户
+// @Summary 搜索用户
+// @Description 根据关键词搜索用户
+// @Tags user
+// @Produce json
+// @Security BearerAuth
+// @Param keyword query string true "搜索关键词"
+// @Param limit query int false "返回数量限制"
+// @Success 200 {object} model.SearchUsersResponse
+// @Failure 400 {object} map[string]string
+// @Router /api/v1/user/search [get]
+func (h *UserHandler) SearchUsers(c *gin.Context) {
+	var req model.SearchUsersRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.Warn("Invalid search users request", zap.String("error", err.Error()))
+		c.JSON(http.StatusOK, gin.H{"code": 1, "message": err.Error()})
+		return
+	}
+
+	response, err := h.userService.SearchUsers(req.Keyword, req.Limit)
+	if err != nil {
+		logger.Error("Failed to search users", zap.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "failed to search users"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": response})
+}
