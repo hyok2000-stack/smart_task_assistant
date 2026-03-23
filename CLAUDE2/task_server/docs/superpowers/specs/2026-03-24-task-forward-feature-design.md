@@ -403,10 +403,10 @@ Authorization: Bearer {token}
 3. Service 层显式调用 ForwardService.SyncTaskStatus 同步到转发任务
 4. 查找所有关联的活跃转发任务
 5. 基于 updated_at 时间戳判断，同步更新到转发任务（除ID、ParentTaskID等元数据）
-6. 反之亦然（转发任务更新同步到原任务）
+6. 转发任务更新时，同样显式调用同步方法更新原任务
 ```
 
-**重要：** 同步在 Service 层显式调用，不使用 GORM 钩子。
+**重要：** 同步在 Service 层显式调用，不使用 GORM 钩子。采用"最后写入优先"策略，基于 `updated_at` 时间戳判断哪个更新应该被应用。
 
 ### 5.4 撤回转发策略
 
@@ -419,25 +419,6 @@ Authorization: Bearer {token}
    - 标记TaskForward为inactive
    - 记录撤回时间和原因
    - 软删除接收方的转发任务（Task模型已支持软删除，通过DeletedAt字段）
-3. 返回撤回成功
-```
-
-选择软删除的原因：
-- 保留转发历史记录
-- 便于审计和统计
-- 如果需要可以恢复
-
-### 5.5 循环转发防护
-
-撤回时采用软删除策略：
-
-```
-1. 用户A调用撤回API
-2. Service层处理：
-   - 验证转发者身份（只有转发者可以撤回）
-   - 标记TaskForward为inactive
-   - 记录撤回时间和原因
-   - 软删除接收方的转发任务（设置deleted_at）
 3. 返回撤回成功
 ```
 
