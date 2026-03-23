@@ -58,3 +58,20 @@ func (r *UserRepository) Update(user *model.User) error {
 func (r *UserRepository) Delete(id uint) error {
 	return r.db.Delete(&model.User{}, id).Error
 }
+
+// Search searches users by keyword (username or email)
+func (r *UserRepository) Search(keyword string, limit int) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+
+	query := r.db.Model(&model.User{}).
+		Where("username LIKE ? OR email LIKE ? OR nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+
+	err := query.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = query.Limit(limit).Find(&users).Error
+	return users, total, err
+}
