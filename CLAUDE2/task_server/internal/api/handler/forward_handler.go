@@ -13,13 +13,31 @@ import (
 
 type ForwardHandler struct {
 	forwardService *service.ForwardService
-	userService    *service.UserService
 }
 
-func NewForwardHandler(forwardService *service.ForwardService, userService *service.UserService) *ForwardHandler {
+func NewForwardHandler(forwardService *service.ForwardService) *ForwardHandler {
 	return &ForwardHandler{
 		forwardService: forwardService,
-		userService:    userService,
+	}
+}
+
+// getUserID safely retrieves and validates user ID from Gin context
+func getUserID(c *gin.Context) (uint, bool) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+
+	// Handle both uint and float64 (common from JSON)
+	switch v := userID.(type) {
+	case uint:
+		return v, true
+	case float64:
+		return uint(v), true
+	case int:
+		return uint(v), true
+	default:
+		return 0, false
 	}
 }
 
@@ -36,9 +54,9 @@ func NewForwardHandler(forwardService *service.ForwardService, userService *serv
 // @Failure 400 {object} map[string]string
 // @Router /api/v1/tasks/{id}/forward [post]
 func (h *ForwardHandler) ForwardTask(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 1, "message": "unauthorized"})
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "invalid user id"})
 		return
 	}
 
@@ -52,11 +70,11 @@ func (h *ForwardHandler) ForwardTask(c *gin.Context) {
 	var req model.TaskForwardRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Warn("Invalid forward request", zap.String("error", err.Error()))
-		c.JSON(http.StatusOK, gin.H{"code": 1, "message": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": err.Error()})
 		return
 	}
 
-	response, err := h.forwardService.ForwardTask(c.Request.Context(), uint(taskID), &req, userID.(uint))
+	response, err := h.forwardService.ForwardTask(c.Request.Context(), uint(taskID), &req, userID)
 	if err != nil {
 		logger.Warn("Failed to forward task", zap.String("error", err.Error()))
 
@@ -111,9 +129,9 @@ func (h *ForwardHandler) ForwardTask(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /api/v1/forwards/{id}/revoke [post]
 func (h *ForwardHandler) RevokeForward(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 1, "message": "unauthorized"})
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "invalid user id"})
 		return
 	}
 
@@ -125,9 +143,15 @@ func (h *ForwardHandler) RevokeForward(c *gin.Context) {
 	}
 
 	var req model.RevokeForwardRequest
-	c.ShouldBindJSON(&req) // Reason is optional
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			logger.Warn("Invalid revoke request", zap.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": err.Error()})
+			return
+		}
+	}
 
-	err = h.forwardService.RevokeForward(c.Request.Context(), uint(forwardID), req.Reason, userID.(uint))
+	err = h.forwardService.RevokeForward(c.Request.Context(), uint(forwardID), req.Reason, userID)
 	if err != nil {
 		logger.Warn("Failed to revoke forward", zap.String("error", err.Error()))
 
@@ -162,9 +186,9 @@ func (h *ForwardHandler) RevokeForward(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /api/v1/tasks/{id}/forwards [get]
 func (h *ForwardHandler) GetTaskForwards(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 1, "message": "unauthorized"})
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "invalid user id"})
 		return
 	}
 
@@ -175,7 +199,7 @@ func (h *ForwardHandler) GetTaskForwards(c *gin.Context) {
 		return
 	}
 
-	forwards, err := h.forwardService.GetTaskForwards(c.Request.Context(), uint(taskID), userID.(uint))
+	forwards, err := h.forwardService.GetTaskForwards(c.Request.Context(), uint(taskID), userID)
 	if err != nil {
 		logger.Error("Failed to get task forwards", zap.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "failed to get forwards"})
@@ -200,9 +224,9 @@ func (h *ForwardHandler) GetTaskForwards(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /api/v1/forwards/received [get]
 func (h *ForwardHandler) GetReceivedForwards(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 1, "message": "unauthorized"})
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "invalid user id"})
 		return
 	}
 
@@ -215,7 +239,7 @@ func (h *ForwardHandler) GetReceivedForwards(c *gin.Context) {
 		return
 	}
 
-	response, err := h.forwardService.GetReceivedForwards(c.Request.Context(), userID.(uint), req.Page, req.PageSize)
+	response, err := h.forwardService.GetReceivedForwards(c.Request.Context(), userID, req.Page, req.PageSize)
 	if err != nil {
 		logger.Error("Failed to get received forwards", zap.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "failed to get forwards"})
