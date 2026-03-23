@@ -114,3 +114,16 @@ func (s *UserService) GetByID(id uint) (*model.User, error) {
 func (s *UserService) Update(user *model.User) error {
 	return s.userRepo.Update(user)
 }
+
+// SearchUsers searches users by keyword
+func (s *UserService) SearchUsers(keyword string, limit int) (*model.SearchUsersResponse, error) {
+	users, total, err := s.userRepo.Search(keyword, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.SearchUsersResponse{
+		Users: users,
+		Total: int(total),
+	}, nil
+}
