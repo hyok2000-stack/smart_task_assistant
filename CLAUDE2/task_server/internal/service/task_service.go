@@ -1,18 +1,29 @@
 package service
 
 import (
+	"context"
 	"errors"
-	"time"
 	"task_server/internal/model"
 	"task_server/internal/repository"
+	"time"
 )
 
 type TaskService struct {
-	taskRepo *repository.TaskRepository
+	taskRepo    *repository.TaskRepository
+	forwardRepo *repository.ForwardRepository
+	forwardSvc  *ForwardService
 }
 
 func NewTaskService(taskRepo *repository.TaskRepository) *TaskService {
 	return &TaskService{taskRepo: taskRepo}
+}
+
+func NewTaskServiceWithForward(taskRepo *repository.TaskRepository, forwardRepo *repository.ForwardRepository, forwardSvc *ForwardService) *TaskService {
+	return &TaskService{
+		taskRepo:    taskRepo,
+		forwardRepo: forwardRepo,
+		forwardSvc:  forwardSvc,
+	}
 }
 
 // Create 创建任务
@@ -143,6 +154,11 @@ func (s *TaskService) Update(id uint, userID uint, req *model.TaskRequest) (*mod
 		return nil, err
 	}
 
+	// Sync to forwarded tasks if this is not a forwarded task
+	if !task.IsForwarded && s.forwardSvc != nil {
+		go s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+	}
+
 	return task, nil
 }
 
@@ -190,6 +206,13 @@ func (s *TaskService) ToggleComplete(id uint, userID uint) (*model.Task, error) 
 	err = s.taskRepo.Update(task)
 	if err != nil {
 		return nil, err
+	}
+
+	// Sync to forwarded tasks
+	if !task.IsForwarded && s.forwardSvc != nil {
+		go s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+	} else if task.IsForwarded && s.forwardSvc != nil {
+		go s.forwardSvc.SyncToParentTask(context.Background(), task.ID)
 	}
 
 	return task, nil
