@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"task_server/internal/model"
 	"task_server/internal/repository"
 	"time"
@@ -156,7 +157,15 @@ func (s *TaskService) Update(id uint, userID uint, req *model.TaskRequest) (*mod
 
 	// Sync to forwarded tasks if this is not a forwarded task
 	if !task.IsForwarded && s.forwardSvc != nil {
-		go s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log the panic - using fmt for now since logger may not be available
+					fmt.Printf("Task sync panic: %v\n", r)
+				}
+			}()
+			s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+		}()
 	}
 
 	return task, nil
@@ -210,9 +219,23 @@ func (s *TaskService) ToggleComplete(id uint, userID uint) (*model.Task, error) 
 
 	// Sync to forwarded tasks
 	if !task.IsForwarded && s.forwardSvc != nil {
-		go s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Task sync panic: %v\n", r)
+				}
+			}()
+			s.forwardSvc.SyncTaskStatus(context.Background(), task.ID, userID)
+		}()
 	} else if task.IsForwarded && s.forwardSvc != nil {
-		go s.forwardSvc.SyncToParentTask(context.Background(), task.ID)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Task sync panic: %v\n", r)
+				}
+			}()
+			s.forwardSvc.SyncToParentTask(context.Background(), task.ID)
+		}()
 	}
 
 	return task, nil
