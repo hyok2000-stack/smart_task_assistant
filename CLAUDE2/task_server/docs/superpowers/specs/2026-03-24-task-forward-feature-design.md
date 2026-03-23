@@ -478,9 +478,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 7. 错误处理
+## 6. 权限模型
 
-### 7.1 转发记录可见性
+### 6.1 转发记录可见性
 
 | 用户 | 可查看的内容 |
 |-----|-------------|
@@ -488,7 +488,7 @@ Authorization: Bearer {token}
 | 接收者 | 所有收到的转发记录（包括被撤回的，标记已撤回） |
 | 其他用户 | 不可见 |
 
-### 7.2 操作权限
+### 6.2 操作权限
 
 | 操作 | 允许的用户 |
 |-----|----------|
@@ -497,7 +497,28 @@ Authorization: Bearer {token}
 | 更新转发任务 | 任务所有者（原任务或转发任务所有者） |
 | 查看转发记录 | 转发者和接收者 |
 
-### 7.3 常见错误场景
+### 6.3 权限强制执行
+
+权限检查在 Service 层进行，示例代码：
+
+```go
+func (s *ForwardService) ForwardTask(ctx context.Context, taskID uint, req *TaskForwardRequest, userID uint) error {
+    // 检查任务所有权
+    task, err := s.taskRepo.GetByID(ctx, taskID)
+    if err != nil {
+        return err
+    }
+    if task.UserID != userID {
+        return ErrNoPermission
+    }
+
+    // ... 其他验证和处理
+}
+```
+
+## 7. 错误处理
+
+### 7.1 常见错误场景
 
 | 错误场景 | HTTP状态码 | 错误码 | 提示信息 |
 |---------|-----------|-------|---------|
@@ -511,7 +532,7 @@ Authorization: Bearer {token}
 | 超过转发人数限制 | 400 | EXCEED_FORWARD_LIMIT | 最多转发给10个用户 |
 | 截止时间无效 | 400 | INVALID_DEADLINE | 截止时间格式无效或已过期 |
 
-### 7.4 错误响应格式
+### 7.2 错误响应格式
 
 ```json
 {
@@ -600,32 +621,16 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_forwarded_by ON tasks(forwarded_by
 - `TestRevokeForward_Success` - 撤回成功
 - `TestRevokeForward_NoPermission` - 撤回权限不足
 - `TestSearchUsers` - 搜索用户
-
-### 11.2 单元测试
-
-**Service 层新增测试：**
 - `TestForwardTask_PreventCircularForward` - 防止循环转发（A→B→A）
 - `TestSyncTaskStatus_ConcurrentUpdates` - 并发更新测试
 - `TestRevokeForward_SoftDeleteTask` - 撤回时软删除任务
 - `TestCheckExpiredForwards_AlreadyCompleted` - 已完成任务不标记过期
 
-**Repository 层新增测试：**
+**Repository 层：**
 - `TestCheckCircularForward` - 检测转发链路
 - `TestGetForwardChain` - 获取转发链路
 
-### 10.2 单元测试
-
-**Service 层新增测试：**
-- `TestForwardTask_PreventCircularForward` - 防止循环转发（A→B→A）
-- `TestSyncTaskStatus_ConcurrentUpdates` - 并发更新测试
-- `TestRevokeForward_SoftDeleteTask` - 撤回时软删除任务
-- `TestCheckExpiredForwards_AlreadyCompleted` - 已完成任务不标记过期
-
-**Repository 层新增测试：**
-- `TestCheckCircularForward` - 检测转发链路
-- `TestGetForwardChain` - 获取转发链路
-
-### 10.3 集成测试
+### 10.2 集成测试
 
 - 端到端转发流程测试
 - 多用户并发转发测试
