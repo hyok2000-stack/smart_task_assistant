@@ -25,6 +25,11 @@ type Task struct {
 	DeviceID    string         `gorm:"index" json:"device_id"` // 用于数据同步
 	SyncedAt    time.Time      `json:"synced_at"`
 	CompletedAt *time.Time     `json:"completed_at"`
+	// Forward fields
+	IsForwarded  bool  `gorm:"default:false" json:"is_forwarded"`
+	ForwardedBy  *uint `json:"forwarded_by"`
+	ParentTaskID *uint `gorm:"index" json:"parent_task_id"`
+	IsExpired    bool  `gorm:"default:false" json:"is_expired"`
 }
 
 type TaskRequest struct {
@@ -63,11 +68,11 @@ type TaskListResponse struct {
 }
 
 type TaskStats struct {
-	Total         int64 `json:"total"`
-	Completed     int64 `json:"completed"`
-	Pending       int64 `json:"pending"`
-	HighPriority  int64 `json:"high_priority"`
-	Overdue       int64 `json:"overdue"`
-	ThisWeek      int64 `json:"this_week"`
-	ThisMonth     int64 `json:"this_month"`
+	Total        int64 `json:"total"`
+	Completed    int64 `json:"completed"`
+	Pending      int64 `json:"pending"`
+	HighPriority int64 `json:"high_priority"`
+	Overdue      int64 `json:"overdue"`
+	ThisWeek     int64 `json:"this_week"`
+	ThisMonth    int64 `json:"this_month"`
 }
