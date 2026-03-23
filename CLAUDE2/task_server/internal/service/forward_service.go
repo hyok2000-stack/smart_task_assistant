@@ -57,6 +57,17 @@ func (s *ForwardService) ForwardTask(ctx context.Context, taskID uint, req *mode
 		return nil, ErrNoPermission
 	}
 
+	// Validate forward limit
+	if len(req.TargetUserIDs) > 10 {
+		return nil, ErrExceedLimit
+	}
+
+	// Get sender user
+	sender, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
 	// Verify target users exist
 	var users []model.User
 	for _, targetUserID := range req.TargetUserIDs {
@@ -154,7 +165,7 @@ func (s *ForwardService) ForwardTask(ctx context.Context, taskID uint, req *mode
 				ID:              forward.ID,
 				ForwardedTaskID: forward.ForwardedTaskID,
 				TaskID:          forward.TaskID,
-				ForwardedBy:     users[i],
+				ForwardedBy:     *sender,
 				ForwardedTo:     users[i],
 				Message:         forward.Message,
 				Deadline:        forward.Deadline,
@@ -202,7 +213,7 @@ func (s *ForwardService) RevokeForward(ctx context.Context, forwardID uint, reas
 	}
 
 	// Soft delete the forwarded task
-	if err := s.db.Delete(&model.Task{}, forward.ForwardedTaskID).Error; err != nil {
+	if err := s.taskRepo.Delete(forward.ForwardedTaskID); err != nil {
 		return err
 	}
 
