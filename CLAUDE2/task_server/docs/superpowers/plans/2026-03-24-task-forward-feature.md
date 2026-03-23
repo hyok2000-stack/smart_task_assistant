@@ -258,7 +258,7 @@ func (r *ForwardRepository) FindByID(id uint) (*model.TaskForward, error) {
 // FindByTaskID finds all forwards for a task
 func (r *ForwardRepository) FindByTaskID(taskID uint) ([]model.TaskForward, error) {
     var forwards []model.TaskForward
-    err := r.db.Preload("Forwarder").Preload("Receiver").Where("task_id = ?", taskID).Find(&forwards).Error
+    err := r.db.Preload("Forwarder").Preload("Receiver").Preload("Task").Preload("ForwardedTask").Where("task_id = ?", taskID).Find(&forwards).Error
     return forwards, err
 }
 ```
@@ -538,7 +538,7 @@ func (s *ForwardService) ForwardTask(ctx context.Context, taskID uint, req *mode
             return nil, ErrForwardToSelf
         }
 
-        user, err := s.userRepo.GetByID(targetUserID)
+        user, err := s.userRepo.FindByID(targetUserID)
         if err != nil {
             return nil, ErrUserNotFound
         }
@@ -1570,7 +1570,71 @@ git commit -m "feat: add TaskForward migration and indexes"
 
 ---
 
-## Task 14: Test Forward Repository
+## Task 14: Implement Expiration Cron Job
+
+**Files:**
+- Modify: `go.mod`
+- Modify: `cmd/server/main.go`
+
+- [ ] **Step 1: Add cron dependency**
+
+```bash
+go get github.com/robfig/cron/v3
+```
+
+- [ ] **Step 2: Run go mod tidy**
+
+```bash
+go mod tidy
+```
+
+- [ ] **Step 3: Add cron import to main.go**
+
+Add to the imports section:
+
+```go
+import "github.com/robfig/cron/v3"
+```
+
+- [ ] **Step 4: Add cron scheduler initialization**
+
+Add after forwardService initialization and before router setup:
+
+```go
+// Setup cron job for expired forward checking
+c := cron.New(cron.WithSeconds())
+
+// Run every hour
+c.AddFunc("0 0 * * * *", func() {
+    logger.Info("Processing expired forwards")
+    count, err := forwardService.ProcessExpiredForwards(context.Background())
+    if err != nil {
+        logger.Error("Failed to process expired forwards", zap.String("error", err.Error()))
+    } else {
+        logger.Info("Processed expired forwards", zap.Int("count", count))
+    }
+})
+
+c.Start()
+defer c.Stop()
+```
+
+- [ ] **Step 5: Run go fmt**
+
+```bash
+go fmt ./cmd/server/main.go
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add go.mod go.sum cmd/server/main.go
+git commit -m "feat: implement cron job for expired forward checking"
+```
+
+---
+
+## Task 15: Test Forward Repository
 
 **Files:**
 - Create: `tests/repository/forward_repository_test.go`
@@ -1591,6 +1655,7 @@ import (
     "testing"
     "time"
     "task_server/internal/model"
+    "task_server/internal/repository"
 
     "github.com/stretchr/testify/assert"
     "gorm.io/driver/sqlite"
@@ -1709,7 +1774,7 @@ git commit -m "test: add forward repository tests"
 
 ---
 
-## Task 15: Test Forward Service
+## Task 16: Test Forward Service
 
 **Files:**
 - Create: `tests/service/forward_service_test.go`
@@ -1797,6 +1862,41 @@ func TestForwardTaskToSelf(t *testing.T) {
     assert.Error(t, err)
     assert.Equal(t, service.ErrForwardToSelf, err)
 }
+
+func TestSyncTaskStatus(t *testing.T) {
+    service, db := setupTestService(t)
+
+    // Create users
+    user1 := &model.User{Username: "user1", Email: "user1@test.com", Password: "pass"}
+    user2 := &model.User{Username: "user2", Email: "user2@test.com", Password: "pass"}
+    db.Create(user1)
+    db.Create(user2)
+
+    // Create and forward task
+    task := &model.Task{UserID: user1.ID, Title: "Original Task"}
+    db.Create(task)
+
+    req := &model.TaskForwardRequest{
+        TargetUserIDs: []uint{user2.ID},
+        Message:       "Test",
+    }
+
+    response, err := service.ForwardTask(context.Background(), task.ID, req, user1.ID)
+    assert.NoError(t, err)
+
+    // Update original task
+    task.Title = "Updated Task"
+    db.Save(task)
+
+    // Sync to forwarded tasks
+    err = service.SyncTaskStatus(context.Background(), task.ID, user1.ID)
+    assert.NoError(t, err)
+
+    // Verify forwarded task was updated
+    var forwardedTask model.Task
+    db.First(&forwardedTask, response.Forwards[0].ForwardedTaskID)
+    assert.Equal(t, "Updated Task", forwardedTask.Title)
+}
 ```
 
 - [ ] **Step 3: Run tests**
@@ -1809,12 +1909,12 @@ go test ./tests/service/forward_service_test.go -v
 
 ```bash
 git add tests/service/forward_service_test.go
-git commit -m "test: add forward service tests"
+git commit -m "test: add forward service tests including sync test"
 ```
 
 ---
 
-## Task 16: Build and Run Integration Test
+## Task 17: Build and Run Integration Test
 
 **Files:**
 - None (manual test)
@@ -1876,7 +1976,48 @@ curl -X DELETE "http://localhost:8080/api/v1/forwards/1" \
 
 Expected: Returns success response
 
-- [ ] **Step 7: Commit final changes**
+- [ ] **Step 7: Test bidirectional sync**
+
+```bash
+# Forward task from user1 to user2, get forward_id from response
+FORWARD_ID=$(curl -s -X POST "http://localhost:8080/api/v1/tasks/1/forward" \
+  -H "Authorization: Bearer TOKEN_USER1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_ids": [2], "message": "test"}' | jq -r '.data.forwards[0].id')
+
+# Update task as user1
+curl -X PUT "http://localhost:8080/api/v1/tasks/1" \
+  -H "Authorization: Bearer TOKEN_USER1" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated Title"}'
+
+# Wait a moment for async sync, then check forwarded task
+sleep 2
+curl -X GET "http://localhost:8080/api/v1/tasks/$(curl -s 'http://localhost:8080/api/v1/forwards/received?page=1&page_size=1' -H 'Authorization: Bearer TOKEN_USER2' | jq -r '.data.forwards[0].forwarded_task_id')" \
+  -H "Authorization: Bearer TOKEN_USER2"
+```
+
+Expected: Forwarded task title shows "Updated Title"
+
+- [ ] **Step 8: Test circular forward prevention**
+
+```bash
+# Forward task from user1 to user2
+curl -X POST "http://localhost:8080/api/v1/tasks/1/forward" \
+  -H "Authorization: Bearer TOKEN_USER1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_ids": [2], "message": "test"}'
+
+# Try to forward from user2 back to user1 (should fail)
+curl -X POST "http://localhost:8080/api/v1/tasks/$(curl -s 'http://localhost:8080/api/v1/forwards/received?page=1&page_size=1' -H 'Authorization: Bearer TOKEN_USER2' | jq -r '.data.forwards[0].forwarded_task_id')/forward" \
+  -H "Authorization: Bearer TOKEN_USER2" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_ids": [1], "message": "circular test"}'
+```
+
+Expected: Returns error about circular forward
+
+- [ ] **Step 9: Commit final changes**
 
 ```bash
 git add .
