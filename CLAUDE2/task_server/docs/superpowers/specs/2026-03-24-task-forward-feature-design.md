@@ -399,13 +399,35 @@ Authorization: Bearer {token}
 
 ```
 1. 用户A更新原任务（任意字段）
-2. GORM AfterUpdate钩子触发
-3. 查找所有关联的活跃转发任务
-4. 同步更新到转发任务（除ID、ParentTaskID等元数据）
-5. 反之亦然（转发任务更新同步到原任务）
+2. Handler 调用 TaskService.UpdateTask
+3. Service 层显式调用 ForwardService.SyncTaskStatus 同步到转发任务
+4. 查找所有关联的活跃转发任务
+5. 基于 updated_at 时间戳判断，同步更新到转发任务（除ID、ParentTaskID等元数据）
+6. 反之亦然（转发任务更新同步到原任务）
 ```
 
-### 5.5 撤回转发策略
+**重要：** 同步在 Service 层显式调用，不使用 GORM 钩子。
+
+### 5.4 撤回转发策略
+
+撤回时采用软删除策略：
+
+```
+1. 用户A调用撤回API
+2. Service层处理：
+   - 验证转发者身份（只有转发者可以撤回）
+   - 标记TaskForward为inactive
+   - 记录撤回时间和原因
+   - 软删除接收方的转发任务（Task模型已支持软删除，通过DeletedAt字段）
+3. 返回撤回成功
+```
+
+选择软删除的原因：
+- 保留转发历史记录
+- 便于审计和统计
+- 如果需要可以恢复
+
+### 5.5 循环转发防护
 
 撤回时采用软删除策略：
 
@@ -424,7 +446,7 @@ Authorization: Bearer {token}
 - 便于审计和统计
 - 如果需要可以恢复
 
-### 5.6 循环转发防护
+### 5.5 循环转发防护
 
 在转发前检测是否会产生循环转发：
 
@@ -434,7 +456,7 @@ Authorization: Bearer {token}
 3. 最大转发深度限制为 3 层（A→B→C→D，D 不能再转发）
 ```
 
-### 5.7 过期检查流程
+### 5.6 过期检查流程
 
 ```
 定时任务（每小时运行）：
@@ -449,11 +471,16 @@ Authorization: Bearer {token}
 - 前端提交时需要转换为 UTC
 - 显示时根据用户时区转换
 
+**定时任务实现：**
+- 可使用 Go 的 cron 库（如 robfig/cron）
+- 在 `cmd/server/main.go` 中启动
+- 或部署到云环境时使用外部 cron（如 Kubernetes CronJob）
+
 ---
 
-## 6. 权限模型
+## 7. 错误处理
 
-### 6.1 转发记录可见性
+### 7.1 转发记录可见性
 
 | 用户 | 可查看的内容 |
 |-----|-------------|
@@ -461,7 +488,7 @@ Authorization: Bearer {token}
 | 接收者 | 所有收到的转发记录（包括被撤回的，标记已撤回） |
 | 其他用户 | 不可见 |
 
-### 6.2 操作权限
+### 7.2 操作权限
 
 | 操作 | 允许的用户 |
 |-----|----------|
@@ -470,9 +497,7 @@ Authorization: Bearer {token}
 | 更新转发任务 | 任务所有者（原任务或转发任务所有者） |
 | 查看转发记录 | 转发者和接收者 |
 
-## 7. 错误处理
-
-### 6.2 常见错误场景
+### 7.3 常见错误场景
 
 | 错误场景 | HTTP状态码 | 错误码 | 提示信息 |
 |---------|-----------|-------|---------|
@@ -486,7 +511,7 @@ Authorization: Bearer {token}
 | 超过转发人数限制 | 400 | EXCEED_FORWARD_LIMIT | 最多转发给10个用户 |
 | 截止时间无效 | 400 | INVALID_DEADLINE | 截止时间格式无效或已过期 |
 
-### 7.2 错误响应格式
+### 7.4 错误响应格式
 
 ```json
 {
@@ -497,7 +522,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 9. 路由配置
+## 8. 路由配置
 
 在 `internal/api/router/router.go` 中添加：
 
@@ -522,7 +547,7 @@ forwardGroup.Use(middleware.Auth())
 
 ---
 
-## 10. 数据库迁移
+## 9. 数据库迁移
 
 在 `pkg/database/database.go` 初始化时添加：
 
@@ -555,9 +580,9 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_forwarded_by ON tasks(forwarded_by
 
 ---
 
-## 11. 测试策略
+## 10. 测试策略
 
-### 11.1 单元测试
+### 10.1 单元测试
 
 **Repository 层：**
 - `TestCreateTaskForward` - 创建转发关系
@@ -588,7 +613,19 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_forwarded_by ON tasks(forwarded_by
 - `TestCheckCircularForward` - 检测转发链路
 - `TestGetForwardChain` - 获取转发链路
 
-### 11.2 集成测试
+### 10.2 单元测试
+
+**Service 层新增测试：**
+- `TestForwardTask_PreventCircularForward` - 防止循环转发（A→B→A）
+- `TestSyncTaskStatus_ConcurrentUpdates` - 并发更新测试
+- `TestRevokeForward_SoftDeleteTask` - 撤回时软删除任务
+- `TestCheckExpiredForwards_AlreadyCompleted` - 已完成任务不标记过期
+
+**Repository 层新增测试：**
+- `TestCheckCircularForward` - 检测转发链路
+- `TestGetForwardChain` - 获取转发链路
+
+### 10.3 集成测试
 
 - 端到端转发流程测试
 - 多用户并发转发测试
@@ -596,28 +633,23 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_tasks_forwarded_by ON tasks(forwarded_by
 - 过期自动标记测试
 - 循环转发防护测试
 
-- 端到端转发流程测试
-- 多用户并发转发测试
-- 状态同步一致性测试
-- 过期自动标记测试
-
 ---
 
-## 12. 实施计划概要
+## 11. 实施计划概要
 
 1. **数据模型创建** - 添加 TaskForward 模型，修改 Task 模型
 2. **Repository 层实现** - 转发数据的 CRUD 操作
 3. **Service 层实现** - 转发、撤回、搜索、状态同步业务逻辑
 4. **Handler 层实现** - API 接口处理器
 5. **路由配置** - 注册新路由
-6. **状态同步钩子** - 实现 GORM 钩子
-7. **定时任务** - 过期检查（可选，或由前端配合）
+6. **状态同步方法** - 实现显式同步方法（不使用 GORM 钩子）
+7. **定时任务** - 过期检查（使用 robfig/cron 或外部 cron）
 8. **单元测试** - Repository 和 Service 层测试
 9. **集成测试** - 端到端测试
 
 ---
 
-## 11. 后续扩展
+## 12. 后续扩展
 
 - 转发历史记录查询
 - 转发统计（转发次数、成功率等）
