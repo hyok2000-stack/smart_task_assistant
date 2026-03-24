@@ -105,8 +105,8 @@ class AIService {
   AIConfig get config => _config;
 
   /// 加载配置
-  Future<void> loadConfig() async {
-    if (_configLoaded) {
+  Future<void> loadConfig({bool forceReload = false}) async {
+    if (!forceReload && _configLoaded) {
       debugPrint(
           'AI配置已加载: enabled=${_config.enabled}, provider=${_config.provider}');
       return;

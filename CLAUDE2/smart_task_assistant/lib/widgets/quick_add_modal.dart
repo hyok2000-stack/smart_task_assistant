@@ -85,6 +85,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
           _selectedPriority = result.priority;
           _selectedDueTime = result.dueTime;
           _selectedTags = result.tags;
+          // 应用推荐的提醒时间
+          if (result.recommendedReminderMinutes != null) {
+            _selectedReminderMinutes = result.recommendedReminderMinutes;
+            // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
+            _showCustomReminder =
+                !_isInReminderOptions(_selectedReminderMinutes);
+            if (_showCustomReminder) {
+              _customReminderMinutes = _selectedReminderMinutes;
+            }
+          }
         });
       } else {
         // AI 解析失败，回退到本地规则
@@ -117,8 +127,32 @@ class _QuickAddModalState extends State<QuickAddModal> {
         _selectedPriority = result.priority;
         _selectedDueTime = result.dueTime;
         _selectedTags = result.tags;
+        // 应用推荐的提醒时间
+        if (result.recommendedReminderMinutes != null) {
+          _selectedReminderMinutes = result.recommendedReminderMinutes;
+          // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
+          _showCustomReminder = !_isInReminderOptions(_selectedReminderMinutes);
+          if (_showCustomReminder) {
+            _customReminderMinutes = _selectedReminderMinutes;
+          }
+        }
       }
     });
+  }
+
+  /// 检查提醒时间是否在预设选项中
+  bool _isInReminderOptions(int? minutes) {
+    if (minutes == null) return true;
+    const presetOptions = [
+      10,
+      15,
+      30,
+      60,
+      1440,
+      2880,
+      4320
+    ]; // 预设的提醒时间选项（分钟）：10分钟、15分钟、30分钟、1小时、1天、2天、3天
+    return presetOptions.contains(minutes);
   }
 
   /// 使用AI智能识别（手动调用）
@@ -796,9 +830,13 @@ class _QuickAddModalState extends State<QuickAddModal> {
             children: [
               _buildReminderChip('不提醒', null),
               _buildReminderChip('提前10分钟', 10),
-              _buildReminderChip('自定义', -1),
+              _buildReminderChip('提前15分钟', 15),
               _buildReminderChip('提前30分钟', 30),
               _buildReminderChip('提前1小时', 60),
+              _buildReminderChip('提前1天', 1440),
+              _buildReminderChip('提前2天', 2880),
+              _buildReminderChip('提前3天', 4320),
+              _buildReminderChip('自定义', -1),
             ],
           ),
           // 自定义输入区域
@@ -848,6 +886,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
       isSelected = _selectedReminderMinutes == minutes && !_showCustomReminder;
     }
 
+    // 检查是否是推荐的提醒时间
+    final isRecommended = minutes != null &&
+        minutes == _parsedTask?.recommendedReminderMinutes &&
+        !_showCustomReminder;
+
+    // 推荐项使用主色，其他使用警告色
+    final chipColor =
+        isRecommended ? AppTheme.primaryColor : AppTheme.warningColor;
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -871,32 +918,53 @@ class _QuickAddModalState extends State<QuickAddModal> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.warningColor
-              : AppTheme.warningColor.withOpacity(0.1),
+              ? chipColor
+              : chipColor.withOpacity(isRecommended ? 0.2 : 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
-                ? AppTheme.warningColor
-                : AppTheme.warningColor.withOpacity(0.3),
+                ? chipColor
+                : chipColor.withOpacity(isRecommended ? 0.5 : 0.3),
+            width: isRecommended && !isSelected ? 2 : 1,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isSelected ? Icons.check : Icons.notifications_outlined,
-              size: 14,
-              color: isSelected ? Colors.white : AppTheme.textPrimaryColor,
-            ),
+            if (isRecommended && !isSelected)
+              Icon(
+                Icons.auto_awesome,
+                size: 12,
+                color: chipColor,
+              )
+            else
+              Icon(
+                isSelected ? Icons.check : Icons.notifications_outlined,
+                size: 14,
+                color: isSelected ? Colors.white : AppTheme.textPrimaryColor,
+              ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: isSelected ? Colors.white : AppTheme.textPrimaryColor,
-                fontWeight: FontWeight.w500,
+                color: isSelected
+                    ? Colors.white
+                    : (isRecommended ? chipColor : AppTheme.textPrimaryColor),
+                fontWeight: isRecommended ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
+            if (isRecommended && !isSelected) ...[
+              const SizedBox(width: 4),
+              Text(
+                '推荐',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: chipColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),

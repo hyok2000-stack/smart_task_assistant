@@ -114,6 +114,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    // 释放服务资源，防止内存泄漏
+    widget.reminderService.dispose();
+
+    // 只在服务已初始化时才释放剪贴板监视服务
+    if (clipboardMonitorService.isInitialized) {
+      clipboardMonitorService.dispose();
+    }
+
     super.dispose();
   }
 
@@ -291,7 +300,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       showQuickAddModal(context, initialContent: content);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return MultiProvider(

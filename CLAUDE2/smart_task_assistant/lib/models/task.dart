@@ -108,40 +108,60 @@ class Task {
 
   /// 从 JSON 创建
   factory Task.fromJson(Map<String, dynamic> json) {
-    return Task(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      content: json['content'] as String?,
-      status: TaskStatus.values[json['status'] as int? ?? 0],
-      priority: TaskPriority.values[json['priority'] as int? ?? 1],
-      startTime: json['start_time'] != null
-          ? DateTime.parse(json['start_time'] as String)
-          : null,
-      dueTime: json['due_time'] != null
-          ? DateTime.parse(json['due_time'] as String)
-          : null,
-      completedAt: json['completed_at'] != null
-          ? DateTime.parse(json['completed_at'] as String)
-          : null,
-      assignee: json['assignee'] as String?,
-      parentId: json['parent_id'] as String?,
-      isRecurring: json['is_recurring'] is bool
-          ? json['is_recurring'] as bool
-          : (json['is_recurring'] as int? ?? 0) == 1,
-      recurringRule: json['recurring_rule'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      tagIds: json['tag_ids'] != null
-          ? List<String>.from(jsonDecode(json['tag_ids'] as String))
-          : [],
-      attachmentPaths: json['attachment_paths'] != null
-          ? List<String>.from(jsonDecode(json['attachment_paths'] as String))
-          : [],
-      reminderMinutes: json['reminder_minutes'] as int?,
-      reminderDismissed: json['reminder_dismissed'] is bool
-          ? json['reminder_dismissed'] as bool
-          : (json['reminder_dismissed'] as int? ?? 0) == 1,
-    );
+    // 验证必需字段
+    final id = json['id'];
+    final title = json['title'];
+    final createdAtStr = json['created_at'];
+    final updatedAtStr = json['updated_at'];
+
+    if (id == null || title == null || createdAtStr == null || updatedAtStr == null) {
+      throw FormatException(
+        'Invalid task JSON: missing required fields. '
+        'Required: id, title, created_at, updated_at. '
+        'Got: ${json.keys.join(", ")}'
+      );
+    }
+
+    try {
+      return Task(
+        id: id as String,
+        title: title as String,
+        content: json['content'] as String?,
+        status: TaskStatus.values[json['status'] as int? ?? 0],
+        priority: TaskPriority.values[json['priority'] as int? ?? 1],
+        startTime: json['start_time'] != null
+            ? DateTime.parse(json['start_time'] as String)
+            : null,
+        dueTime: json['due_time'] != null
+            ? DateTime.parse(json['due_time'] as String)
+            : null,
+        completedAt: json['completed_at'] != null
+            ? DateTime.parse(json['completed_at'] as String)
+            : null,
+        assignee: json['assignee'] as String?,
+        parentId: json['parent_id'] as String?,
+        isRecurring: json['is_recurring'] is bool
+            ? json['is_recurring'] as bool
+            : (json['is_recurring'] as int? ?? 0) == 1,
+        recurringRule: json['recurring_rule'] as String?,
+        createdAt: DateTime.parse(createdAtStr as String),
+        updatedAt: DateTime.parse(updatedAtStr as String),
+        tagIds: json['tag_ids'] != null
+            ? List<String>.from(jsonDecode(json['tag_ids'] as String))
+            : [],
+        attachmentPaths: json['attachment_paths'] != null
+            ? List<String>.from(jsonDecode(json['attachment_paths'] as String))
+            : [],
+        reminderMinutes: json['reminder_minutes'] as int?,
+        reminderDismissed: json['reminder_dismissed'] is bool
+            ? json['reminder_dismissed'] as bool
+            : (json['reminder_dismissed'] as int? ?? 0) == 1,
+      );
+    } on FormatException {
+      rethrow; // 重新抛出格式异常
+    } catch (e) {
+      throw FormatException('Failed to parse task JSON: $e');
+    }
   }
 
   /// 转换为 JSON

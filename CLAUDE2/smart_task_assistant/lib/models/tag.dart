@@ -20,15 +20,35 @@ class Tag {
 
   /// 从 JSON 创建
   factory Tag.fromJson(Map<String, dynamic> json) {
-    return Tag(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      color: json['color'] as String? ?? '#6366f1',
-      icon: json['icon'] as String?,
-      sortOrder: json['sort_order'] as int? ?? 0,
-      isDefault: (json['is_default'] as int?) == 1,
-      createdAt: DateTime.parse(json['created_at'] as String),
-    );
+    // 验证必需字段
+    final id = json['id'];
+    final name = json['name'];
+    final createdAtStr = json['created_at'];
+
+    if (id == null || name == null || createdAtStr == null) {
+      throw FormatException(
+        'Invalid tag JSON: missing required fields. '
+        'Required: id, name, created_at. '
+        'Got: ${json.keys.join(", ")}'
+      );
+    }
+
+    try {
+      return Tag(
+        id: id as String,
+        name: name as String,
+        color: json['color'] as String? ?? '#6366f1',
+        icon: json['icon'] as String?,
+        sortOrder: json['sort_order'] as int? ?? 0,
+        isDefault: (json['is_default'] as int?) == 1 ||
+                   (json['is_default'] as bool? ?? false),
+        createdAt: DateTime.parse(createdAtStr as String),
+      );
+    } on FormatException {
+      rethrow;
+    } catch (e) {
+      throw FormatException('Failed to parse tag JSON: $e');
+    }
   }
 
   /// 转换为 JSON

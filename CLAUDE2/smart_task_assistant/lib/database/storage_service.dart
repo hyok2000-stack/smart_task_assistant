@@ -265,3 +265,8 @@ StorageService getStorageService() {
       : createNativeStorageService();
   return _storageInstance!;
 }
+
+/// 重置存储服务单例（用于数据库连接重置）
+void resetStorageService() {
+  _storageInstance = null;
+}

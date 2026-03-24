@@ -18,6 +18,7 @@ class ClipboardMonitorService {
 
   bool _isEnabled = false;
   bool _isMonitoring = false;
+  bool _isInitialized = false; // 初始化状态标志
 
   // 上一次的剪贴板内容，避免重复弹出
   String? _lastClipboardContent;
@@ -32,12 +33,19 @@ class ClipboardMonitorService {
   ClipboardMonitorServiceNative? _nativeService;
 
   bool get isEnabled => _isEnabled;
+  bool get isInitialized => _isInitialized;
 
   /// 初始化服务
   void init(GlobalKey<NavigatorState> navigatorKey,
       Function(String content) onClipboardContent) {
+    // 如果已经初始化，先清理现有的资源
+    if (_isMonitoring) {
+      dispose();
+    }
+
     _navigatorKey = navigatorKey;
     _onClipboardContent = onClipboardContent;
+    _isInitialized = true;
 
     // 根据平台选择不同的实现
     if (kIsWeb) {
@@ -46,6 +54,8 @@ class ClipboardMonitorService {
       _nativeService = ClipboardMonitorServiceNative();
       _nativeService?.setCallback(onClipboardContent);
     }
+
+    debugPrint('剪贴板监视服务已初始化');
   }
 
   /// 启用/禁用剪贴板监视

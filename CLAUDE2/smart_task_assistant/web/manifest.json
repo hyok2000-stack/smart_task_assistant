@@ -1,11 +1,11 @@
 {
-    "name": "smart_task_assistant",
-    "short_name": "smart_task_assistant",
+    "name": "智能任务助手",
+    "short_name": "智能任务助手",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "智能任务助手 - 基于AI的任务管理工具",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

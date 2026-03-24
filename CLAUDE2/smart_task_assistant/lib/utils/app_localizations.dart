@@ -51,7 +51,7 @@ class AppLocalizations {
   String get greetingEvening => isZh ? '晚上好' : 'Good Evening';
   String get greetingNight => isZh ? '夜深了' : 'Good Night';
   String get overdueTasks => isZh ? '逾期任务' : 'Overdue Tasks';
-  String get pendingTasks => isZh ? '待处理任务' : 'Pending Tasks';
+  String get pendingTasks => isZh ? '未完成任务' : 'Pending Tasks';
   String get viewAll => isZh ? '查看全部' : 'View All';
   String get completed => isZh ? '已完成' : 'Completed';
   String get noTasks => isZh ? '暂无任务' : 'No tasks';
@@ -401,6 +401,31 @@ class AppLocalizations {
   // 验证提示
   String get invalidDataFormat => isZh ? '无效的数据格式' : 'Invalid data format';
   String get restore => isZh ? '恢复' : 'Restore';
+
+  // AI任务优先级建议
+  String get aiAssistant => isZh ? 'AI 智能助手' : 'AI Assistant';
+  String get analyzeTaskPriority => isZh ? '分析任务优先级' : 'Analyze Task Priority';
+  String get efficiencyTips => isZh ? '效率建议' : 'Efficiency Tips';
+  String get usageHelp => isZh ? '使用帮助' : 'Usage Help';
+  String get aiSuggestionTitle => isZh ? 'AI 智能分析' : 'AI Analysis';
+  String get smartSuggestionTitle => isZh ? '智能建议' : 'Smart Suggestion';
+  String get recommendedOrder => isZh ? '推荐处理顺序' : 'Recommended Order';
+  String get localRuleEngine => isZh ? '本地规则引擎' : 'Local Rule Engine';
+  String get urgentTasksDetected => isZh ? '检测到紧急任务' : 'Urgent Tasks Detected';
+  String get overdueTasksTitle => isZh ? '逾期任务' : 'Overdue Tasks';
+  String get dueSoonTasks => isZh ? '即将到期' : 'Due Soon';
+  String get moreTasks => isZh ? '还有' : '...还有';
+  String get getPrioritySuggestion =>
+      isZh ? '获取处理建议' : 'Get priority suggestions';
+  String get noUrgentTasks =>
+      isZh ? '太棒了！您目前没有未完成的任务。' : 'Great! You have no pending tasks.';
+  String get overdueTasksCountSuggestion =>
+      isZh ? '个逾期任务，建议优先处理。' : ' overdue tasks, suggest priority handling.';
+  String get highPriorityTasksCountSuggestion =>
+      isZh ? '个高优先级任务需要关注。' : ' high priority tasks need attention.';
+  String get pendingTasksCountSuggestion => isZh
+      ? '个未完成任务，建议合理安排时间。'
+      : ' pending tasks, suggest reasonable time management.';
 }
 
 class _AppLocalizationsDelegate

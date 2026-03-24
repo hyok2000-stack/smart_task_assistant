@@ -36,6 +36,9 @@ class ReminderService {
 
   /// 初始化提醒服务
   void init(TaskProvider taskProvider, GlobalKey<NavigatorState> navigatorKey) {
+    // 先停止现有的检查，避免重复初始化导致内存泄漏
+    stopChecking();
+
     _taskProvider = taskProvider;
     _navigatorKey = navigatorKey;
 

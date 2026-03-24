@@ -1327,95 +1327,155 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final l = context.l;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.errorColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.warning_amber_rounded,
-                          color: AppTheme.errorColor,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        l.overdueReminder,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+      builder: (bottomSheetContext) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(bottomSheetContext).size.height * 0.75,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(height: 16),
-                  Consumer<TaskProvider>(
-                    builder: (context, provider, _) {
-                      if (provider.overdueTasks.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Text(l.noOverdueTasks),
-                          ),
-                        );
-                      }
-                      return Column(
-                        children: provider.overdueTasks.take(5).map((task) {
-                          return ListTile(
-                            leading: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: AppTheme.errorColor,
-                                shape: BoxShape.circle,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppTheme.errorColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      l.overdueReminder,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Consumer<TaskProvider>(
+                  builder: (context, provider, _) {
+                    final overdueTasks = provider.overdueTasks;
+
+                    // 调试信息
+                    debugPrint(
+                        '🔍 显示逾期任务弹窗: ${overdueTasks.length} 个逾期任务');
+                    for (var task in overdueTasks) {
+                      debugPrint(
+                          '  - ${task.title}, 截止: ${task.dueTime}, 是否逾期: ${task.isOverdue}, 状态: ${task.status}');
+                    }
+
+                    if (overdueTasks.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline,
+                              size: 48,
+                              color: AppTheme.successColor.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              '暂无逾期任务',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: AppTheme.textSecondaryColor,
                               ),
                             ),
-                            title: Text(task.title),
-                            subtitle: Text(
-                                '${l.deadline}: ${task.dueTimeDescription}'),
-                            trailing: TextButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _showTaskDetail(task);
-                              },
-                              child: Text(l.view),
-                            ),
-                          );
-                        }).toList(),
+                          ],
+                        ),
                       );
-                    },
-                  ),
-                ],
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: overdueTasks.length,
+                      itemBuilder: (context, index) {
+                        final task = overdueTasks[index];
+                        return Column(
+                          children: [
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              leading: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.errorColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              title: Text(
+                                task.title,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  '${l.deadline}: ${task.dueTimeDescription}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ),
+                              trailing: TextButton(
+                                onPressed: () {
+                                  Navigator.pop(bottomSheetContext);
+                                  _showTaskDetail(task);
+                                },
+                                child: Text(l.view),
+                              ),
+                            ),
+                            if (index < overdueTasks.length - 1)
+                              Divider(
+                                height: 1,
+                                color: Colors.grey.shade200,
+                                indent: 48,
+                              ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -8,6 +8,8 @@ import '../models/tag.dart';
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
+  // 用于防止并发初始化的锁
+  Future<Database>? _databaseInitLock;
 
   factory DatabaseHelper() => _instance;
 
@@ -15,6 +17,13 @@ class DatabaseHelper {
 
   /// 获取数据库实例
   Future<Database> get database async {
+    // 使用锁机制防止并发初始化
+    _databaseInitLock ??= _initDatabaseInternal();
+    return _databaseInitLock!;
+  }
+
+  /// 内部初始化方法
+  Future<Database> _initDatabaseInternal() async {
     // 每次都检查数据库连接状态，确保应用重启后能正确连接
     if (_database != null) {
       // 检查数据库是否已关闭
@@ -37,6 +46,8 @@ class DatabaseHelper {
       return _database!;
     } catch (e) {
       debugPrint('❌ 数据库初始化失败: $e');
+      // 重置锁以便下次重试
+      _databaseInitLock = null;
       rethrow;
     }
   }
@@ -46,7 +57,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 3,
+      version: 5, // 更新版本号为 5（添加性能优化索引）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -102,6 +113,38 @@ class DatabaseHelper {
         FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
       )
     ''');
+
+    // 任务分发表
+    await db.execute('''
+      CREATE TABLE task_distributions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        assignee_name TEXT NOT NULL,
+        assignee_email TEXT,
+        assignee_phone TEXT,
+        status INTEGER DEFAULT 0,
+        distributed_at TEXT NOT NULL,
+        accepted_at TEXT,
+        completed_at TEXT,
+        due_date TEXT,
+        notes TEXT,
+        progress REAL DEFAULT 0,
+        response_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 创建性能优化索引
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_due_time ON tasks(due_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
 
     // 插入默认标签
     await _insertDefaultTags(db);
@@ -161,6 +204,47 @@ class DatabaseHelper {
           where: 'id = ?',
           whereArgs: [tagId],
         );
+      }
+    }
+
+    // 版本3 -> 版本4: 添加任务分发表
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE task_distributions (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          assignee_name TEXT NOT NULL,
+          assignee_email TEXT,
+          assignee_phone TEXT,
+          status INTEGER DEFAULT 0,
+          distributed_at TEXT NOT NULL,
+          accepted_at TEXT,
+          completed_at TEXT,
+          due_date TEXT,
+          notes TEXT,
+          progress REAL DEFAULT 0,
+          response_message TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+
+    // 版本4 -> 版本5: 添加性能优化索引
+    if (oldVersion < 5) {
+      try {
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_due_time ON tasks(due_time)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
+        debugPrint('数据库索引创建成功');
+      } catch (e) {
+        debugPrint('创建数据库索引失败: $e');
       }
     }
   }
@@ -251,10 +335,11 @@ class DatabaseHelper {
 
     final List<Map<String, dynamic>> maps = await db.query(
       'tasks',
-      where: 'due_time < ? AND status != ?',
+      where: 'due_time < ? AND status != ? AND status != ?',
       whereArgs: [
         now.toIso8601String(),
         TaskStatus.completed.index,
+        TaskStatus.cancelled.index,
       ],
       orderBy: 'due_time ASC',
     );
@@ -394,8 +479,8 @@ class DatabaseHelper {
     final todayStart = DateTime(now.year, now.month, now.day);
     final overdue = Sqflite.firstIntValue(
           await db.rawQuery(
-            'SELECT COUNT(*) FROM tasks WHERE due_time < ? AND status != ?',
-            [todayStart.toIso8601String(), TaskStatus.completed.index],
+            'SELECT COUNT(*) FROM tasks WHERE due_time < ? AND status != ? AND status != ?',
+            [todayStart.toIso8601String(), TaskStatus.completed.index, TaskStatus.cancelled.index],
           ),
         ) ??
         0;
@@ -442,6 +527,10 @@ class DatabaseHelper {
         debugPrint('数据库连接为空，无需关闭');
       }
 
+      // 重置初始化锁，防止下次访问时使用旧的 Future
+      _databaseInitLock = null;
+      debugPrint('数据库初始化锁已重置');
+
       // 清除任何缓存的查询结果
       debugPrint('清除数据库缓存...');
 
@@ -451,6 +540,7 @@ class DatabaseHelper {
       debugPrint('重置数据库连接失败: $e');
       // 即使出错，也要确保_database为null
       _database = null;
+      _databaseInitLock = null;
       rethrow;
     }
   }
