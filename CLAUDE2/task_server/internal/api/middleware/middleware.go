@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"time"
 	"task_server/pkg/logger"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

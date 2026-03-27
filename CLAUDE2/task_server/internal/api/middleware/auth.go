@@ -65,7 +65,7 @@ func JWTAuth() gin.HandlerFunc {
 // GenerateToken 生成 JWT token
 func GenerateToken(userID uint) (string, error) {
 	claims := Claims{
-		UserID: userID,
+		UserID:           userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			// TODO: Add expiration based on config
 		},
