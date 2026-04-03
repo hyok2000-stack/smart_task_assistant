@@ -426,6 +426,18 @@ class AppLocalizations {
   String get pendingTasksCountSuggestion => isZh
       ? '个未完成任务，建议合理安排时间。'
       : ' pending tasks, suggest reasonable time management.';
+
+  // 习惯设置
+  String get habitScheduleType =>
+      isZh ? '提醒范围' : 'Reminder Range';
+  String get habitScheduleTypeWeekdays =>
+      isZh ? '工作日' : 'Weekdays';
+  String get habitScheduleTypeDaily =>
+      isZh ? '自然日' : 'Daily';
+  String get habitScheduleTypeWeekdaysHint =>
+      isZh ? '周一到周五' : 'Mon to Fri';
+  String get habitScheduleTypeDailyHint =>
+      isZh ? '每天' : 'Every day';
 }
 
 class _AppLocalizationsDelegate

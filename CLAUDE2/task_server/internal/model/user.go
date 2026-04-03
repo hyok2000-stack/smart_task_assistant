@@ -17,6 +17,7 @@ type User struct {
 	Nickname  string         `json:"nickname"`
 	Avatar    string         `json:"avatar"`
 	IsActive  bool           `gorm:"default:true" json:"is_active"`
+	Role      string         `gorm:"default:user" json:"role"` // admin, user
 	Tasks     []Task         `json:"tasks,omitempty"`
 	Devices   []Device       `json:"devices,omitempty"`
 }

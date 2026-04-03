@@ -1,10 +1,15 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../services/ai_service.dart';
+import '../services/tts_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 
@@ -34,6 +39,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _aiDetected = false;
   String? _aiSuggestion;
 
+  // 语音提醒设置
+  bool _reminderVoiceEnabled = false;
+  String? _reminderVoiceType; // male/female/neutral/custom
+  String? _reminderVoiceStyle; // standard/gentle/lively
+  String? _reminderVoiceSpeed; // slow/normal/fast
+  String? _reminderCustomVoicePath; // 自定义语音文件路径
+
   // 预设提醒选项（简化版）- 在build方法中初始化
   late List<Map<String, dynamic>> _reminderOptions;
 
@@ -41,6 +53,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   int? _customReminderMinutes;
   bool _showCustomReminder = false;
   final _customReminderController = TextEditingController();
+
+  // 语音测试播放状态流
+  final _voicePlayingStream = StreamController<bool>.broadcast();
 
   @override
   void initState() {
@@ -62,6 +77,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _customReminderMinutes = _reminderMinutes;
         _customReminderController.text = _reminderMinutes.toString();
       }
+
+      // 初始化语音提醒设置
+      _reminderVoiceEnabled = widget.task!.reminderVoiceEnabled;
+      // 如果任务有自定义语音，使用它；否则使用默认值（女声、生动、正常）
+      _reminderVoiceType = widget.task!.reminderVoiceType ?? 'female';
+      _reminderVoiceStyle = widget.task!.reminderVoiceStyle ?? 'lively';
+      _reminderVoiceSpeed = widget.task!.reminderVoiceSpeed ?? 'normal';
+      _reminderCustomVoicePath = widget.task!.reminderCustomVoicePath;
+    } else {
+      // 新建任务时，使用默认语音配置（女声、生动、正常）
+      _reminderVoiceType = 'female';
+      _reminderVoiceStyle = 'lively';
+      _reminderVoiceSpeed = 'normal';
     }
   }
 
@@ -69,6 +97,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   void dispose() {
     _titleController.dispose();
     _contentController.dispose();
+    _voicePlayingStream.close();
     super.dispose();
   }
 
@@ -372,6 +401,160 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           ),
                         ),
                       ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+              // 语音提醒设置
+              if (_dueTime != null && _reminderMinutes != null) ...[
+                Text(
+                  l.isZh ? '语音提醒' : 'Voice Reminder',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 启用开关
+                      SwitchListTile(
+                        title: Text(l.isZh ? '启用语音提醒' : 'Enable Voice Reminder'),
+                        subtitle: Text(
+                          l.isZh ? '提醒时播放语音播报' : 'Play voice when reminding',
+                          style: TextStyle(
+                            color: _reminderVoiceEnabled
+                                ? AppTheme.primaryColor
+                                : AppTheme.textHintColor,
+                            fontSize: 12,
+                          ),
+                        ),
+                        value: _reminderVoiceEnabled,
+                        onChanged: (value) {
+                          setState(() => _reminderVoiceEnabled = value);
+                        },
+                        activeColor: AppTheme.primaryColor,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_reminderVoiceEnabled) ...[
+                        const Divider(height: 24),
+                        // 自定义语音文件选择
+                        Row(
+                          children: [
+                            Text(l.isZh ? '自定义语音文件' : 'Custom Voice'),
+                            const Spacer(),
+                            Switch(
+                              value: _reminderVoiceType == 'custom' && _reminderCustomVoicePath != null,
+                              onChanged: (value) {
+                                setState(() {
+                                  if (value) {
+                                    // 启用自定义语音
+                                    _reminderVoiceType = 'custom';
+                                  } else {
+                                    // 禁用自定义语音，使用默认设置（女声、生动、正常）
+                                    _reminderVoiceType = 'female';
+                                    _reminderCustomVoicePath = null;
+                                  }
+                                });
+                              },
+                              activeColor: AppTheme.primaryColor,
+                            ),
+                          ],
+                        ),
+                        // 当启用自定义语音时显示文件选择
+                        if (_reminderVoiceType == 'custom') ...[
+                          const SizedBox(height: 16),
+                          if (_reminderCustomVoicePath != null)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.grey.shade300),
+                                    ),
+                                    child: Text(
+                                      _reminderCustomVoicePath!.split('/').last,
+                                      style: const TextStyle(fontSize: 13),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  onPressed: _pickCustomVoice,
+                                  icon: const Icon(Icons.folder_open, size: 18),
+                                  label: Text(l.isZh ? '更换' : 'Change'),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    setState(() {
+                                      _reminderCustomVoicePath = null;
+                                    });
+                                  },
+                                ),
+                              ],
+                            )
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _pickCustomVoice,
+                                icon: const Icon(Icons.audio_file, size: 20),
+                                label: Text(l.isZh ? '选择语音文件' : 'Select Voice File'),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _reminderCustomVoicePath != null
+                                ? (l.isZh ? '已启用自定义语音，将使用您选择的音频文件' : 'Custom voice enabled, will use your selected audio file')
+                                : (l.isZh ? '请选择一个音频文件作为提醒语音' : 'Please select an audio file for reminder voice'),
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ],
+                      const Divider(height: 24),
+                      // 语音测试按钮
+                      Row(
+                        children: [
+                          const Spacer(),
+                          StreamBuilder<bool>(
+                            stream: _voicePlayingStream.stream,
+                            initialData: false,
+                            builder: (context, snapshot) {
+                              final isPlaying = snapshot.data ?? false;
+                              return OutlinedButton.icon(
+                                onPressed: _testVoice,
+                                icon: Icon(
+                                  isPlaying ? Icons.stop : Icons.volume_up,
+                                  size: 18,
+                                  color: isPlaying ? Colors.red : null,
+                                ),
+                                label: Text(
+                                  isPlaying
+                                      ? (l.isZh ? '停止播放' : 'Stop')
+                                      : (l.isZh ? '测试语音' : 'Test Voice'),
+                                  style: TextStyle(
+                                    color: isPlaying ? Colors.red : null,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -811,10 +994,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             } else {
               _showCustomReminder = false;
               _reminderMinutes = minutes;
-              if (minutes != null) {
-                _customReminderMinutes = null;
-                _customReminderController.clear();
-              }
+              _customReminderMinutes = null;
+              _customReminderController.clear();
             }
           });
         },
@@ -822,7 +1003,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: isSelected
-                ? AppTheme.primaryColor.withOpacity(0.15)
+                ? AppTheme.primaryColor.withValues(alpha: 0.15)
                 : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
@@ -864,6 +1045,111 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _aiDetected = false;
         _aiSuggestion = null;
       });
+    }
+  }
+
+  /// 选择自定义语音文件
+  Future<void> _pickCustomVoice() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final sourcePath = result.files.single.path!;
+
+        // 将文件复制到应用内部存储，确保后台服务也能访问
+        final internalPath = await _copyVoiceToInternalStorage(sourcePath);
+
+        setState(() {
+          _reminderCustomVoicePath = internalPath ?? sourcePath;
+        });
+      }
+    } catch (e) {
+      debugPrint('选择语音文件失败: $e');
+    }
+  }
+
+  /// 将语音文件复制到应用内部存储
+  Future<String?> _copyVoiceToInternalStorage(String sourcePath) async {
+    try {
+      final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists()) return null;
+
+      // 创建 voices 目录
+      final voicesDir = Directory('${(await getApplicationDocumentsDirectory())}/voices');
+      if (!await voicesDir.exists()) {
+        await voicesDir.create(recursive: true);
+      }
+
+      // 生成唯一文件名
+      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}${sourcePath.substring(sourcePath.lastIndexOf('.'))}';
+      final destFile = File('${voicesDir.path}/$fileName');
+
+      // 如果目标文件已存在，先删除
+      if (await destFile.exists()) {
+        await destFile.delete();
+      }
+
+      // 复制文件
+      await sourceFile.copy(destFile.path);
+      debugPrint('语音文件已复制到内部存储: ${destFile.path}');
+      return destFile.path;
+    } catch (e) {
+      debugPrint('复制语音文件到内部存储失败: $e');
+      return null;
+    }
+  }
+
+  /// 测试语音播放（再次点击停止）
+  Future<void> _testVoice() async {
+    final ttsService = TTSService();
+    // 无论当前是否在播放，先停止所有语音
+    await ttsService.stopSpeaking();
+    _voicePlayingStream.add(false);
+
+    _voicePlayingStream.add(true);
+    // 构造与实际任务提醒一致的语音文本（优先级前缀 + 时间上下文 + 标题）
+    final priorityPrefix = _getPriorityPrefix(_priority);
+    final timeContext = _getTimeContext();
+    final taskTitle = _titleController.text.trim();
+    final testText = '$priorityPrefix$timeContext${taskTitle.isNotEmpty ? taskTitle : '示例任务'}';
+    await ttsService.testVoice(
+      text: testText,
+      voiceType: _reminderVoiceType,
+      voiceStyle: _reminderVoiceStyle,
+      speed: _reminderVoiceSpeed,
+      customVoicePath: _reminderCustomVoicePath,
+    );
+    _voicePlayingStream.add(false);
+  }
+
+  /// 获取优先级前缀（与 TTSService 一致）
+  String _getPriorityPrefix(TaskPriority priority) {
+    switch (priority) {
+      case TaskPriority.high:
+        return '紧急任务提醒';
+      case TaskPriority.medium:
+        return '任务提醒';
+      case TaskPriority.low:
+        return '温和提醒';
+    }
+  }
+
+  /// 获取时间上下文（与 TTSService 一致）
+  String _getTimeContext() {
+    if (_reminderMinutes == null || _dueTime == null) return '';
+    final now = DateTime.now();
+    final diff = _dueTime!.difference(now);
+    if (diff.inMinutes <= 0) {
+      return '任务到期了，';
+    } else if (diff.inHours == 0) {
+      return '${diff.inMinutes}分钟后需要完成，';
+    } else if (diff.inHours == 1) {
+      return '1小时后需要完成，';
+    } else {
+      return '${diff.inHours}小时后需要完成，';
     }
   }
 
@@ -937,6 +1223,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         completedAt: completedAt,
         tagIds: _selectedTagIds,
         reminderMinutes: _reminderMinutes,
+        reminderVoiceEnabled: _reminderVoiceEnabled,
+        reminderVoiceType: _reminderVoiceType,
+        reminderVoiceStyle: _reminderVoiceStyle,
+        reminderVoiceSpeed: _reminderVoiceSpeed,
+        reminderCustomVoicePath: _reminderCustomVoicePath,
         isRecurring: _isRecurring,
         recurringRule: _recurringRule,
       );
@@ -961,6 +1252,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         priority: _priority,
         tagIds: _selectedTagIds,
         reminderMinutes: _reminderMinutes,
+        reminderVoiceEnabled: _reminderVoiceEnabled,
+        reminderVoiceType: _reminderVoiceType,
+        reminderVoiceStyle: _reminderVoiceStyle,
+        reminderVoiceSpeed: _reminderVoiceSpeed,
+        reminderCustomVoicePath: _reminderCustomVoicePath,
         isRecurring: _isRecurring,
         recurringRule: _isRecurring ? _recurringRule : null,
       );

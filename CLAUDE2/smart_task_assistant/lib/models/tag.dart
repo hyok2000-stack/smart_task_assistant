@@ -34,14 +34,24 @@ class Tag {
     }
 
     try {
+      // 处理 is_default 字段，支持 int (0/1) 和 bool 类型
+      final isDefaultVal = json['is_default'];
+      bool isDefault = false;
+      if (isDefaultVal != null) {
+        if (isDefaultVal is int) {
+          isDefault = isDefaultVal == 1;
+        } else if (isDefaultVal is bool) {
+          isDefault = isDefaultVal;
+        }
+      }
+
       return Tag(
         id: id as String,
         name: name as String,
         color: json['color'] as String? ?? '#6366f1',
         icon: json['icon'] as String?,
         sortOrder: json['sort_order'] as int? ?? 0,
-        isDefault: (json['is_default'] as int?) == 1 ||
-                   (json['is_default'] as bool? ?? false),
+        isDefault: isDefault,
         createdAt: DateTime.parse(createdAtStr as String),
       );
     } on FormatException {

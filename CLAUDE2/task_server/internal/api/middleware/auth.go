@@ -18,7 +18,8 @@ func InitJWTAuth(cfg *config.JWTConfig) {
 }
 
 type Claims struct {
-	UserID uint `json:"user_id"`
+	UserID uint   `json:"user_id"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -56,8 +57,9 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Set user ID in context
+		// Set user ID and role in context
 		c.Set("user_id", claims.UserID)
+		c.Set("user_role", claims.Role)
 		c.Next()
 	}
 }
@@ -66,6 +68,20 @@ func JWTAuth() gin.HandlerFunc {
 func GenerateToken(userID uint) (string, error) {
 	claims := Claims{
 		UserID:           userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			// TODO: Add expiration based on config
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+// GenerateTokenWithRole 生成带角色的 JWT token
+func GenerateTokenWithRole(userID uint, role string) (string, error) {
+	claims := Claims{
+		UserID:           userID,
+		Role:             role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			// TODO: Add expiration based on config
 		},

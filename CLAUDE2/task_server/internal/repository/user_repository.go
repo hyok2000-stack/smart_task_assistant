@@ -85,3 +85,17 @@ func (r *UserRepository) Search(keyword string, limit int) ([]model.User, int64,
 	err = query.Limit(limit).Find(&users).Error
 	return users, total, err
 }
+
+// List returns paginated list of users
+func (r *UserRepository) List(offset, limit int) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+
+	err := r.db.Model(&model.User{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = r.db.Offset(offset).Limit(limit).Order("created_at DESC").Find(&users).Error
+	return users, total, err
+}

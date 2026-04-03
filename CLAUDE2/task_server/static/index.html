@@ -93,6 +93,17 @@
         .btn-success:hover {
             background: #38a169;
         }
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
         .task-list {
             background: white;
             padding: 20px;
@@ -147,6 +158,10 @@
             background: #c6f6d5;
             color: #2f855a;
         }
+        .badge-forwarded {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
         .modal {
             display: none;
             position: fixed;
@@ -164,6 +179,8 @@
             max-width: 500px;
             margin: 50px auto;
             position: relative;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         .close {
             position: absolute;
@@ -220,6 +237,78 @@
         }
         .hidden {
             display: none !important;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            border: none;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab-btn:hover:not(.active) {
+            background: #e2e8f0;
+        }
+        .user-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .user-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        .user-item:hover {
+            background: #f7fafc;
+        }
+        .user-item input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+        .forward-item {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+        .forward-item:last-child {
+            border-bottom: none;
+        }
+        .forward-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .forward-info {
+            color: #666;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+        }
+        table tbody tr:hover {
+            background: #f7fafc;
         }
     </style>
 </head>
@@ -299,17 +388,79 @@
                     <div class="stat-number" id="pendingTasks" style="color: #ed8936;">0</div>
                     <div class="stat-label">待完成</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="receivedForwards" style="color: #667eea;">0</div>
+                    <div class="stat-label">收到转发</div>
+                </div>
             </div>
 
-            <!-- 任务列表 -->
-            <div class="task-list">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2>任务列表</h2>
-                    <button id="addTaskBtn" class="btn btn-primary">+ 新建任务</button>
+            <!-- 标签页 -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="myTasks">我的任务</button>
+                <button class="tab-btn" data-tab="receivedForwards">收到的转发</button>
+                <button class="tab-btn" data-tab="users">用户管理</button>
+                <button class="tab-btn" data-tab="adminPanel" id="adminTabBtn" style="display: none;">管理员面板</button>
+            </div>
+
+            <!-- 我的任务页面 -->
+            <div id="myTasksPage">
+                <div class="task-list">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2>任务列表</h2>
+                        <button id="addTaskBtn" class="btn btn-primary">+ 新建任务</button>
+                    </div>
+                    <div id="taskAlert" class="alert"></div>
+                    <div class="loading" id="taskLoading">加载中...</div>
+                    <div id="taskList"></div>
                 </div>
-                <div id="taskAlert" class="alert"></div>
-                <div class="loading" id="taskLoading">加载中...</div>
-                <div id="taskList"></div>
+            </div>
+
+            <!-- 收到的转发页面 -->
+            <div id="receivedForwardsPage" class="hidden">
+                <div class="task-list">
+                    <h2 style="margin-bottom: 15px;">收到的转发任务</h2>
+                    <div id="forwardAlert" class="alert"></div>
+                    <div class="loading" id="forwardLoading">加载中...</div>
+                    <div id="forwardList"></div>
+                </div>
+            </div>
+
+            <!-- 用户管理页面 -->
+            <div id="usersPage" class="hidden">
+                <div class="task-list">
+                    <h2 style="margin-bottom: 15px;">已注册用户</h2>
+                    <div id="usersAlert" class="alert"></div>
+                    <div style="margin-bottom: 15px;">
+                        <input type="text" id="usersSearchInput" placeholder="搜索用户名或邮箱..."
+                            style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; width: 300px;">
+                    </div>
+                    <div class="loading" id="usersLoading">加载中...</div>
+                    <div id="usersList"></div>
+                    <div id="usersPagination" style="margin-top: 20px; text-align: center;"></div>
+                </div>
+            </div>
+
+            <!-- 管理员面板 -->
+            <div id="adminPanelPage" class="hidden">
+                <div class="task-list">
+                    <h2 style="margin-bottom: 15px;">所有任务（管理员视图）</h2>
+                    <div id="adminAlert" class="alert"></div>
+                    <div style="margin-bottom: 15px;">
+                        <input type="text" id="adminSearchInput" placeholder="搜索任务标题或描述..."
+                            style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; width: 300px;">
+                        <select id="adminFilterUser" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; margin-left: 10px;">
+                            <option value="">所有用户</option>
+                        </select>
+                        <select id="adminFilterStatus" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; margin-left: 10px;">
+                            <option value="">所有状态</option>
+                            <option value="true">已完成</option>
+                            <option value="false">未完成</option>
+                        </select>
+                    </div>
+                    <div class="loading" id="adminLoading">加载中...</div>
+                    <div id="adminTaskList"></div>
+                    <div id="adminPagination" style="margin-top: 20px; text-align: center;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -346,57 +497,106 @@
         </div>
     </div>
 
+    <!-- 转发任务模态框 -->
+    <div id="forwardModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 style="margin-bottom: 20px;">转发任务</h2>
+            <div id="forwardModalAlert" class="alert"></div>
+            <form id="forwardForm">
+                <div class="form-group">
+                    <label>搜索用户</label>
+                    <input type="text" id="searchUserInput" placeholder="输入用户名或邮箱搜索">
+                    <div id="userSearchResults" class="user-list"></div>
+                </div>
+                <div class="form-group">
+                    <label>转发的用户</label>
+                    <div id="selectedUsers" style="min-height: 30px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>转发消息</label>
+                    <textarea id="forwardMessage" placeholder="请添加转发说明（可选）"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">转发</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 转发记录模态框 -->
+    <div id="forwardRecordsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 style="margin-bottom: 20px;">转发记录</h2>
+            <div id="forwardRecordsAlert" class="alert"></div>
+            <div class="loading" id="forwardRecordsLoading">加载中...</div>
+            <div id="forwardRecordsList"></div>
+        </div>
+    </div>
+
     <script>
         // API 基础路径
         const API_BASE = '/api/v1';
-        
+
         // 当前用户和 token
         let currentUser = null;
         let token = localStorage.getItem('token');
-        
+
         // 当前编辑的任务 ID
         let editingTaskId = null;
+
+        // 当前转发的任务 ID
+        let forwardingTaskId = null;
+
+        // 选中的用户列表（用于转发）
+        let selectedUsers = [];
+
+        // 搜索防抖定时器
+        let searchTimeout = null;
 
         // DOM 元素
         const loginPage = document.getElementById('loginPage');
         const registerPage = document.getElementById('registerPage');
         const mainPage = document.getElementById('mainPage');
-        
+        const myTasksPage = document.getElementById('myTasksPage');
+        const receivedForwardsPage = document.getElementById('receivedForwardsPage');
+
         // 检查登录状态
         function checkAuth() {
             if (token) {
                 showMainPage();
                 loadUserInfo();
                 loadTasks();
+                loadReceivedForwards();
             } else {
                 showLoginPage();
             }
         }
-        
+
         // 显示登录页面
         function showLoginPage() {
             loginPage.classList.remove('hidden');
             registerPage.classList.add('hidden');
             mainPage.classList.add('hidden');
         }
-        
+
         // 显示注册页面
         function showRegisterPage() {
             loginPage.classList.add('hidden');
             registerPage.classList.remove('hidden');
             mainPage.classList.add('hidden');
         }
-        
+
         // 显示主页面
         function showMainPage() {
             loginPage.classList.add('hidden');
             registerPage.classList.add('hidden');
             mainPage.classList.remove('hidden');
         }
-        
+
         // 显示提示信息
         function showAlert(elementId, message, type = 'success') {
             const alert = document.getElementById(elementId);
+            if (!alert) return;
             alert.className = `alert alert-${type}`;
             alert.textContent = message;
             alert.style.display = 'block';
@@ -404,7 +604,7 @@
                 alert.style.display = 'none';
             }, 3000);
         }
-        
+
         // 获取请求头
         function getHeaders() {
             return {
@@ -412,22 +612,57 @@
                 'Authorization': `Bearer ${token}`
             };
         }
-        
+
+        // 标签页切换
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const tab = btn.dataset.tab;
+                if (tab === 'myTasks') {
+                    myTasksPage.classList.remove('hidden');
+                    receivedForwardsPage.classList.add('hidden');
+                    document.getElementById('usersPage').classList.add('hidden');
+                    document.getElementById('adminPanelPage').classList.add('hidden');
+                    loadTasks();
+                } else if (tab === 'receivedForwards') {
+                    myTasksPage.classList.add('hidden');
+                    receivedForwardsPage.classList.remove('hidden');
+                    document.getElementById('usersPage').classList.add('hidden');
+                    document.getElementById('adminPanelPage').classList.add('hidden');
+                    loadReceivedForwards();
+                } else if (tab === 'users') {
+                    myTasksPage.classList.add('hidden');
+                    receivedForwardsPage.classList.add('hidden');
+                    document.getElementById('usersPage').classList.remove('hidden');
+                    document.getElementById('adminPanelPage').classList.add('hidden');
+                    loadUsers();
+                } else if (tab === 'adminPanel') {
+                    myTasksPage.classList.add('hidden');
+                    receivedForwardsPage.classList.add('hidden');
+                    document.getElementById('usersPage').classList.add('hidden');
+                    document.getElementById('adminPanelPage').classList.remove('hidden');
+                    loadAdminTasks();
+                }
+            });
+        });
+
         // 用户登录
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
-            
+
             try {
                 const response = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0 && data.data.token) {
                     token = data.data.token;
                     localStorage.setItem('token', token);
@@ -441,23 +676,23 @@
                 showAlert('loginAlert', '网络错误，请重试', 'error');
             }
         });
-        
+
         // 用户注册
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('registerUsername').value;
             const email = document.getElementById('registerEmail').value;
             const password = document.getElementById('registerPassword').value;
-            
+
             try {
                 const response = await fetch(`${API_BASE}/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, email, password })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0) {
                     showAlert('registerAlert', '注册成功！请登录', 'success');
                     setTimeout(showLoginPage, 1500);
@@ -468,18 +703,18 @@
                 showAlert('registerAlert', '网络错误，请重试', 'error');
             }
         });
-        
+
         // 切换登录/注册页面
         document.getElementById('showRegister').addEventListener('click', (e) => {
             e.preventDefault();
             showRegisterPage();
         });
-        
+
         document.getElementById('showLogin').addEventListener('click', (e) => {
             e.preventDefault();
             showLoginPage();
         });
-        
+
         // 退出登录
         document.getElementById('logoutBtn').addEventListener('click', () => {
             localStorage.removeItem('token');
@@ -487,42 +722,48 @@
             currentUser = null;
             showLoginPage();
         });
-        
+
         // 加载用户信息
         async function loadUserInfo() {
             try {
                 const response = await fetch(`${API_BASE}/user/profile`, {
                     headers: getHeaders()
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0 && data.data) {
                     currentUser = data.data;
                     document.getElementById('welcomeUser').textContent = `欢迎，${currentUser.username}`;
+
+                    // 如果是管理员，显示管理员面板
+                    if (currentUser.role === 'admin') {
+                        document.getElementById('adminTabBtn').style.display = 'block';
+                        loadAllUsersForFilter();
+                    }
                 }
             } catch (error) {
                 console.error('加载用户信息失败:', error);
             }
         }
-        
+
         // 加载任务列表
         async function loadTasks() {
             const loading = document.getElementById('taskLoading');
             const taskList = document.getElementById('taskList');
-            
+
             loading.style.display = 'block';
             taskList.innerHTML = '';
-            
+
             try {
                 const response = await fetch(`${API_BASE}/tasks`, {
                     headers: getHeaders()
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0 && data.data) {
-                    const tasks = data.data.items || data.data;
+                    const tasks = data.data.tasks || data.data;
                     renderTasks(tasks);
                     updateStats(tasks);
                 } else {
@@ -535,22 +776,23 @@
                 loading.style.display = 'none';
             }
         }
-        
+
         // 渲染任务列表
         function renderTasks(tasks) {
             const taskList = document.getElementById('taskList');
-            
+
             if (!tasks || tasks.length === 0) {
                 taskList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无任务，点击"新建任务"开始吧！</p>';
                 return;
             }
-            
+
             taskList.innerHTML = tasks.map(task => `
                 <div class="task-item">
                     <div class="task-info">
                         <div class="task-title">
                             ${task.completed ? '✅ ' : ''}${task.title}
                             ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
+                            ${task.is_forwarded ? '<span class="badge badge-forwarded">转发任务</span>' : ''}
                         </div>
                         <div class="task-meta">
                             <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
@@ -563,13 +805,132 @@
                         <button onclick="toggleTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
                             ${task.completed ? '取消完成' : '完成'}
                         </button>
+                        ${!task.is_forwarded ? `
+                            <button onclick="openForwardModal(${task.id})" class="btn btn-secondary">转发</button>
+                        ` : ''}
                         <button onclick="editTask(${task.id})" class="btn btn-primary">编辑</button>
                         <button onclick="deleteTask(${task.id})" class="btn btn-danger">删除</button>
+                        ${!task.is_forwarded ? `
+                            <button onclick="viewForwardRecords(${task.id})" class="btn btn-secondary">转发记录</button>
+                        ` : ''}
                     </div>
                 </div>
             `).join('');
         }
-        
+
+        // 加载接收到的转发任务
+        async function loadReceivedForwards() {
+            const loading = document.getElementById('forwardLoading');
+            const forwardList = document.getElementById('forwardList');
+
+            loading.style.display = 'block';
+            forwardList.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/forwards/received?page=1&page_size=50`, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0 && data.data) {
+                    const forwards = data.data.forwards || [];
+                    // 获取转发的任务详情
+                    await loadForwardedTasksDetails(forwards);
+                    renderReceivedForwards(forwards);
+                    document.getElementById('receivedForwards').textContent = forwards.length;
+                } else {
+                    forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无接收的转发任务</p>';
+                    document.getElementById('receivedForwards').textContent = '0';
+                }
+            } catch (error) {
+                showAlert('forwardAlert', '加载转发任务失败', 'error');
+                forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 加载转发任务的详情
+        async function loadForwardedTasksDetails(forwards) {
+            for (const forward of forwards) {
+                try {
+                    const response = await fetch(`${API_BASE}/tasks/${forward.forwarded_task_id}`, {
+                        headers: getHeaders()
+                    });
+                    const data = await response.json();
+                    if (data.code === 0 && data.data) {
+                        forward.task_details = data.data;
+                    }
+                } catch (error) {
+                    console.error('Failed to load task details:', error);
+                }
+            }
+        }
+
+        // 渲染接收到的转发任务
+        function renderReceivedForwards(forwards) {
+            const forwardList = document.getElementById('forwardList');
+
+            if (!forwards || forwards.length === 0) {
+                forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无接收的转发任务</p>';
+                return;
+            }
+
+            forwardList.innerHTML = forwards.map(forward => {
+                const task = forward.task_details || {};
+                return `
+                <div class="forward-item">
+                    <div class="forward-header">
+                        <div>
+                            <span style="color: #666;">${forward.forwarded_by?.nickname || forward.forwarded_by?.username || '未知用户'} 转发于 ${formatDate(forward.created_at)}</span>
+                        </div>
+                        ${!forward.is_expired ? '<span class="badge badge-completed">进行中</span>' : '<span class="badge badge-priority-high">已过期</span>'}
+                    </div>
+                    ${forward.message ? `<p style="margin-bottom: 10px; color: #666;">${forward.message}</p>` : ''}
+                    ${task.title ? `
+                    <div style="background: #f7fafc; padding: 12px; border-radius: 5px; border-left: 3px solid #667eea; margin: 10px 0;">
+                        <div class="task-title">
+                            ${task.completed ? '✅ ' : ''}${task.title}
+                            ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
+                        </div>
+                        ${task.description ? `<div style="margin-top: 5px; color: #666; font-size: 14px;">${task.description}</div>` : ''}
+                        <div class="task-meta" style="margin-top: 8px;">
+                            <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
+                            ${task.category ? `<span>分类: ${task.category}</span>` : ''}
+                        </div>
+                    </div>
+                    ` : '<p style="color: #999; font-style: italic;">任务详情加载失败</p>'}
+                    ${forward.deadline ? `<p style="color: #666; font-size: 12px; margin-top: 5px;">截止时间: ${formatDate(forward.deadline)}</p>` : ''}
+                    ${task.id ? `
+                    <div class="task-actions" style="margin-top: 10px;">
+                        <button onclick="toggleForwardedTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
+                            ${task.completed ? '取消完成' : '完成'}
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `}).join('');
+        }
+
+        // 切换转发任务的完成状态
+        async function toggleForwardedTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE}/tasks/${taskId}/toggle`, {
+                    method: 'PATCH',
+                    headers: getHeaders()
+                });
+
+                if (response.ok) {
+                    loadReceivedForwards();
+                } else {
+                    showAlert('forwardAlert', '操作失败', 'error');
+                }
+            } catch (error) {
+                showAlert('forwardAlert', '网络错误', 'error');
+            }
+        }
+
         // 获取优先级样式类
         function getPriorityClass(priority) {
             switch(priority) {
@@ -579,7 +940,7 @@
                 default: return 'low';
             }
         }
-        
+
         // 获取优先级文本
         function getPriorityText(priority) {
             switch(priority) {
@@ -589,25 +950,25 @@
                 default: return '低优先级';
             }
         }
-        
+
         // 格式化日期
         function formatDate(dateStr) {
             if (!dateStr) return '';
             const date = new Date(dateStr);
             return date.toLocaleString('zh-CN');
         }
-        
+
         // 更新统计信息
         function updateStats(tasks) {
             const total = tasks.length;
             const completed = tasks.filter(t => t.completed).length;
             const pending = total - completed;
-            
+
             document.getElementById('totalTasks').textContent = total;
             document.getElementById('completedTasks').textContent = completed;
             document.getElementById('pendingTasks').textContent = pending;
         }
-        
+
         // 打开任务模态框
         document.getElementById('addTaskBtn').addEventListener('click', () => {
             editingTaskId = null;
@@ -615,36 +976,38 @@
             document.getElementById('taskForm').reset();
             document.getElementById('taskModal').style.display = 'block';
         });
-        
+
         // 关闭模态框
-        document.querySelector('.close').addEventListener('click', () => {
-            document.getElementById('taskModal').style.display = 'none';
+        document.querySelectorAll('.close').forEach(close => {
+            close.addEventListener('click', (e) => {
+                e.target.closest('.modal').style.display = 'none';
+            });
         });
-        
+
         // 保存任务
         document.getElementById('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const taskData = {
                 title: document.getElementById('taskTitle').value,
                 description: document.getElementById('taskDescription').value,
                 priority: parseInt(document.getElementById('taskPriority').value),
                 category: document.getElementById('taskCategory').value
             };
-            
+
             try {
-                const url = editingTaskId 
+                const url = editingTaskId
                     ? `${API_BASE}/tasks/${editingTaskId}`
                     : `${API_BASE}/tasks`;
-                
+
                 const response = await fetch(url, {
                     method: editingTaskId ? 'PUT' : 'POST',
                     headers: getHeaders(),
                     body: JSON.stringify(taskData)
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0) {
                     showAlert('taskModalAlert', editingTaskId ? '更新成功' : '创建成功', 'success');
                     document.getElementById('taskModal').style.display = 'none';
@@ -656,16 +1019,16 @@
                 showAlert('taskModalAlert', '网络错误，请重试', 'error');
             }
         });
-        
+
         // 编辑任务
         async function editTask(taskId) {
             try {
                 const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
                     headers: getHeaders()
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.code === 0 && data.data) {
                     const task = data.data;
                     editingTaskId = task.id;
@@ -682,7 +1045,7 @@
                 showAlert('taskAlert', '网络错误', 'error');
             }
         }
-        
+
         // 切换任务完成状态
         async function toggleTask(taskId) {
             try {
@@ -690,7 +1053,7 @@
                     method: 'PATCH',
                     headers: getHeaders()
                 });
-                
+
                 if (response.ok) {
                     loadTasks();
                 } else {
@@ -700,17 +1063,17 @@
                 showAlert('taskAlert', '网络错误', 'error');
             }
         }
-        
+
         // 删除任务
         async function deleteTask(taskId) {
             if (!confirm('确定要删除这个任务吗？')) return;
-            
+
             try {
                 const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
                     method: 'DELETE',
                     headers: getHeaders()
                 });
-                
+
                 if (response.ok) {
                     showAlert('taskAlert', '删除成功', 'success');
                     loadTasks();
@@ -721,7 +1084,498 @@
                 showAlert('taskAlert', '网络错误', 'error');
             }
         }
-        
+
+        // 搜索用户
+        document.getElementById('searchUserInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const keyword = e.target.value.trim();
+
+            if (keyword.length < 2) {
+                document.getElementById('userSearchResults').innerHTML = '';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => searchUsers(keyword), 300);
+        });
+
+        async function searchUsers(keyword) {
+            try {
+                const response = await fetch(`${API_BASE}/user/search?keyword=${encodeURIComponent(keyword)}&limit=10`, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0 && data.data) {
+                    renderUserSearchResults(data.data.users || []);
+                }
+            } catch (error) {
+                console.error('搜索用户失败:', error);
+            }
+        }
+
+        function renderUserSearchResults(users) {
+            const container = document.getElementById('userSearchResults');
+
+            if (!users || users.length === 0) {
+                container.innerHTML = '<p style="padding: 10px; color: #999; text-align: center;">未找到用户</p>';
+                return;
+            }
+
+            container.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div>
+                        <strong>${user.nickname || user.username}</strong>
+                        <span style="color: #666; margin-left: 10px;">${user.email}</span>
+                    </div>
+                    <input type="checkbox" value="${user.id}" data-name="${user.nickname || user.username}"
+                        ${selectedUsers.some(u => u.id === user.id) ? 'checked' : ''}>
+                </div>
+            `).join('');
+
+            // 添加 checkbox 变化监听
+            container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    updateSelectedUsers();
+                });
+            });
+        }
+
+        function updateSelectedUsers() {
+            selectedUsers = [];
+            const checkboxes = document.querySelectorAll('#userSearchResults input[type="checkbox"]:checked');
+            checkboxes.forEach(checkbox => {
+                selectedUsers.push({
+                    id: parseInt(checkbox.value),
+                    name: checkbox.dataset.name
+                });
+            });
+
+            renderSelectedUsers();
+        }
+
+        function renderSelectedUsers() {
+            const container = document.getElementById('selectedUsers');
+            if (selectedUsers.length === 0) {
+                container.innerHTML = '<span style="color: #999;">尚未选择用户</span>';
+            } else {
+                container.innerHTML = selectedUsers.map(u => `<span class="badge badge-priority-medium">${u.name}</span>`).join(' ');
+            }
+        }
+
+        // 打开转发模态框
+        function openForwardModal(taskId) {
+            forwardingTaskId = taskId;
+            selectedUsers = [];
+            document.getElementById('forwardForm').reset();
+            document.getElementById('userSearchResults').innerHTML = '';
+            renderSelectedUsers();
+            document.getElementById('forwardModal').style.display = 'block';
+        }
+
+        // 提交转发
+        document.getElementById('forwardForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (selectedUsers.length === 0) {
+                showAlert('forwardModalAlert', '请至少选择一个用户', 'error');
+                return;
+            }
+
+            const forwardData = {
+                target_user_ids: selectedUsers.map(u => u.id),
+                message: document.getElementById('forwardMessage').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/tasks/${forwardingTaskId}/forward`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify(forwardData)
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0) {
+                    showAlert('forwardModalAlert', `成功转发给 ${data.data.total} 个用户`, 'success');
+                    document.getElementById('forwardModal').style.display = 'none';
+                    loadTasks();
+                } else {
+                    showAlert('forwardModalAlert', data.message || '转发失败', 'error');
+                }
+            } catch (error) {
+                showAlert('forwardModalAlert', '网络错误，请重试', 'error');
+            }
+        });
+
+        // 查看转发记录
+        async function viewForwardRecords(taskId) {
+            const loading = document.getElementById('forwardRecordsLoading');
+            const list = document.getElementById('forwardRecordsList');
+
+            loading.style.display = 'block';
+            list.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/tasks/${taskId}/forwards`, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0 && data.data) {
+                    const forwards = data.data.forwards || [];
+                    renderForwardRecords(forwards);
+                    document.getElementById('forwardRecordsModal').style.display = 'block';
+                } else {
+                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无转发记录</p>';
+                }
+            } catch (error) {
+                showAlert('forwardRecordsAlert', '加载转发记录失败', 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function renderForwardRecords(forwards) {
+            const list = document.getElementById('forwardRecordsList');
+
+            if (!forwards || forwards.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无转发记录</p>';
+                return;
+            }
+
+            list.innerHTML = forwards.map(forward => `
+                <div class="forward-item">
+                    <div class="forward-header">
+                        <div>
+                            <strong>${forward.forwarded_to?.username || '未知用户'}</strong>
+                            <span style="color: #666; margin-left: 10px;">${formatDate(forward.created_at)}</span>
+                        </div>
+                        ${forward.is_active
+                            ? '<span class="badge badge-completed">有效</span>'
+                            : '<span class="badge badge-priority-high">已撤回</span>'}
+                    </div>
+                    ${forward.message ? `<p style="margin-bottom: 10px; color: #666;">${forward.message}</p>` : ''}
+                    ${forward.deadline ? `<p style="color: #666;">截止时间: ${formatDate(forward.deadline)}</p>` : ''}
+                    ${forward.is_active ? `
+                        <button onclick="revokeForward(${forward.id})" class="btn btn-sm btn-danger" style="margin-top: 10px;">撤回转发</button>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        // 撤回转发
+        async function revokeForward(forwardId) {
+            if (!confirm('确定要撤回这个转发吗？')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/forwards/${forwardId}/revoke`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ reason: '用户撤回' })
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0) {
+                    showAlert('forwardRecordsAlert', '撤回成功', 'success');
+                    document.getElementById('forwardRecordsModal').style.display = 'none';
+                    loadTasks();
+                } else {
+                    showAlert('forwardRecordsAlert', data.message || '撤回失败', 'error');
+                }
+            } catch (error) {
+                showAlert('forwardRecordsAlert', '网络错误', 'error');
+            }
+        }
+
+        // 加载用户列表
+        let usersCurrentPage = 1;
+        let usersPageSize = 20;
+        let usersTotal = 0;
+        let usersKeyword = '';
+
+        async function loadUsers(page = 1) {
+            const loading = document.getElementById('usersLoading');
+            const list = document.getElementById('usersList');
+
+            loading.style.display = 'block';
+            list.innerHTML = '';
+
+            usersCurrentPage = page;
+
+            try {
+                let url;
+                if (usersKeyword) {
+                    // 搜索模式
+                    url = `${API_BASE}/user/search?keyword=${encodeURIComponent(usersKeyword)}&limit=${usersPageSize}`;
+                } else {
+                    // 列表模式
+                    url = `${API_BASE}/users?page=${page}&page_size=${usersPageSize}`;
+                }
+
+                const response = await fetch(url, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0 && data.data) {
+                    const users = data.data.users || [];
+                    usersTotal = data.data.total || 0;
+                    renderUsers(users);
+                    renderUsersPagination();
+                } else {
+                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无用户</p>';
+                    document.getElementById('usersPagination').innerHTML = '';
+                }
+            } catch (error) {
+                showAlert('usersAlert', '加载用户列表失败', 'error');
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function renderUsers(users) {
+            const list = document.getElementById('usersList');
+
+            if (!users || users.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无用户</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 12px; text-align: left;">ID</th>
+                            <th style="padding: 12px; text-align: left;">用户名</th>
+                            <th style="padding: 12px; text-align: left;">昵称</th>
+                            <th style="padding: 12px; text-align: left;">邮箱</th>
+                            <th style="padding: 12px; text-align: left;">状态</th>
+                            <th style="padding: 12px; text-align: left;">注册时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => `
+                            <tr style="border-bottom: 1px solid #e2e8f0; ${user.id === currentUser?.id ? 'background: #f0f9ff;' : ''}">
+                                <td style="padding: 12px;">${user.id}</td>
+                                <td style="padding: 12px; font-weight: 500;">${user.username}</td>
+                                <td style="padding: 12px;">${user.nickname || '-'}</td>
+                                <td style="padding: 12px; color: #666;">${user.email}</td>
+                                <td style="padding: 12px;">
+                                    ${user.is_active
+                                        ? '<span class="badge badge-completed">活跃</span>'
+                                        : '<span class="badge badge-priority-high">禁用</span>'}
+                                </td>
+                                <td style="padding: 12px; color: #666; font-size: 12px;">${formatDate(user.created_at)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderUsersPagination() {
+            const container = document.getElementById('usersPagination');
+
+            if (!usersKeyword) {
+                // 只在非搜索模式下显示分页
+                const totalPages = Math.ceil(usersTotal / usersPageSize);
+                if (totalPages <= 1) {
+                    container.innerHTML = '';
+                    return;
+                }
+
+                let html = '<div style="display: flex; gap: 5px; justify-content: center;">';
+                for (let i = 1; i <= totalPages; i++) {
+                    html += `<button onclick="loadUsers(${i})" class="btn ${i === usersCurrentPage ? 'btn-primary' : 'btn-secondary'} btn-sm">${i}</button>`;
+                }
+                html += '</div>';
+                html += `<p style="margin-top: 10px; color: #666; font-size: 12px;">共 ${usersTotal} 个用户</p>`;
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `<p style="color: #666; font-size: 12px;">找到 ${usersTotal} 个结果</p>`;
+            }
+        }
+
+        // 用户搜索
+        document.getElementById('usersSearchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            usersKeyword = e.target.value.trim();
+
+            if (usersKeyword.length === 0) {
+                searchTimeout = setTimeout(() => {
+                    usersKeyword = '';
+                    loadUsers(1);
+                }, 300);
+            } else if (usersKeyword.length >= 2) {
+                searchTimeout = setTimeout(() => loadUsers(1), 300);
+            }
+        });
+
+        // 加载管理员所有任务
+        let adminCurrentPage = 1;
+        let adminPageSize = 20;
+        let adminTotal = 0;
+        let adminKeyword = '';
+        let adminFilterUser = '';
+        let adminFilterStatus = '';
+
+        async function loadAdminTasks(page = 1) {
+            const loading = document.getElementById('adminLoading');
+            const list = document.getElementById('adminTaskList');
+
+            loading.style.display = 'block';
+            list.innerHTML = '';
+
+            adminCurrentPage = page;
+            adminKeyword = document.getElementById('adminSearchInput').value.trim();
+            adminFilterUser = document.getElementById('adminFilterUser').value;
+            adminFilterStatus = document.getElementById('adminFilterStatus').value;
+
+            try {
+                let url = `${API_BASE}/admin/tasks?page=${page}&page_size=${adminPageSize}`;
+                if (adminKeyword) {
+                    url += `&keyword=${encodeURIComponent(adminKeyword)}`;
+                }
+                if (adminFilterUser) {
+                    url += `&user_id=${adminFilterUser}`;
+                }
+                if (adminFilterStatus !== '') {
+                    url += `&completed=${adminFilterStatus}`;
+                }
+
+                const response = await fetch(url, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (data.code === 0 && data.data) {
+                    const tasks = data.data.tasks || [];
+                    adminTotal = data.data.total || 0;
+                    renderAdminTasks(tasks);
+                    renderAdminPagination();
+                } else if (response.status === 403) {
+                    list.innerHTML = '<p style="text-align: center; color: #f56565; padding: 20px;">无权访问管理员面板</p>';
+                } else {
+                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
+                }
+            } catch (error) {
+                showAlert('adminAlert', '加载任务失败', 'error');
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function renderAdminTasks(tasks) {
+            const list = document.getElementById('adminTaskList');
+
+            if (!tasks || tasks.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无任务</p>';
+                return;
+            }
+
+            list.innerHTML = tasks.map(task => {
+                const user = task.user || {};
+                const taskOwner = user.nickname || user.username || `用户${task.user_id}`;
+                return `
+                <div class="task-item">
+                    <div class="task-info">
+                        <div class="task-title">
+                            ${task.completed ? '✅ ' : ''}${task.title}
+                            ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
+                            ${task.is_forwarded ? '<span class="badge badge-forwarded">转发任务</span>' : ''}
+                        </div>
+                        <div class="task-meta">
+                            <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
+                            <span style="margin-left: 10px;">创建者: ${taskOwner}</span>
+                            ${task.category ? `<span style="margin-left: 10px;">分类: ${task.category}</span>` : ''}
+                            ${task.created_at ? `<span style="margin-left: 10px;">创建时间: ${formatDate(task.created_at)}</span>` : ''}
+                        </div>
+                        ${task.description ? `<div style="margin-top: 5px; color: #666; font-size: 14px;">${task.description}</div>` : ''}
+                    </div>
+                    <div class="task-actions">
+                        <button onclick="toggleAdminTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
+                            ${task.completed ? '取消完成' : '完成'}
+                        </button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function renderAdminPagination() {
+            const container = document.getElementById('adminPagination');
+            const totalPages = Math.ceil(adminTotal / adminPageSize);
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '<div style="display: flex; gap: 5px; justify-content: center;">';
+            for (let i = 1; i <= totalPages; i++) {
+                html += `<button onclick="loadAdminTasks(${i})" class="btn ${i === adminCurrentPage ? 'btn-primary' : 'btn-secondary'} btn-sm">${i}</button>`;
+            }
+            html += '</div>';
+            html += `<p style="margin-top: 10px; color: #666; font-size: 12px;">共 ${adminTotal} 个任务</p>`;
+            container.innerHTML = html;
+        }
+
+        async function toggleAdminTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE}/tasks/${taskId}/toggle`, {
+                    method: 'PATCH',
+                    headers: getHeaders()
+                });
+
+                if (response.ok) {
+                    loadAdminTasks(adminCurrentPage);
+                } else {
+                    showAlert('adminAlert', '操作失败', 'error');
+                }
+            } catch (error) {
+                showAlert('adminAlert', '网络错误', 'error');
+            }
+        }
+
+        // 管理员搜索和过滤
+        document.getElementById('adminSearchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            if (e.target.value.trim().length === 0) {
+                searchTimeout = setTimeout(() => loadAdminTasks(1), 300);
+            } else if (e.target.value.trim().length >= 2) {
+                searchTimeout = setTimeout(() => loadAdminTasks(1), 300);
+            }
+        });
+
+        document.getElementById('adminFilterUser').addEventListener('change', () => loadAdminTasks(1));
+        document.getElementById('adminFilterStatus').addEventListener('change', () => loadAdminTasks(1));
+
+        // 加载所有用户列表（用于管理员过滤）
+        async function loadAllUsersForFilter() {
+            try {
+                const response = await fetch(`${API_BASE}/users?page=1&page_size=100`, {
+                    headers: getHeaders()
+                });
+                const data = await response.json();
+                if (data.code === 0 && data.data) {
+                    const users = data.data.users || [];
+                    const select = document.getElementById('adminFilterUser');
+                    select.innerHTML = '<option value="">所有用户</option>';
+                    users.forEach(user => {
+                        const name = user.nickname || user.username;
+                        select.innerHTML += `<option value="${user.id}">${name} (${user.username})</option>`;
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load users for filter:', error);
+            }
+        }
+
         // 初始化
         checkAuth();
     </script>

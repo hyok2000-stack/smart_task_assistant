@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
+import '../models/habit.dart';
+import '../models/habit_log.dart';
 
 /// 数据库帮助类
 class DatabaseHelper {
@@ -57,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 5, // 更新版本号为 5（添加性能优化索引）
+      version: 8, // 更新版本号为 8（添加自定义语音文件功能）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -85,7 +87,12 @@ class DatabaseHelper {
         tag_ids TEXT,
         attachment_paths TEXT,
         reminder_minutes INTEGER,
-        reminder_dismissed INTEGER DEFAULT 0
+        reminder_dismissed INTEGER DEFAULT 0,
+        reminder_voice_enabled INTEGER DEFAULT 0,
+        reminder_voice_type TEXT DEFAULT 'neutral',
+        reminder_voice_style TEXT DEFAULT 'standard',
+        reminder_voice_speed TEXT DEFAULT 'normal',
+        reminder_custom_voice_path TEXT
       )
     ''');
 
@@ -148,6 +155,78 @@ class DatabaseHelper {
 
     // 插入默认标签
     await _insertDefaultTags(db);
+
+    // 创建习惯表
+    await db.execute('''
+      CREATE TABLE habits (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        target_count INTEGER NOT NULL DEFAULT 1,
+        unit TEXT NOT NULL DEFAULT '次',
+        trigger_type TEXT NOT NULL DEFAULT 'interval',
+        interval_minutes INTEGER,
+        fixed_time TEXT,
+        schedule_type TEXT NOT NULL DEFAULT 'weekdays',
+        icon_code INTEGER NOT NULL,
+        sound_enabled INTEGER NOT NULL DEFAULT 1,
+        vibration_enabled INTEGER NOT NULL DEFAULT 1,
+        voice_enabled INTEGER NOT NULL DEFAULT 1,
+        voice_text TEXT,
+        voice_type TEXT DEFAULT 'neutral',
+        voice_style TEXT DEFAULT 'standard',
+        voice_speed TEXT DEFAULT 'normal',
+        custom_voice_path TEXT,
+        reference_time TEXT,
+        advance_minutes INTEGER,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    // 创建习惯日志表
+    await db.execute('''
+      CREATE TABLE habit_logs (
+        id TEXT PRIMARY KEY,
+        habit_id TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 1,
+        status INTEGER NOT NULL DEFAULT 0,
+        completed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (habit_id) REFERENCES habits (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 创建习惯相关索引
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habits_is_enabled ON habits(is_enabled)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habits_sort_order ON habits(sort_order)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_id ON habit_logs(habit_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_logs_completed_at ON habit_logs(completed_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_date ON habit_logs(habit_id, completed_at)');
+
+    // 插入默认习惯
+    await _insertDefaultHabits(db);
+  }
+
+  /// 插入默认习惯
+  Future<void> _insertDefaultHabits(Database db) async {
+    final defaultHabits = PresetHabits.defaultHabits;
+
+    for (var habit in defaultHabits) {
+      try {
+        await db.insert('habits', habit.toJson(),
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+        debugPrint('默认习惯已插入: ${habit.title}');
+      } catch (e) {
+        debugPrint('插入默认习惯失败: ${habit.title}, 错误: $e');
+      }
+    }
   }
 
   /// 插入默认标签
@@ -246,6 +325,130 @@ class DatabaseHelper {
       } catch (e) {
         debugPrint('创建数据库索引失败: $e');
       }
+    }
+
+    // 版本5 -> 版本6: 添加习惯管理相关表
+    if (oldVersion < 6) {
+      // 创建习惯表
+      await db.execute('''
+        CREATE TABLE habits (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          target_count INTEGER NOT NULL DEFAULT 1,
+          unit TEXT NOT NULL DEFAULT '次',
+          trigger_type TEXT NOT NULL DEFAULT 'interval',
+          interval_minutes INTEGER,
+          fixed_time TEXT,
+          schedule_type TEXT NOT NULL DEFAULT 'weekdays',
+          icon_code INTEGER NOT NULL,
+          sound_enabled INTEGER NOT NULL DEFAULT 1,
+          vibration_enabled INTEGER NOT NULL DEFAULT 1,
+          voice_enabled INTEGER NOT NULL DEFAULT 1,
+          voice_text TEXT,
+          voice_speed TEXT DEFAULT 'normal',
+          reference_time TEXT,
+          advance_minutes INTEGER,
+          is_enabled INTEGER NOT NULL DEFAULT 1,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+
+      // 创建习惯日志表
+      await db.execute('''
+        CREATE TABLE habit_logs (
+          id TEXT PRIMARY KEY,
+          habit_id TEXT NOT NULL,
+          count INTEGER NOT NULL DEFAULT 1,
+          status INTEGER NOT NULL DEFAULT 0,
+          completed_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (habit_id) REFERENCES habits (id) ON DELETE CASCADE
+        )
+      ''');
+
+      // 创建习惯相关索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habits_is_enabled ON habits(is_enabled)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habits_sort_order ON habits(sort_order)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_id ON habit_logs(habit_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habit_logs_completed_at ON habit_logs(completed_at)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_date ON habit_logs(habit_id, completed_at)');
+
+      debugPrint('习惯管理表创建成功');
+
+      // 插入默认习惯
+      await _insertDefaultHabits(db);
+    }
+
+    // 版本6 -> 版本7: 添加任务语音提醒字段
+    if (oldVersion < 7) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN reminder_voice_enabled INTEGER DEFAULT 0');
+      } catch (e) {
+        debugPrint('列 reminder_voice_enabled 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN reminder_voice_type TEXT DEFAULT \'neutral\'');
+      } catch (e) {
+        debugPrint('列 reminder_voice_type 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN reminder_voice_style TEXT DEFAULT \'standard\'');
+      } catch (e) {
+        debugPrint('列 reminder_voice_style 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN reminder_voice_speed TEXT DEFAULT \'normal\'');
+      } catch (e) {
+        debugPrint('列 reminder_voice_speed 已存在: $e');
+      }
+
+      // 习惯表添加语音类型和风格字段
+      try {
+        await db.execute(
+            'ALTER TABLE habits ADD COLUMN voice_type TEXT DEFAULT \'neutral\'');
+      } catch (e) {
+        debugPrint('列 voice_type 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE habits ADD COLUMN voice_style TEXT DEFAULT \'standard\'');
+      } catch (e) {
+        debugPrint('列 voice_style 已存在: $e');
+      }
+
+      debugPrint('任务语音提醒字段添加成功');
+    }
+
+    // 版本7 -> 版本8: 添加自定义语音文件路径字段
+    if (oldVersion < 8) {
+      // 任务表添加自定义语音路径
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN reminder_custom_voice_path TEXT');
+      } catch (e) {
+        debugPrint('列 reminder_custom_voice_path 已存在: $e');
+      }
+
+      // 习惯表添加自定义语音路径
+      try {
+        await db.execute(
+            'ALTER TABLE habits ADD COLUMN custom_voice_path TEXT');
+      } catch (e) {
+        debugPrint('列 custom_voice_path 已存在: $e');
+      }
+
+      debugPrint('自定义语音路径字段添加成功');
     }
   }
 
@@ -559,5 +762,145 @@ class DatabaseHelper {
       debugPrint('检查数据库存在性失败: $e');
       return false;
     }
+  }
+
+  // ==================== 习惯相关操作 ====================
+
+  /// 插入习惯
+  Future<void> insertHabit(Habit habit) async {
+    final db = await database;
+    await db.insert(
+      'habits',
+      habit.toJson(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    debugPrint('习惯已插入: ${habit.title}');
+  }
+
+  /// 获取所有习惯
+  Future<List<Habit>> getAllHabits() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habits',
+      orderBy: 'sort_order ASC',
+    );
+    return List.generate(maps.length, (i) => Habit.fromJson(maps[i]));
+  }
+
+  /// 获取启用的习惯
+  Future<List<Habit>> getActiveHabits() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habits',
+      where: 'is_enabled = ?',
+      whereArgs: [1],
+      orderBy: 'sort_order ASC',
+    );
+    return List.generate(maps.length, (i) => Habit.fromJson(maps[i]));
+  }
+
+  /// 更新习惯
+  Future<void> updateHabit(Habit habit) async {
+    final db = await database;
+    await db.update(
+      'habits',
+      habit.toJson(),
+      where: 'id = ?',
+      whereArgs: [habit.id],
+    );
+  }
+
+  /// 删除习惯
+  Future<void> deleteHabit(String id) async {
+    final db = await database;
+    await db.delete(
+      'habits',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// ==================== 习惯日志相关操作 ====================
+
+  /// 插入习惯日志
+  Future<void> insertHabitLog(HabitLog log) async {
+    final db = await database;
+    await db.insert(
+      'habit_logs',
+      log.toJson(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 获取习惯的所有日志
+  Future<List<HabitLog>> getHabitLogs(String habitId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habit_logs',
+      where: 'habit_id = ?',
+      whereArgs: [habitId],
+      orderBy: 'completed_at DESC',
+    );
+    return List.generate(maps.length, (i) => HabitLog.fromJson(maps[i]));
+  }
+
+  /// 获取所有日志（按日期分组）
+  Future<Map<String, List<HabitLog>>> getAllLogsByDate() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habit_logs',
+      orderBy: 'completed_at DESC',
+    );
+
+    final Map<String, List<HabitLog>> logsByDate = {};
+    for (var map in maps) {
+      final log = HabitLog.fromJson(map);
+      final date = DateTime(log.completedAt.year, log.completedAt.month, log.completedAt.day);
+      final dateKey = date.toIso8601String();
+      logsByDate.putIfAbsent(dateKey, () => []).add(log);
+    }
+    return logsByDate;
+  }
+
+  /// 获取今日的日志
+  Future<List<HabitLog>> getTodayLogs() async {
+    final db = await database;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      'habit_logs',
+      where: 'completed_at >= ? AND completed_at < ?',
+      whereArgs: [todayStart.toIso8601String(), todayEnd.toIso8601String()],
+      orderBy: 'completed_at DESC',
+    );
+    return List.generate(maps.length, (i) => HabitLog.fromJson(maps[i]));
+  }
+
+  /// 获取习惯今日完成数量
+  Future<int> getHabitTodayCount(String habitId) async {
+    final db = await database;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    final result = Sqflite.firstIntValue(
+      await db.rawQuery(
+        'SELECT SUM(count) FROM habit_logs WHERE habit_id = ? AND completed_at >= ? AND completed_at < ? AND status = 0',
+        [habitId, todayStart.toIso8601String(), todayEnd.toIso8601String()],
+      ),
+    );
+    return result ?? 0;
+  }
+
+  /// 删除习惯的所有日志
+  Future<void> deleteHabitLogs(String habitId) async {
+    final db = await database;
+    await db.delete(
+      'habit_logs',
+      where: 'habit_id = ?',
+      whereArgs: [habitId],
+    );
   }
 }

@@ -240,3 +240,39 @@ func (s *TaskService) ToggleComplete(id uint, userID uint) (*model.Task, error) 
 
 	return task, nil
 }
+
+// GetAllTasks 管理员获取所有任务
+func (s *TaskService) GetAllTasks(page, pageSize int) (*model.TaskListResponse, error) {
+	offset := (page - 1) * pageSize
+
+	tasks, total, err := s.taskRepo.FindAll(offset, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	taskResponses := make([]model.TaskResponse, 0, len(tasks))
+	for _, task := range tasks {
+		taskResponses = append(taskResponses, model.TaskResponse{
+			Task: task,
+			Tags: task.Tags,
+		})
+	}
+
+	totalPages := int(total) / pageSize
+	if int(total)%pageSize > 0 {
+		totalPages++
+	}
+
+	return &model.TaskListResponse{
+		Tasks:      taskResponses,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// GetAllStats 管理员获取所有任务统计
+func (s *TaskService) GetAllStats() (*model.TaskStats, error) {
+	return s.taskRepo.GetAllStats()
+}

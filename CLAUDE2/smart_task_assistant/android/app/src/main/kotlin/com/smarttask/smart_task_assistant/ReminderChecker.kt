@@ -31,6 +31,10 @@ class ReminderChecker(private val context: Context) {
     private val sp: SharedPreferences =
         context.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
 
+    // Flutter SharedPreferences uses "FlutterSharedPreferences" file with "flutter." prefix
+    private val flutterPrefs: SharedPreferences? =
+        try { context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE) } catch (_: Exception) { null }
+
     // --- Data classes ---
 
     data class TaskRow(
@@ -47,7 +51,9 @@ class ReminderChecker(private val context: Context) {
         val voiceStyle: String?,
         val voiceSpeed: String?,
         val customVoicePath: String?,
-        val assignee: String?
+        val assignee: String?,
+        val soundEnabled: Boolean,
+        val vibrationEnabled: Boolean
     )
 
     data class HabitRow(
@@ -117,6 +123,10 @@ class ReminderChecker(private val context: Context) {
 
     fun queryActiveTasks(db: SQLiteDatabase): List<TaskRow> {
         val tasks = mutableListOf<TaskRow>()
+        // Read global sound/vibration settings from Flutter SharedPreferences
+        val soundEnabled = flutterPrefs?.getBoolean("flutter.reminderSoundEnabled", true) ?: true
+        val vibrationEnabled = flutterPrefs?.getBoolean("flutter.reminderVibrationEnabled", true) ?: true
+        Log.d(TAG, "Global reminder settings: sound=$soundEnabled, vibration=$vibrationEnabled")
         val cursor = db.rawQuery(
             """SELECT id, title, content, status, priority, due_time, reminder_minutes,
                reminder_dismissed, reminder_voice_enabled, reminder_voice_type,
@@ -145,7 +155,9 @@ class ReminderChecker(private val context: Context) {
                         voiceStyle = it.getString(10),
                         voiceSpeed = it.getString(11),
                         customVoicePath = it.getString(12),
-                        assignee = it.getString(13)
+                        assignee = it.getString(13),
+                        soundEnabled = soundEnabled,
+                        vibrationEnabled = vibrationEnabled
                     )
                 )
             }
@@ -548,8 +560,8 @@ class ReminderChecker(private val context: Context) {
                             voiceStyle = task.voiceStyle,
                             voiceSpeed = task.voiceSpeed,
                             customVoicePath = task.customVoicePath,
-                            soundEnabled = true,
-                            vibrationEnabled = true
+                            soundEnabled = task.soundEnabled,
+                            vibrationEnabled = task.vibrationEnabled
                         )
                     )
                 }

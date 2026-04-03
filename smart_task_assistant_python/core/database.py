@@ -687,20 +687,37 @@ class DatabaseManager:
     def backup_database(self, backup_path: str) -> bool:
         try:
             import shutil
+            import os
+            
+            backup_dir = os.path.dirname(backup_path)
+            if backup_dir and not os.path.exists(backup_dir):
+                os.makedirs(backup_dir)
+            
             shutil.copy2(self.db_path, backup_path)
+            print(f"数据库备份成功: {self.db_path} -> {backup_path}")
             return True
-        except:
+        except Exception as e:
+            print(f"备份数据库失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def restore_database(self, backup_path: str) -> bool:
         try:
             import shutil
-            if self.conn:
-                self.conn.close()
-                self.conn = None
+            import os
+            
+            if not os.path.exists(backup_path):
+                print(f"备份文件不存在: {backup_path}")
+                return False
+            
             shutil.copy2(backup_path, self.db_path)
+            print(f"数据库恢复成功: {backup_path} -> {self.db_path}")
             return True
-        except:
+        except Exception as e:
+            print(f"恢复数据库失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def get_task_stats(self) -> Dict[str, int]:

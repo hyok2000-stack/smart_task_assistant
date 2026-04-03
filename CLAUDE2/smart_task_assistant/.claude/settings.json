@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/tasks -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozfQ.Jdvnosrd_jIwG9gpYqvHHasCCh4aO4CFitbs01njp0g\" -d '{\"\"title\"\":\"\"测试转发任务\"\",\"\"priority\"\":1}')",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/tasks/1/forward -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozfQ.Jdvnosrd_jIwG9gpYqvHHasCCh4aO4CFitbs01njp0g\" -d '{\"\"target_user_ids\"\":[4],\"\"message\"\":\"\"Please help me\"\"}')",
+      "Bash(curl -s -X GET \"http://localhost:8080/api/v1/forwards/received?page=1&page_size=10\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0fQ.8l0YrP-NXo5YtmDxbQRMrIeuKR1bpetV3gL8lQkfgDc\")",
+      "Bash(curl -s -X GET \"http://localhost:8080/api/v1/tasks\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0fQ.8l0YrP-NXo5YtmDxbQRMrIeuKR1bpetV3gL8lQkfgDc\")",
+      "Bash(curl -s -X PATCH http://localhost:8080/api/v1/tasks/2/toggle -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0fQ.8l0YrP-NXo5YtmDxbQRMrIeuKR1bpetV3gL8lQkfgDc\")",
+      "Bash(curl -s -X GET \"http://localhost:8080/api/v1/tasks\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozfQ.Jdvnosrd_jIwG9gpYqvHHasCCh4aO4CFitbs01njp0g\")",
+      "Bash(curl -s -X GET \"http://localhost:8080/api/v1/user/search?keyword=testuser&limit=10\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozfQ.Jdvnosrd_jIwG9gpYqvHHasCCh4aO4CFitbs01njp0g\")",
+      "Bash(curl -s -X GET http://localhost:8080/api/v1/tasks/1/forwards -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozfQ.Jdvnosrd_jIwG9gpYqvHHasCCh4aO4CFitbs01njp0g\")"
+    ]
+  }
+}

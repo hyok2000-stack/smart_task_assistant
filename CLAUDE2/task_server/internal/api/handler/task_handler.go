@@ -267,3 +267,66 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, stats)
 }
+
+// GetAllTasks 管理员获取所有任务
+// @Summary 管理员获取所有任务
+// @Description 获取所有用户的任务列表（仅管理员）
+// @Tags task
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(10)
+// @Success 200 {object} model.TaskListResponse
+// @Failure 400 {object} map[string]string
+// @Router /api/v1/tasks/all [get]
+func (h *TaskHandler) GetAllTasks(c *gin.Context) {
+	userRole, exists := c.Get("user_role")
+	if !exists || userRole != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		return
+	}
+
+	var req struct {
+		Page     int `form:"page,default=1"`
+		PageSize int `form:"page_size,default=10"`
+	}
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := h.taskService.GetAllTasks(req.Page, req.PageSize)
+	if err != nil {
+		logger.Error("Failed to get all tasks", zap.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get all tasks"})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetAllStats 管理员获取所有任务统计
+// @Summary 管理员获取所有任务统计
+// @Description 获取所有用户的任务统计信息（仅管理员）
+// @Tags task
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} model.TaskStats
+// @Failure 400 {object} map[string]string
+// @Router /api/v1/tasks/all/stats [get]
+func (h *TaskHandler) GetAllStats(c *gin.Context) {
+	userRole, exists := c.Get("user_role")
+	if !exists || userRole != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		return
+	}
+
+	stats, err := h.taskService.GetAllStats()
+	if err != nil {
+		logger.Error("Failed to get all task stats", zap.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get all task stats"})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}

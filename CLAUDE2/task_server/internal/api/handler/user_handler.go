@@ -216,3 +216,34 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": response})
 }
+
+// ListUsers 获取用户列表
+// @Summary 获取用户列表
+// @Description 获取分页的用户列表
+// @Tags user
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(20)
+// @Success 200 {object} model.SearchUsersResponse
+// @Failure 400 {object} map[string]string
+// @Router /api/v1/users [get]
+func (h *UserHandler) ListUsers(c *gin.Context) {
+	var req struct {
+		Page     int `form:"page,default=1"`
+		PageSize int `form:"page_size,default=20"`
+	}
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 1, "message": err.Error()})
+		return
+	}
+
+	response, err := h.userService.ListUsers(req.Page, req.PageSize)
+	if err != nil {
+		logger.Error("Failed to list users", zap.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "failed to list users"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": response})
+}

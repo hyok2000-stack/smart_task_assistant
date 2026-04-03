@@ -27,6 +27,43 @@ class QuickCreateDialog(QDialog):
         self._init_ui()
     
     def _init_ui(self):
+        self.setStyleSheet('''
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: #333;
+            }
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+            }
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QComboBox:focus {
+                border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
+            }
+        ''')
+        
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
         

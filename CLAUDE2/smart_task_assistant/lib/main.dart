@@ -1,11 +1,17 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel, EventChannel;
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'providers/task_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/habit_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'services/reminder_service.dart';
+import 'services/tts_service.dart';
 import 'services/clipboard_monitor_service.dart';
 import 'widgets/quick_add_modal.dart';
 import 'utils/app_localizations.dart';
@@ -73,13 +79,19 @@ void main() {
   // 创建 Provider 实例
   final taskProvider = TaskProvider();
   final settingsProvider = SettingsProvider();
+  final habitProvider = HabitProvider();
 
-  // 初始化提醒服务
+  // 初始化提醒服务（使用单例实例）
   final reminderService = ReminderService();
+
+  // 设置提醒状态重置回调
+  taskProvider.onReminderReset = reminderService.clearReminderState;
+  habitProvider.onReminderReset = reminderService.clearHabitReminderState;
 
   runApp(MyApp(
     taskProvider: taskProvider,
     settingsProvider: settingsProvider,
+    habitProvider: habitProvider,
     reminderService: reminderService,
   ));
 }
@@ -87,12 +99,14 @@ void main() {
 class MyApp extends StatefulWidget {
   final TaskProvider taskProvider;
   final SettingsProvider settingsProvider;
+  final HabitProvider habitProvider;
   final ReminderService reminderService;
 
   const MyApp({
     super.key,
     required this.taskProvider,
     required this.settingsProvider,
+    required this.habitProvider,
     required this.reminderService,
   });
 
@@ -104,6 +118,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _isLoading = true;
   String? _error;
 
+  // Native reminder channels
+  static const _reminderMethodChannel =
+      MethodChannel('com.smarttask.smart_task_assistant/reminder');
+  static const _reminderEventChannel =
+      EventChannel('com.smarttask.smart_task_assistant/reminder_events');
+  StreamSubscription? _reminderEventSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -114,6 +135,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    // Cancel native reminder event subscription
+    _reminderEventSubscription?.cancel();
+
+    // 不要停止原生提醒服务！关闭APP后需要继续运行
+    // 只有用户在设置中手动停止才会调用 stopService
 
     // 释放服务资源，防止内存泄漏
     widget.reminderService.dispose();
@@ -134,11 +161,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         // 应用从后台恢复
+        _notifyNativeForeground();
+        widget.reminderService.isAppForeground = true;
         debugPrint('应用恢复，重置数据库连接并重新加载数据...');
         _reloadDataWithReset();
         break;
       case AppLifecycleState.paused:
         // 应用进入后台
+        _notifyNativeBackground();
+        widget.reminderService.isAppForeground = false;
         debugPrint('应用进入后台');
         break;
       case AppLifecycleState.detached:
@@ -153,6 +184,84 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case AppLifecycleState.hidden:
         // 应用被隐藏
         debugPrint('应用被隐藏');
+        break;
+    }
+  }
+
+  // --- Native reminder service ---
+
+  Future<void> _startNativeReminderService() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderMethodChannel.invokeMethod('startService');
+      await _reminderMethodChannel.invokeMethod('notifyAppForeground');
+      debugPrint('Native reminder service started');
+
+      // Listen for native reminder events
+      _reminderEventSubscription =
+          _reminderEventChannel.receiveBroadcastStream().listen(
+        (event) {
+          if (event is String) {
+            final map = jsonDecode(event) as Map<String, dynamic>;
+            _handleReminderEvent(map);
+          }
+        },
+        onError: (error) {
+          debugPrint('Reminder event stream error: $error');
+        },
+      );
+    } catch (e) {
+      debugPrint('Failed to start native reminder service: $e');
+    }
+  }
+
+  Future<void> _notifyNativeForeground() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderMethodChannel.invokeMethod('notifyAppForeground');
+    } catch (e) {
+      debugPrint('Failed to notify native foreground: $e');
+    }
+  }
+
+  Future<void> _notifyNativeBackground() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderMethodChannel.invokeMethod('notifyAppBackground');
+    } catch (e) {
+      debugPrint('Failed to notify native background: $e');
+    }
+  }
+
+  void _handleReminderEvent(Map<String, dynamic> event) {
+    final id = event['id'] as String? ?? '';
+    final type = event['type'] as String? ?? 'task';
+    final action = event['action'] as String? ?? '';
+
+    debugPrint('Native reminder event: id=$id type=$type action=$action');
+
+    switch (action) {
+      case 'shown':
+        // Mark as shown in Flutter layer to avoid duplicate dialog
+        if (type == 'task') {
+          widget.reminderService.markShown(id);
+        }
+        break;
+      case 'snoozed':
+        final minutes = event['snoozeMinutes'] as int? ?? 10;
+        widget.reminderService.setSnooze(id, minutes);
+        break;
+      case 'dismissed':
+        if (type == 'task') {
+          // Update task's reminder_dismissed field via provider
+          widget.taskProvider.dismissReminder(id);
+        }
+        break;
+      case 'completed':
+        if (type == 'habit') {
+          // Log habit completion via provider
+          widget.habitProvider.logCompletion(id);
+        }
         break;
     }
   }
@@ -207,8 +316,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('任务数: ${widget.taskProvider.tasks.length}');
       debugPrint('isLoading: ${widget.taskProvider.isLoading}');
 
+      // 加载习惯数据
+      await widget.habitProvider.loadData();
+      debugPrint('===== habitProvider.loadData 完成 =====');
+      debugPrint('习惯数: ${widget.habitProvider.habits.length}');
+
+      // 预初始化 TTS 引擎（避免首次播报时延迟）
+      await TTSService().init();
+      debugPrint('===== TTSService 预初始化完成 =====');
+
       // 数据加载完成后初始化提醒服务
-      widget.reminderService.init(widget.taskProvider, navigatorKey);
+      widget.reminderService.init(widget.taskProvider, widget.habitProvider, navigatorKey);
+
+      // 启动原生提醒服务（Android）
+      _startNativeReminderService();
 
       // 初始化剪贴板监视服务，默认开启
       clipboardMonitorService.init(navigatorKey, (content) {
@@ -266,8 +387,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('任务数: ${widget.taskProvider.tasks.length}');
       debugPrint('isLoading: ${widget.taskProvider.isLoading}');
 
+      // 加载习惯数据
+      await widget.habitProvider.loadData();
+      debugPrint('===== habitProvider.loadData 完成 =====');
+      debugPrint('习惯数: ${widget.habitProvider.habits.length}');
+
+      // 预初始化 TTS 引擎（避免首次播报时延迟）
+      await TTSService().init();
+      debugPrint('===== TTSService 预初始化完成 =====');
+
       // 数据加载完成后初始化提醒服务
-      widget.reminderService.init(widget.taskProvider, navigatorKey);
+      widget.reminderService.init(widget.taskProvider, widget.habitProvider, navigatorKey);
+
+      // 启动原生提醒服务（Android）
+      _startNativeReminderService();
 
       // 初始化剪贴板监视服务，默认开启
       clipboardMonitorService.init(navigatorKey, (content) {
@@ -306,6 +439,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       providers: [
         ChangeNotifierProvider.value(value: widget.taskProvider),
         ChangeNotifierProvider.value(value: widget.settingsProvider),
+        ChangeNotifierProvider.value(value: widget.habitProvider),
         ChangeNotifierProvider.value(value: appSettings),
       ],
       child: Consumer<AppSettings>(

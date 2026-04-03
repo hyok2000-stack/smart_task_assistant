@@ -7,6 +7,7 @@ import (
 	"task_server/internal/model"
 
 	"github.com/glebarez/sqlite"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -83,6 +84,9 @@ migrate:
 		&model.Device{},
 		&model.AISuggestion{},
 		&model.AIChatMessage{},
+		&model.TaskForward{},
+		&model.Habit{},
+		&model.HabitLog{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
@@ -90,6 +94,42 @@ migrate:
 
 	log.Println("Database migration completed")
 
+	// 初始化默认管理员账号
+	if err := initAdminUser(); err != nil {
+		log.Printf("Warning: Failed to initialize admin user: %v", err)
+	}
+
+	return nil
+}
+
+// initAdminUser 初始化默认管理员账号
+func initAdminUser() error {
+	var count int64
+	DB.Model(&model.User{}).Where("role = ?", "admin").Count(&count)
+	if count > 0 {
+		return nil // 管理员已存在
+	}
+
+	// 加密密码
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	admin := &model.User{
+		Username: "admin",
+		Email:    "admin@taskserver.com",
+		Password: string(hashedPassword),
+		Nickname: "管理员",
+		Role:     "admin",
+		IsActive: true,
+	}
+
+	if err := DB.Create(admin).Error; err != nil {
+		return fmt.Errorf("failed to create admin user: %w", err)
+	}
+
+	log.Println("Default admin user created (username: admin, password: admin123)")
 	return nil
 }
 

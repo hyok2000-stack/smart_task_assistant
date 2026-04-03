@@ -15,6 +15,15 @@
     <!-- 位置权限（用于天气服务） -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- 全屏提醒权限（锁屏弹出） -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 电池优化豁免（保证后台提醒服务不被系统杀死） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     
     <application
         android:label="智能任务助手"
@@ -31,6 +40,35 @@
             android:exported="false"
             android:foregroundServiceType="specialUse">
         </service>
+
+        <!-- 提醒前台服务 -->
+        <service
+            android:name=".ReminderForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+        </service>
+
+        <!-- 全屏提醒页面（锁屏弹出） -->
+        <!-- 开机自启 BroadcastReceiver -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".FullScreenReminderActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/ReminderTheme" />
         
         <activity
             android:name=".MainActivity"

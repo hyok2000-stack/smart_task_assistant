@@ -1,9 +1,11 @@
 """
 语音输入模块 - 支持语音创建任务
+使用sounddevice作为音频输入（PyAudio的现代替代品）
 """
 
 import os
-import platform
+import wave
+import tempfile
 from typing import Optional
 
 
@@ -14,6 +16,8 @@ class VoiceInputService:
     def _check_availability(self) -> bool:
         try:
             import speech_recognition
+            import sounddevice
+            import numpy
             return True
         except ImportError:
             return False
@@ -24,17 +28,42 @@ class VoiceInputService:
         
         try:
             import speech_recognition as sr
+            import sounddevice as sd
+            import numpy as np
+            
+            print("正在录音...")
+            
+            sample_rate = 16000
+            
+            recording = sd.rec(
+                int(timeout * sample_rate),
+                samplerate=sample_rate,
+                channels=1,
+                dtype='int16'
+            )
+            sd.wait()
+            
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                temp_path = temp_file.name
+                
+                with wave.open(temp_path, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(sample_rate)
+                    wf.writeframes(recording.tobytes())
             
             recognizer = sr.Recognizer()
             
-            with sr.Microphone() as source:
-                recognizer.adjust_for_ambient_noise(source, duration=1)
-                audio = recognizer.listen(source, timeout=timeout)
+            with sr.AudioFile(temp_path) as source:
+                audio = recognizer.record(source)
+            
+            os.unlink(temp_path)
             
             text = recognizer.recognize_google(audio, language='zh-CN')
             return text
             
-        except ImportError:
+        except ImportError as e:
+            print(f"导入错误: {e}")
             return None
         except Exception as e:
             print(f"语音识别错误: {e}")
@@ -45,9 +74,8 @@ class VoiceInputService:
 要启用语音输入功能，请安装以下依赖：
 
 pip install SpeechRecognition
-pip install pyaudio
+pip install sounddevice
+pip install numpy
 
-Windows用户可能需要：
-pip install pipwin
-pipwin install pyaudio
+注意：sounddevice是PyAudio的现代替代品，安装更简单，无需额外编译。
 """

@@ -121,3 +121,45 @@ func (r *TaskRepository) FindByIDs(ids []uint) ([]model.Task, error) {
 	err := r.db.Where("id IN ?", ids).Find(&tasks).Error
 	return tasks, err
 }
+
+// FindAll finds all tasks (for admin)
+func (r *TaskRepository) FindAll(offset, limit int) ([]model.Task, int64, error) {
+	var tasks []model.Task
+	var total int64
+
+	err := r.db.Model(&model.Task{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = r.db.Preload("Tags").Offset(offset).Limit(limit).Order("created_at DESC").Find(&tasks).Error
+	return tasks, total, err
+}
+
+// GetAllStats gets all tasks statistics (for admin)
+func (r *TaskRepository) GetAllStats() (*model.TaskStats, error) {
+	stats := &model.TaskStats{}
+
+	// 总数
+	r.db.Model(&model.Task{}).Count(&stats.Total)
+
+	// 已完成
+	r.db.Model(&model.Task{}).Where("completed = ?", true).Count(&stats.Completed)
+
+	// 待完成
+	stats.Pending = stats.Total - stats.Completed
+
+	// 高优先级
+	r.db.Model(&model.Task{}).Where("priority = ? AND completed = ?", 2, false).Count(&stats.HighPriority)
+
+	// 已过期
+	r.db.Model(&model.Task{}).Where("due_date < ? AND completed = ?", gorm.Expr("NOW()"), false).Count(&stats.Overdue)
+
+	// 本周
+	r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_SUB(NOW(), INTERVAL WEEKDAY(NOW()) DAY)"), gorm.Expr("DATE_ADD(NOW(), INTERVAL 6-WEEKDAY(NOW()) DAY)")).Count(&stats.ThisWeek)
+
+	// 本月
+	r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_FORMAT(NOW(), '%Y-%m-01')"), gorm.Expr("LAST_DAY(NOW())")).Count(&stats.ThisMonth)
+
+	return stats, nil
+}

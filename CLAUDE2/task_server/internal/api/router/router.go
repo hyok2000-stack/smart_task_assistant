@@ -8,7 +8,13 @@ import (
 )
 
 // SetupRouter 设置路由
-func SetupRouter(userHandler *handler.UserHandler, taskHandler *handler.TaskHandler) *gin.Engine {
+func SetupRouter(
+	userHandler *handler.UserHandler,
+	taskHandler *handler.TaskHandler,
+	forwardHandler *handler.ForwardHandler,
+	habitHandler *handler.HabitHandler,
+	habitLogHandler *handler.HabitLogHandler,
+) *gin.Engine {
 	router := gin.New()
 
 	// 全局中间件
@@ -37,6 +43,8 @@ func SetupRouter(userHandler *handler.UserHandler, taskHandler *handler.TaskHand
 				"login":        "/api/v1/auth/login",
 				"tasks":        "/api/v1/tasks (需要认证)",
 				"user_profile": "/api/v1/user/profile (需要认证)",
+				"habits":       "/api/v1/habits (需要认证)",
+				"habit_logs":   "/api/v1/habits/:habit_id/logs (需要认证)",
 			},
 			"documentation": "请参考 API 文档了解详细信息",
 		})
@@ -66,6 +74,14 @@ func SetupRouter(userHandler *handler.UserHandler, taskHandler *handler.TaskHand
 		{
 			user.GET("/profile", userHandler.GetProfile)
 			user.PUT("/profile", userHandler.UpdateProfile)
+			user.GET("/search", userHandler.SearchUsers)
+		}
+
+		// 用户管理路由（需要 JWT）
+		users := v1.Group("/users")
+		users.Use(middleware.JWTAuth())
+		{
+			users.GET("", userHandler.ListUsers)
 		}
 
 		// 任务路由（需要 JWT）
@@ -79,6 +95,43 @@ func SetupRouter(userHandler *handler.UserHandler, taskHandler *handler.TaskHand
 			tasks.PUT("/:id", taskHandler.UpdateTask)
 			tasks.DELETE("/:id", taskHandler.DeleteTask)
 			tasks.PATCH("/:id/toggle", taskHandler.ToggleComplete)
+
+			// 任务转发相关路由
+			tasks.POST("/:id/forward", forwardHandler.ForwardTask)
+			tasks.GET("/:id/forwards", forwardHandler.GetTaskForwards)
+		}
+
+		// 习惯路由（需要 JWT）
+		habits := v1.Group("/habits")
+		habits.Use(middleware.JWTAuth())
+		{
+			habits.POST("", habitHandler.Create)
+			habits.GET("", habitHandler.List)
+			habits.GET("/today", habitHandler.GetTodayWithStats)
+			habits.GET("/has-defaults", habitHandler.HasDefaults)
+			habits.POST("/initialize-defaults", habitHandler.InitializeDefaults)
+			habits.POST("/sync", habitHandler.Sync)
+			habits.GET("/:habit_id", habitHandler.GetByHabitID)
+			habits.PUT("/:habit_id", habitHandler.Update)
+			habits.DELETE("/:habit_id", habitHandler.Delete)
+			habits.PATCH("/:habit_id/toggle", habitHandler.ToggleEnabled)
+
+			// 习惯日志路由
+			habits.POST("/:habit_id/logs", habitLogHandler.LogCompletion)
+			habits.GET("/:habit_id/logs", habitLogHandler.List)
+			habits.GET("/:habit_id/stats", habitLogHandler.GetStats)
+			habits.GET("/:habit_id/history", habitLogHandler.GetHistory)
+			habits.GET("/:habit_id/progress", habitLogHandler.GetProgress)
+			habits.GET("/:habit_id/streak", habitLogHandler.GetStreak)
+			habits.GET("/:habit_id/today-progress", habitLogHandler.GetTodayProgress)
+		}
+
+		// 转发路由（需要 JWT）
+		forwards := v1.Group("/forwards")
+		forwards.Use(middleware.JWTAuth())
+		{
+			forwards.GET("/received", forwardHandler.GetReceivedForwards)
+			forwards.POST("/:id/revoke", forwardHandler.RevokeForward)
 		}
 	}
 

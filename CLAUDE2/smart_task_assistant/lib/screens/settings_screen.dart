@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
@@ -228,26 +229,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildNotificationSettings(BuildContext context) {
-    final l = context.l;
     return Consumer<SettingsProvider>(
       builder: (context, settings, _) {
         return Container(
           color: Colors.white,
           child: Column(
             children: [
-              _buildListTile(
-                icon: Icons.notifications_outlined,
-                title: '推送通知',
-                subtitle: '接收任务提醒通知',
-                trailing: Switch(
-                  value: settings.notificationsEnabled,
-                  onChanged: (value) {
-                    settings.setNotificationsEnabled(value);
-                  },
-                  activeColor: AppTheme.primaryColor,
-                ),
-              ),
-              _buildDivider(),
               _buildListTile(
                 icon: Icons.content_copy_outlined,
                 title: '剪贴板监视',
@@ -260,11 +247,151 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   activeColor: AppTheme.primaryColor,
                 ),
               ),
+              if (Platform.isAndroid) ...[
+                _buildDivider(),
+                _buildReminderServiceSettings(context),
+              ],
             ],
           ),
         );
       },
     );
+  }
+
+  /// 原生提醒服务设置（仅 Android）
+  Widget _buildReminderServiceSettings(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _checkReminderServiceRunning(),
+      builder: (context, snapshot) {
+        final isRunning = snapshot.data ?? false;
+        return Column(
+          children: [
+            _buildListTile(
+              icon: Icons.alarm_outlined,
+              title: '后台提醒服务',
+              subtitle: isRunning ? '正在运行' : '关闭后应用不在后台时无法收到提醒',
+              trailing: Switch(
+                value: isRunning,
+                onChanged: (value) async {
+                  try {
+                    const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+                    if (value) {
+                      await channel.invokeMethod('startService');
+                    } else {
+                      await channel.invokeMethod('stopService');
+                    }
+                  } catch (_) {}
+                  if (mounted) setState(() {});
+                },
+                activeColor: AppTheme.primaryColor,
+              ),
+            ),
+            _buildDivider(),
+            _buildListTile(
+              icon: Icons.screen_lock_portrait_outlined,
+              title: '锁屏弹出权限',
+              subtitle: '允许在锁屏界面显示全屏提醒',
+              trailing: Switch(
+                value: _hasFullScreenPermission,
+                onChanged: (value) async {
+                  // 无论开启/关闭，都引导到系统设置页面
+                  await _requestFullScreenPermission();
+                  // 返回后重新检查权限状态
+                  await _checkFullScreenPermission();
+                  if (mounted) setState(() {});
+                },
+                activeColor: AppTheme.primaryColor,
+              ),
+            ),
+            _buildDivider(),
+            _buildBatteryOptimizationTile(),
+          ],
+        );
+      },
+    );
+  }
+
+  bool _isBatteryOptimized = true;
+
+  Future<void> _checkBatteryOptimization() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _isBatteryOptimized = await channel.invokeMethod('isBatteryOptimized') ?? true;
+    } catch (_) {
+      _isBatteryOptimized = true;
+    }
+  }
+
+  Widget _buildBatteryOptimizationTile() {
+    return FutureBuilder<void>(
+      future: _checkBatteryOptimization(),
+      builder: (context, _) {
+        return _buildListTile(
+          icon: Icons.battery_alert_outlined,
+          title: '电池优化',
+          subtitle: _isBatteryOptimized
+              ? '未豁免，后台服务可能被系统杀死'
+              : '已豁免，后台服务可正常运行',
+          trailing: Switch(
+            value: !_isBatteryOptimized,
+            onChanged: (value) async {
+              if (value) {
+                try {
+                  const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+                  await channel.invokeMethod('requestIgnoreBatteryOptimization');
+                } catch (_) {}
+              }
+              // 返回后重新检查
+              await _checkBatteryOptimization();
+              if (mounted) setState(() {});
+            },
+            activeColor: AppTheme.primaryColor,
+          ),
+        );
+      },
+    );
+  }
+
+  bool _hasFullScreenPermission = false;
+
+  Future<bool> _checkReminderServiceRunning() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      // 同时检查锁屏权限
+      await _checkFullScreenPermission();
+      return await channel.invokeMethod('isServiceRunning') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _checkFullScreenPermission() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _hasFullScreenPermission = await channel.invokeMethod('hasFullScreenPermission') ?? true;
+    } catch (_) {
+      _hasFullScreenPermission = true;
+    }
+  }
+
+  Future<void> _requestFullScreenPermission() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      final granted = await channel.invokeMethod('requestFullScreenPermission');
+      _hasFullScreenPermission = granted == true;
+      if (mounted && !_hasFullScreenPermission) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('请在系统设置中开启全屏通知权限'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   Widget _buildAISettings(BuildContext context) {
@@ -2266,8 +2393,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const Divider(height: 1),
 
-              // 内容区域
-              Padding(
+              // 内容区域 - Flexible + SingleChildScrollView 防止内容溢出
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
@@ -2344,6 +2473,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       '周期任务',
                       '支持日/周/月循环提醒',
                     ),
+                    _buildAboutListItem(
+                      Icons.repeat_rounded,
+                      '习惯追踪',
+                      '间隔/固定提醒，打卡与进度管理',
+                    ),
+                    _buildAboutListItem(
+                      Icons.record_voice_over_outlined,
+                      '语音提醒',
+                      'TTS语音播报与自定义音频文件',
+                    ),
+                    _buildAboutListItem(
+                      Icons.insights_outlined,
+                      '任务统计',
+                      '多维度数据分析与可视化图表',
+                    ),
 
                     const SizedBox(height: 24),
 
@@ -2366,6 +2510,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+              ), // SingleChildScrollView
+              ), // Flexible
 
               // 底部按钮
               Padding(

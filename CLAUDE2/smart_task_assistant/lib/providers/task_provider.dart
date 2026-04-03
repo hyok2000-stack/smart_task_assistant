@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
@@ -13,6 +15,20 @@ import '../utils/platform_file_stub.dart'
 /// 任务状态管理
 class TaskProvider extends ChangeNotifier {
   StorageService _storage = getStorageService();
+
+  // 提醒状态清除回调
+  Function(String taskId)? onReminderReset;
+
+  // Native reminder data change notification
+  static const _reminderChannel =
+      MethodChannel('com.smarttask.smart_task_assistant/reminder');
+
+  void _notifyNativeDataChanged(String type, [String? id]) {
+    if (!Platform.isAndroid) return;
+    try {
+      _reminderChannel.invokeMethod('notifyDataChanged', {'type': type, 'id': id});
+    } catch (_) {}
+  }
 
   List<Task> _tasks = [];
   List<Task> _todayTasks = [];
@@ -230,6 +246,7 @@ class TaskProvider extends ChangeNotifier {
 
       notifyListeners();
       debugPrint('notifyListeners 完成');
+      _notifyNativeDataChanged('task', task.id);
     } catch (e) {
       debugPrint('addTask 错误: $e');
       _error = e.toString();
@@ -240,19 +257,56 @@ class TaskProvider extends ChangeNotifier {
   /// 更新任务
   Future<void> updateTask(Task task) async {
     try {
+      // 从存储获取旧任务（确保获取到最新的旧数据）
+      Task oldTask = task; // 默认使用新任务
+      try {
+        final allTasks = await _storage.getAllTasks();
+        final foundTask = allTasks.firstWhere(
+          (t) => t.id == task.id,
+          orElse: () => task,
+        );
+        oldTask = foundTask;
+      } catch (e) {
+        debugPrint('获取旧任务失败，使用新任务进行比较: $e');
+      }
+
       // 检查是否是周期任务被标记为已完成
-      final oldTask = _tasks.firstWhere(
-        (t) => t.id == task.id,
-        orElse: () => task,
-      );
       final wasJustCompleted = oldTask.status != TaskStatus.completed &&
           task.status == TaskStatus.completed;
 
+      // 检查提醒相关字段是否改变
+      final reminderFieldsChanged =
+          oldTask.dueTime != task.dueTime ||
+          oldTask.reminderMinutes != task.reminderMinutes ||
+          oldTask.reminderDismissed != task.reminderDismissed;
+
+      debugPrint('===== updateTask =====');
+      debugPrint('任务: ${task.title}');
+      debugPrint('提醒字段是否改变: $reminderFieldsChanged');
+      if (reminderFieldsChanged) {
+        debugPrint('  - 截止时间: ${oldTask.dueTime} -> ${task.dueTime}');
+        debugPrint('  - 提醒分钟: ${oldTask.reminderMinutes} -> ${task.reminderMinutes}');
+        debugPrint('  - 提醒关闭: ${oldTask.reminderDismissed} -> ${task.reminderDismissed}');
+      }
+
       await _storage.updateTask(task);
 
-      final index = _tasks.indexWhere((t) => t.id == task.id);
-      if (index != -1) {
-        _tasks[index] = task;
+      // 从存储重新加载任务列表，确保获取最新数据
+      final allTasks = await _storage.getAllTasks();
+      _tasks = allTasks;
+      debugPrint('从存储重新加载任务列表，任务数: ${_tasks.length}');
+
+      // 打印更新后的任务
+      for (final t in _tasks) {
+        if (t.id == task.id) {
+          debugPrint('存储中的任务: ${t.title}, dueTime=${t.dueTime}, reminderMinutes=${t.reminderMinutes}');
+        }
+      }
+
+      // 如果提醒字段改变了，通知提醒服务重置状态
+      if (reminderFieldsChanged && onReminderReset != null) {
+        debugPrint('通知提醒服务重置任务状态: ${task.id}');
+        onReminderReset!(task.id);
       }
 
       // 如果是周期任务刚刚完成，创建新的周期任务
@@ -264,6 +318,7 @@ class TaskProvider extends ChangeNotifier {
       _refreshTaskLists();
 
       notifyListeners();
+      _notifyNativeDataChanged('task', task.id);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -406,6 +461,26 @@ class TaskProvider extends ChangeNotifier {
         .toList();
   }
 
+  /// 关闭任务提醒（由原生层 FullScreenActivity 触发）
+  Future<void> dismissReminder(String taskId) async {
+    try {
+      final taskIndex = _tasks.indexWhere((t) => t.id == taskId);
+      if (taskIndex == -1) return;
+
+      final task = _tasks[taskIndex];
+      final updatedTask = task.copyWith(reminderDismissed: true);
+      await _storage.updateTask(updatedTask);
+      _tasks[taskIndex] = updatedTask;
+
+      _refreshTaskLists();
+      notifyListeners();
+      _notifyNativeDataChanged('task', taskId);
+      debugPrint('Task reminder dismissed: $taskId');
+    } catch (e) {
+      debugPrint('Failed to dismiss reminder: $e');
+    }
+  }
+
   /// 删除任务
   Future<void> deleteTask(String id) async {
     try {
@@ -416,6 +491,7 @@ class TaskProvider extends ChangeNotifier {
       _refreshTaskLists();
 
       notifyListeners();
+      _notifyNativeDataChanged('task', id);
     } catch (e) {
       _error = e.toString();
       notifyListeners();

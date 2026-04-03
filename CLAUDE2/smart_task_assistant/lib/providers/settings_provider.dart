@@ -22,6 +22,8 @@ class SettingsProvider extends ChangeNotifier {
   bool _notificationsEnabled = true;
   bool _reminderEnabled = true;
   int _reminderMinutes = 30;
+  bool _reminderSoundEnabled = true;
+  bool _reminderVibrationEnabled = true;
 
   // AI服务配置
   AIMode _aiMode = AIMode.local;
@@ -51,6 +53,8 @@ class SettingsProvider extends ChangeNotifier {
   bool get notificationsEnabled => _notificationsEnabled;
   bool get reminderEnabled => _reminderEnabled;
   int get reminderMinutes => _reminderMinutes;
+  bool get reminderSoundEnabled => _reminderSoundEnabled;
+  bool get reminderVibrationEnabled => _reminderVibrationEnabled;
 
   // AI服务getter
   AIMode get aiMode => _aiMode;
@@ -225,6 +229,9 @@ class SettingsProvider extends ChangeNotifier {
       // 加载通知设置
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
 
+      _reminderSoundEnabled = prefs.getBool('reminderSoundEnabled') ?? true;
+      _reminderVibrationEnabled = prefs.getBool('reminderVibrationEnabled') ?? true;
+
       // 加载AI配置
       final aiModeStr = prefs.getString('aiMode');
       if (aiModeStr != null) {
@@ -319,6 +326,9 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setBool('clipboardMonitorEnabled', _clipboardMonitorEnabled);
       await prefs.setBool('notificationsEnabled', _notificationsEnabled);
 
+      await prefs.setBool('reminderSoundEnabled', _reminderSoundEnabled);
+      await prefs.setBool('reminderVibrationEnabled', _reminderVibrationEnabled);
+
       await prefs.setString('aiMode', _aiMode.toString());
       await prefs.setString('localLLMAddress', _localLLMAddress);
       await prefs.setString('localLLMModel', _localLLMModel);
@@ -384,6 +394,20 @@ class SettingsProvider extends ChangeNotifier {
   /// 设置提醒分钟数
   void setReminderMinutes(int value) {
     _reminderMinutes = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// 设置提醒声音
+  void setReminderSoundEnabled(bool value) {
+    _reminderSoundEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// 设置提醒振动
+  void setReminderVibrationEnabled(bool value) {
+    _reminderVibrationEnabled = value;
     _saveSettings();
     notifyListeners();
   }
@@ -499,6 +523,8 @@ class SettingsProvider extends ChangeNotifier {
     _notificationsEnabled = true;
     _reminderEnabled = true;
     _reminderMinutes = 30;
+    _reminderSoundEnabled = true;
+    _reminderVibrationEnabled = true;
 
     _aiMode = AIMode.local;
     _localLLMAddress = 'http://localhost:11434';

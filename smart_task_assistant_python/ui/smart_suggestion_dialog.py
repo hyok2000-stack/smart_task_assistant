@@ -119,6 +119,8 @@ class SmartSuggestionDialog(QDialog):
             suggestions = self.suggestion_service.get_smart_suggestions()
             self._display_suggestions(suggestions)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self.loading_label.setText(f'❌ 加载失败: {str(e)}')
             self.loading_label.setStyleSheet('color: #F44336; font-size: 14px; padding: 40px;')
     
@@ -136,15 +138,20 @@ class SmartSuggestionDialog(QDialog):
                     card = self._create_suggestion_card(suggestion)
                     self.scroll_layout.addWidget(card)
                 except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     print(f"创建建议卡片失败: {e}")
         
         self.scroll_layout.addStretch()
         
         try:
-            daily_plan = self.suggestion_service.get_daily_plan()
-            plan_frame = self._create_daily_plan_card(daily_plan)
-            self.daily_plan_layout.addWidget(plan_frame)
+            if hasattr(self, 'suggestion_service') and self.suggestion_service:
+                daily_plan = self.suggestion_service.get_daily_plan()
+                plan_frame = self._create_daily_plan_card(daily_plan)
+                self.daily_plan_layout.addWidget(plan_frame)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"创建每日计划失败: {e}")
     
     def _create_suggestion_card(self, suggestion: dict) -> QFrame:
@@ -191,6 +198,68 @@ class SmartSuggestionDialog(QDialog):
         content_label.setStyleSheet('color: #666;')
         layout.addWidget(content_label)
         
+        priority_tasks = suggestion.get('priority_tasks', [])
+        if priority_tasks:
+            tasks_frame = QFrame()
+            tasks_frame.setStyleSheet('''
+                QFrame {
+                    background-color: #F5F5F5;
+                    border-radius: 6px;
+                    padding: 8px;
+                    margin-top: 8px;
+                }
+            ''')
+            tasks_layout = QVBoxLayout(tasks_frame)
+            tasks_layout.setSpacing(6)
+            
+            for pt in priority_tasks[:5]:
+                task_layout = QHBoxLayout()
+                
+                order_label = QLabel(f"#{pt.get('suggested_order', 1)}")
+                order_label.setStyleSheet('''
+                    QLabel {
+                        background-color: #2196F3;
+                        color: white;
+                        font-weight: bold;
+                        font-size: 11px;
+                        padding: 2px 8px;
+                        border-radius: 10px;
+                    }
+                ''')
+                task_layout.addWidget(order_label)
+                
+                task_title = QLabel(pt.get('title', ''))
+                task_title.setStyleSheet('font-weight: bold; color: #333;')
+                task_layout.addWidget(task_title, 1)
+                
+                view_btn = QPushButton('查看')
+                view_btn.setStyleSheet('''
+                    QPushButton {
+                        background-color: #2196F3;
+                        color: white;
+                        border: none;
+                        padding: 2px 10px;
+                        border-radius: 3px;
+                        font-size: 11px;
+                    }
+                    QPushButton:hover {
+                        background-color: #1976D2;
+                    }
+                ''')
+                task_id = pt.get('task_id')
+                if task_id:
+                    view_btn.clicked.connect(lambda checked, tid=task_id: self._on_task_clicked(tid))
+                task_layout.addWidget(view_btn)
+                
+                tasks_layout.addLayout(task_layout)
+                
+                reason_label = QLabel(f"💡 {pt.get('reason', '')}")
+                reason_label.setWordWrap(True)
+                reason_label.setStyleSheet('color: #666; font-size: 11px; padding-left: 30px;')
+                tasks_layout.addWidget(reason_label)
+            
+            layout.addWidget(tasks_frame)
+        
         if suggestion.get('action'):
             action_btn = QPushButton(suggestion['action'])
             action_btn.setStyleSheet(f'''
@@ -210,6 +279,11 @@ class SmartSuggestionDialog(QDialog):
         
         return card
     
+    def _on_task_clicked(self, task_id):
+        if task_id:
+            self.action_triggered.emit('view_task', str(task_id))
+            self.accept()
+    
     def _on_action_clicked(self, suggestion: dict):
         action = suggestion.get('action', '')
         suggestion_type = suggestion.get('type', '')
@@ -222,10 +296,8 @@ class SmartSuggestionDialog(QDialog):
             self.accept()
         elif '统计' in action or '查看统计' in action:
             self.action_triggered.emit('show_stats', '')
-            self.accept()
         elif '优先级' in action and '调整' in action:
             self.action_triggered.emit('adjust_priority', '')
-            self.accept()
         else:
             QMessageBox.information(self, '提示', suggestion.get('content', ''))
     

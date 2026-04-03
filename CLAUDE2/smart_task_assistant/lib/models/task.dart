@@ -15,6 +15,9 @@ enum TaskPriority {
   high, // 高
 }
 
+/// 用于区分"未传参"和"显式传 null"的哨兵值
+const Object _sentinel = Object();
+
 /// 任务模型
 class Task {
   final String id;
@@ -35,6 +38,11 @@ class Task {
   List<String> attachmentPaths;
   int? reminderMinutes; // 提前提醒分钟数，如 15 表示提前15分钟提醒
   bool reminderDismissed; // 用户是否已关闭提醒
+  bool reminderVoiceEnabled; // 是否启用语音提醒
+  String? reminderVoiceType; // 语音类型：male/female/neutral/custom
+  String? reminderVoiceStyle; // 语音风格：standard/gentle/lively
+  String? reminderVoiceSpeed; // 语音速度：slow/normal/fast
+  String? reminderCustomVoicePath; // 自定义语音文件路径
 
   Task({
     required this.id,
@@ -55,6 +63,11 @@ class Task {
     List<String>? attachmentPaths,
     this.reminderMinutes,
     this.reminderDismissed = false,
+    this.reminderVoiceEnabled = false,
+    this.reminderVoiceType = 'neutral',
+    this.reminderVoiceStyle = 'standard',
+    this.reminderVoiceSpeed = 'normal',
+    this.reminderCustomVoicePath,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         tagIds = tagIds ?? [],
@@ -156,6 +169,13 @@ class Task {
         reminderDismissed: json['reminder_dismissed'] is bool
             ? json['reminder_dismissed'] as bool
             : (json['reminder_dismissed'] as int? ?? 0) == 1,
+        reminderVoiceEnabled: json['reminder_voice_enabled'] is bool
+            ? json['reminder_voice_enabled'] as bool
+            : (json['reminder_voice_enabled'] as int? ?? 0) == 1,
+        reminderVoiceType: json['reminder_voice_type'] as String?,
+        reminderVoiceStyle: json['reminder_voice_style'] as String?,
+        reminderVoiceSpeed: json['reminder_voice_speed'] as String?,
+        reminderCustomVoicePath: json['reminder_custom_voice_path'] as String?,
       );
     } on FormatException {
       rethrow; // 重新抛出格式异常
@@ -185,20 +205,26 @@ class Task {
       'attachment_paths': jsonEncode(attachmentPaths),
       'reminder_minutes': reminderMinutes,
       'reminder_dismissed': reminderDismissed,
+      'reminder_voice_enabled': reminderVoiceEnabled,
+      'reminder_voice_type': reminderVoiceType,
+      'reminder_voice_style': reminderVoiceStyle,
+      'reminder_voice_speed': reminderVoiceSpeed,
+      'reminder_custom_voice_path': reminderCustomVoicePath,
     };
   }
 
   /// 复制并修改
+  /// 对于可空的 String? / DateTime? 字段，使用 _sentinel 区分"未传参"和"显式传 null"
   Task copyWith({
     String? id,
     String? title,
-    String? content,
+    Object? content = _sentinel,
     TaskStatus? status,
     TaskPriority? priority,
     DateTime? startTime,
-    DateTime? dueTime,
-    DateTime? completedAt,
-    String? assignee,
+    Object? dueTime = _sentinel,
+    Object? completedAt = _sentinel,
+    Object? assignee = _sentinel,
     String? parentId,
     bool? isRecurring,
     String? recurringRule,
@@ -206,19 +232,24 @@ class Task {
     DateTime? updatedAt,
     List<String>? tagIds,
     List<String>? attachmentPaths,
-    int? reminderMinutes,
+    Object? reminderMinutes = _sentinel,
     bool? reminderDismissed,
+    bool? reminderVoiceEnabled,
+    String? reminderVoiceType,
+    String? reminderVoiceStyle,
+    String? reminderVoiceSpeed,
+    Object? reminderCustomVoicePath = _sentinel,
   }) {
     return Task(
       id: id ?? this.id,
       title: title ?? this.title,
-      content: content ?? this.content,
+      content: identical(content, _sentinel) ? this.content : content as String?,
       status: status ?? this.status,
       priority: priority ?? this.priority,
       startTime: startTime ?? this.startTime,
-      dueTime: dueTime ?? this.dueTime,
-      completedAt: completedAt ?? this.completedAt,
-      assignee: assignee ?? this.assignee,
+      dueTime: identical(dueTime, _sentinel) ? this.dueTime : dueTime as DateTime?,
+      completedAt: identical(completedAt, _sentinel) ? this.completedAt : completedAt as DateTime?,
+      assignee: identical(assignee, _sentinel) ? this.assignee : assignee as String?,
       parentId: parentId ?? this.parentId,
       isRecurring: isRecurring ?? this.isRecurring,
       recurringRule: recurringRule ?? this.recurringRule,
@@ -226,8 +257,15 @@ class Task {
       updatedAt: updatedAt ?? DateTime.now(),
       tagIds: tagIds ?? List.from(this.tagIds),
       attachmentPaths: attachmentPaths ?? List.from(this.attachmentPaths),
-      reminderMinutes: reminderMinutes ?? this.reminderMinutes,
+      reminderMinutes: identical(reminderMinutes, _sentinel) ? this.reminderMinutes : reminderMinutes as int?,
       reminderDismissed: reminderDismissed ?? this.reminderDismissed,
+      reminderVoiceEnabled: reminderVoiceEnabled ?? this.reminderVoiceEnabled,
+      reminderVoiceType: reminderVoiceType ?? this.reminderVoiceType,
+      reminderVoiceStyle: reminderVoiceStyle ?? this.reminderVoiceStyle,
+      reminderVoiceSpeed: reminderVoiceSpeed ?? this.reminderVoiceSpeed,
+      reminderCustomVoicePath: identical(reminderCustomVoicePath, _sentinel)
+          ? this.reminderCustomVoicePath
+          : reminderCustomVoicePath as String?,
     );
   }
 }

@@ -127,3 +127,17 @@ func (s *UserService) SearchUsers(keyword string, limit int) (*model.SearchUsers
 		Total: int(total),
 	}, nil
 }
+
+// ListUsers returns paginated list of users
+func (s *UserService) ListUsers(page, pageSize int) (*model.SearchUsersResponse, error) {
+	offset := (page - 1) * pageSize
+	users, total, err := s.userRepo.List(offset, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.SearchUsersResponse{
+		Users: users,
+		Total: int(total),
+	}, nil
+}

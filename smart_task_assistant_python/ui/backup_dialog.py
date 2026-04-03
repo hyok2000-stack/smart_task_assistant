@@ -222,19 +222,22 @@ class BackupDialog(QDialog):
         for f in os.listdir(backup_dir):
             if f.endswith('.db') or f.endswith('.sqlite'):
                 file_path = os.path.join(backup_dir, f)
-                mtime = os.path.getmtime(file_path)
+                ctime = os.path.getctime(file_path)
                 size = os.path.getsize(file_path)
-                backups.append((f, file_path, mtime, size))
+                backups.append((f, file_path, ctime, size))
         
         backups.sort(key=lambda x: x[2], reverse=True)
         
-        for name, path, mtime, size in backups:
-            mtime_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+        for name, path, ctime, size in backups:
+            ctime_str = datetime.fromtimestamp(ctime).strftime('%Y-%m-%d %H:%M:%S')
             size_str = self._format_size(size)
             
-            item = QListWidgetItem(f'{name}  |  {mtime_str}  |  {size_str}')
+            item = QListWidgetItem(f'{name}  |  {ctime_str}  |  {size_str}')
             item.setData(Qt.UserRole, path)
             self.backup_list.addItem(item)
+        
+        if self.backup_list.count() > 0:
+            self.backup_list.setCurrentRow(0)
     
     def _format_size(self, size):
         if size < 1024:
@@ -251,8 +254,10 @@ class BackupDialog(QDialog):
         backup_path = os.path.join(backup_dir, backup_name)
         
         if self.db.backup_database(backup_path):
-            QMessageBox.information(self, '备份成功', f'备份已创建:\n{backup_path}')
             self._load_backups()
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
+            QMessageBox.information(self, '备份成功', f'备份已创建:\n{backup_path}')
         else:
             QMessageBox.warning(self, '备份失败', '创建备份失败，请重试')
     

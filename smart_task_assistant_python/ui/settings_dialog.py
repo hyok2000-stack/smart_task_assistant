@@ -44,6 +44,32 @@ class APITestThread(QThread):
                     self.test_finished.emit(False, '连接超时，请检查服务地址')
                 return
             
+            if self.api_type == 'local_llm_model':
+                if not self.model:
+                    self.test_finished.emit(False, '请输入模型名称')
+                    return
+                url = f'{self.api_base}/v1/chat/completions'
+                try:
+                    response = requests.post(
+                        url,
+                        json={
+                            'model': self.model,
+                            'messages': [{'role': 'user', 'content': 'hi'}],
+                            'max_tokens': 10
+                        },
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        self.test_finished.emit(True, f'模型 {self.model} 连接成功！')
+                    else:
+                        error_msg = response.text[:200] if response.text else ''
+                        self.test_finished.emit(False, f'模型错误: {response.status_code}\n{error_msg}')
+                except requests.exceptions.ConnectionError:
+                    self.test_finished.emit(False, '无法连接到服务，请确认服务已启动')
+                except requests.exceptions.Timeout:
+                    self.test_finished.emit(False, '连接超时，请检查服务状态')
+                return
+            
             if not self.api_base:
                 self.test_finished.emit(False, '请输入API地址')
                 return
@@ -96,11 +122,70 @@ class SettingsDialog(QDialog):
         self._load_settings()
     
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        
-        tabs = QTabWidget()
-        tabs.setStyleSheet('''
+        self.setStyleSheet('''
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: #333;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px;
+            }
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+            }
+            QTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QTextEdit:focus {
+                border-color: #2196F3;
+            }
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QComboBox:focus {
+                border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
+            }
+            QSpinBox {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QSpinBox:focus {
+                border-color: #2196F3;
+            }
             QTabWidget::pane {
                 border: 1px solid #ddd;
                 border-radius: 6px;
@@ -115,7 +200,21 @@ class SettingsDialog(QDialog):
                 color: white;
                 border-radius: 4px;
             }
+            QTabBar::tab:!selected {
+                background-color: #f5f5f5;
+            }
+            QCheckBox {
+                spacing: 6px;
+            }
+            QRadioButton {
+                spacing: 6px;
+            }
         ''')
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        
+        tabs = QTabWidget()
         
         ai_tab = QWidget()
         ai_layout = QVBoxLayout(ai_tab)
@@ -160,11 +259,24 @@ class SettingsDialog(QDialog):
         
         self.local_llm_address = QLineEdit()
         self.local_llm_address.setPlaceholderText('例如: http://localhost:11434')
-        local_llm_form.addRow('服务地址:', self.local_llm_address)
+        local_llm_form.addRow('服务地址（必填）:', self.local_llm_address)
         
         self.local_llm_model = QLineEdit()
         self.local_llm_model.setPlaceholderText('例如: qwen2.5:7b, llama3.1:8b')
-        local_llm_form.addRow('模型名称:', self.local_llm_model)
+        local_llm_form.addRow('模型名称（必填）:', self.local_llm_model)
+        
+        local_llm_test_layout = QHBoxLayout()
+        self.local_llm_test_btn = QPushButton('🔍 测试连接')
+        self.local_llm_test_btn.clicked.connect(self._test_local_llm)
+        self.local_llm_test_btn.setMinimumHeight(32)
+        local_llm_test_layout.addWidget(self.local_llm_test_btn)
+        local_llm_test_layout.addStretch()
+        local_llm_form.addRow('', local_llm_test_layout)
+        
+        self.local_llm_test_result = QLabel('')
+        self.local_llm_test_result.setWordWrap(True)
+        self.local_llm_test_result.setMinimumHeight(20)
+        local_llm_form.addRow('', self.local_llm_test_result)
         
         ai_form.addRow('', self.local_llm_group)
         
@@ -182,17 +294,17 @@ class SettingsDialog(QDialog):
         self.api_key_edit.setPlaceholderText('输入API密钥')
         self.api_key_edit.setEchoMode(QLineEdit.Password)
         self.api_key_edit.setMinimumHeight(30)
-        remote_api_form.addRow('API密钥:', self.api_key_edit)
+        remote_api_form.addRow('API密钥（必填）:', self.api_key_edit)
         
         self.api_base_edit = QLineEdit()
         self.api_base_edit.setPlaceholderText('例如: https://api.openai.com/v1 (注意:不要以/结尾)')
         self.api_base_edit.setMinimumHeight(30)
-        remote_api_form.addRow('API地址:', self.api_base_edit)
+        remote_api_form.addRow('API地址（必填）:', self.api_base_edit)
         
         self.api_model_edit = QLineEdit()
         self.api_model_edit.setPlaceholderText('例如: gpt-3.5-turbo, qwen-turbo, glm-4')
         self.api_model_edit.setMinimumHeight(30)
-        remote_api_form.addRow('模型名称:', self.api_model_edit)
+        remote_api_form.addRow('模型名称（必填）:', self.api_model_edit)
         
         test_layout = QHBoxLayout()
         self.test_btn = QPushButton('🔍 测试连接')
@@ -281,11 +393,24 @@ class SettingsDialog(QDialog):
         
         self.chat_local_llm_address = QLineEdit()
         self.chat_local_llm_address.setPlaceholderText('例如: http://localhost:11434')
-        chat_local_llm_form.addRow('服务地址:', self.chat_local_llm_address)
+        chat_local_llm_form.addRow('服务地址（必填）:', self.chat_local_llm_address)
         
         self.chat_local_llm_model = QLineEdit()
         self.chat_local_llm_model.setPlaceholderText('例如: qwen2.5:7b, llama3.1:8b')
-        chat_local_llm_form.addRow('模型名称:', self.chat_local_llm_model)
+        chat_local_llm_form.addRow('模型名称（必填）:', self.chat_local_llm_model)
+        
+        chat_local_llm_test_layout = QHBoxLayout()
+        self.chat_local_llm_test_btn = QPushButton('🔍 测试连接')
+        self.chat_local_llm_test_btn.clicked.connect(self._test_chat_local_llm)
+        self.chat_local_llm_test_btn.setMinimumHeight(32)
+        chat_local_llm_test_layout.addWidget(self.chat_local_llm_test_btn)
+        chat_local_llm_test_layout.addStretch()
+        chat_local_llm_form.addRow('', chat_local_llm_test_layout)
+        
+        self.chat_local_llm_test_result = QLabel('')
+        self.chat_local_llm_test_result.setWordWrap(True)
+        self.chat_local_llm_test_result.setMinimumHeight(20)
+        chat_local_llm_form.addRow('', self.chat_local_llm_test_result)
         
         chat_form.addRow('', self.chat_local_llm_group)
         
@@ -303,17 +428,17 @@ class SettingsDialog(QDialog):
         self.chat_api_key_edit.setPlaceholderText('输入智答API密钥')
         self.chat_api_key_edit.setEchoMode(QLineEdit.Password)
         self.chat_api_key_edit.setMinimumHeight(30)
-        chat_remote_api_form.addRow('API密钥:', self.chat_api_key_edit)
+        chat_remote_api_form.addRow('API密钥（必填）:', self.chat_api_key_edit)
         
         self.chat_api_base_edit = QLineEdit()
         self.chat_api_base_edit.setPlaceholderText('例如: https://api.openai.com/v1 (注意:不要以/结尾)')
         self.chat_api_base_edit.setMinimumHeight(30)
-        chat_remote_api_form.addRow('API地址:', self.chat_api_base_edit)
+        chat_remote_api_form.addRow('API地址（必填）:', self.chat_api_base_edit)
         
         self.chat_api_model_edit = QLineEdit()
         self.chat_api_model_edit.setPlaceholderText('例如: gpt-3.5-turbo, qwen-turbo, glm-4')
         self.chat_api_model_edit.setMinimumHeight(30)
-        chat_remote_api_form.addRow('模型名称:', self.chat_api_model_edit)
+        chat_remote_api_form.addRow('模型名称（必填）:', self.chat_api_model_edit)
         
         chat_test_layout = QHBoxLayout()
         self.chat_test_btn = QPushButton('🔍 测试连接')
@@ -580,6 +705,38 @@ class SettingsDialog(QDialog):
         self._on_chat_mode_changed()
         self._on_external_enabled_changed(Qt.Checked if self.external_enabled.isChecked() else Qt.Unchecked)
     
+    def _test_local_llm(self):
+        address = self.local_llm_address.text().strip()
+        model = self.local_llm_model.text().strip()
+        
+        if not address:
+            self.local_llm_test_result.setText('❌ 请输入服务地址')
+            self.local_llm_test_result.setStyleSheet('color: red;')
+            return
+        
+        if not model:
+            self.local_llm_test_result.setText('❌ 请输入模型名称')
+            self.local_llm_test_result.setStyleSheet('color: red;')
+            return
+        
+        self.local_llm_test_btn.setEnabled(False)
+        self.local_llm_test_result.setText('⏳ 正在测试模型...')
+        self.local_llm_test_result.setStyleSheet('color: #666;')
+        
+        self.local_llm_test_thread = APITestThread('local_llm_model', '', address, model)
+        self.local_llm_test_thread.test_finished.connect(self._on_local_llm_test_finished)
+        self.local_llm_test_thread.start()
+    
+    def _on_local_llm_test_finished(self, success: bool, message: str):
+        self.local_llm_test_btn.setEnabled(True)
+        
+        if success:
+            self.local_llm_test_result.setText(f'✅ {message}')
+            self.local_llm_test_result.setStyleSheet('color: green;')
+        else:
+            self.local_llm_test_result.setText(f'❌ {message}')
+            self.local_llm_test_result.setStyleSheet('color: red;')
+    
     def _test_api(self):
         mode = self.ai_mode_group.checkedId()
         
@@ -629,6 +786,38 @@ class SettingsDialog(QDialog):
             )
             self.test_thread.test_finished.connect(self._on_test_finished)
             self.test_thread.start()
+    
+    def _test_chat_local_llm(self):
+        address = self.chat_local_llm_address.text().strip()
+        model = self.chat_local_llm_model.text().strip()
+        
+        if not address:
+            self.chat_local_llm_test_result.setText('❌ 请输入服务地址')
+            self.chat_local_llm_test_result.setStyleSheet('color: red;')
+            return
+        
+        if not model:
+            self.chat_local_llm_test_result.setText('❌ 请输入模型名称')
+            self.chat_local_llm_test_result.setStyleSheet('color: red;')
+            return
+        
+        self.chat_local_llm_test_btn.setEnabled(False)
+        self.chat_local_llm_test_result.setText('⏳ 正在测试模型...')
+        self.chat_local_llm_test_result.setStyleSheet('color: #666;')
+        
+        self.chat_local_llm_test_thread = APITestThread('local_llm_model', '', address, model)
+        self.chat_local_llm_test_thread.test_finished.connect(self._on_chat_local_llm_test_finished)
+        self.chat_local_llm_test_thread.start()
+    
+    def _on_chat_local_llm_test_finished(self, success: bool, message: str):
+        self.chat_local_llm_test_btn.setEnabled(True)
+        
+        if success:
+            self.chat_local_llm_test_result.setText(f'✅ {message}')
+            self.chat_local_llm_test_result.setStyleSheet('color: green;')
+        else:
+            self.chat_local_llm_test_result.setText(f'❌ {message}')
+            self.chat_local_llm_test_result.setStyleSheet('color: red;')
     
     def _test_chat_api(self):
         mode = self.chat_mode_group.checkedId()

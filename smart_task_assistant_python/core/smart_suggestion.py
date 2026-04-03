@@ -40,18 +40,21 @@ class SmartSuggestionService:
             stats = self.db.get_efficiency_stats()
             trend = self.db.get_completion_trend(7)
             
+            pending_tasks = [t for t in all_tasks if t.get('status') == 'pending']
+            
             task_summary = []
-            for task in all_tasks[:20]:
+            for task in pending_tasks[:30]:
                 task_summary.append({
+                    'id': task.get('id'),
                     'title': task.get('title', ''),
-                    'status': task.get('status', ''),
+                    'content': task.get('content', '')[:100] if task.get('content') else '',
                     'priority': task.get('priority', ''),
                     'deadline': task.get('deadline', '')
                 })
             
-            prompt = f"""请分析以下任务数据，提供智能建议和行动建议。
+            prompt = f"""请分析以下任务数据，提供智能建议和优先执行任务推荐。
 
-任务概览（前20个）：
+待处理任务列表（前30个）：
 {json.dumps(task_summary, ensure_ascii=False, indent=2)}
 
 统计数据：
@@ -66,35 +69,67 @@ class SmartSuggestionService:
 {json.dumps(trend, ensure_ascii=False, indent=2)}
 
 请从以下维度分析并提供具体建议：
-1. 逾期模式分析：分析逾期原因，提供改进建议
-2. 优先级平衡分析：评估优先级设置是否合理
-3. 完成模式分析：分析任务完成效率，提供提升建议
-4. 行动建议：给出具体的下一步行动建议
+1. 任务内容分析：分析各任务的内容和关联性，识别关键任务
+2. 优先执行任务推荐：根据任务内容、截止时间、优先级，推荐3-5个应该优先执行的任务，并说明理由
+3. 逾期模式分析：分析逾期原因，提供改进建议
+4. 优先级平衡分析：评估优先级设置是否合理
+5. 完成模式分析：分析任务完成效率，提供提升建议
 
-请以JSON格式返回建议列表，格式如下：
-[
-    {{
-        "type": "urgent/warning/info/success/tip",
-        "title": "建议标题",
-        "content": "详细内容",
-        "action": "行动按钮文字（可选）",
-        "priority": "high/medium/low"
-    }}
-]
+请以JSON格式返回，格式如下：
+{{
+    "priority_tasks": [
+        {{
+            "task_id": 任务ID,
+            "title": "任务标题",
+            "reason": "推荐理由",
+            "suggested_order": 推荐执行顺序(1-5)
+        }}
+    ],
+    "suggestions": [
+        {{
+            "type": "urgent/warning/info/success/tip",
+            "title": "建议标题",
+            "content": "详细内容",
+            "action": "行动按钮文字（可选）",
+            "priority": "high/medium/low"
+        }}
+    ]
+}}
 
-只返回JSON数组，不要有其他内容。"""
+只返回JSON，不要有其他内容。"""
             
             result = self._call_ai(prompt)
             
-            if isinstance(result, list):
-                return result
+            if isinstance(result, dict):
+                suggestions = result.get('suggestions', [])
+                priority_tasks = result.get('priority_tasks', [])
+                if priority_tasks:
+                    suggestions.insert(0, {
+                        'type': 'tip',
+                        'title': '📋 优先执行任务推荐',
+                        'content': 'AI根据任务内容和优先级分析，推荐以下任务优先执行',
+                        'priority_tasks': priority_tasks,
+                        'priority': 'high'
+                    })
+                return suggestions
             
             if isinstance(result, str):
                 try:
-                    start = result.find('[')
-                    end = result.rfind(']') + 1
+                    start = result.find('{')
+                    end = result.rfind('}') + 1
                     if start != -1 and end > start:
-                        return json.loads(result[start:end])
+                        data = json.loads(result[start:end])
+                        suggestions = data.get('suggestions', [])
+                        priority_tasks = data.get('priority_tasks', [])
+                        if priority_tasks:
+                            suggestions.insert(0, {
+                                'type': 'tip',
+                                'title': '📋 优先执行任务推荐',
+                                'content': 'AI根据任务内容和优先级分析，推荐以下任务优先执行',
+                                'priority_tasks': priority_tasks,
+                                'priority': 'high'
+                            })
+                        return suggestions
                 except:
                     pass
             
@@ -106,23 +141,79 @@ class SmartSuggestionService:
     def _call_ai(self, prompt: str):
         ai_service = self.recognition.ai_service
         
-        if ai_service.api_type == 'doubao' and ai_service.api_key:
-            return self._call_doubao(ai_service, prompt)
-        elif ai_service.api_type == 'kimi' and ai_service.api_key:
-            return self._call_kimi(ai_service, prompt)
-        elif ai_service.api_type == 'openai' and ai_service.api_key:
-            return self._call_openai(ai_service, prompt)
-        elif ai_service.api_type == 'qwen' and ai_service.api_key:
-            return self._call_qwen(ai_service, prompt)
-        elif ai_service.api_type == 'zhipu' and ai_service.api_key:
-            return self._call_zhipu(ai_service, prompt)
+        if ai_service.api_type == 'local_llm':
+            return self._call_local_llm(ai_service, prompt)
+        elif ai_service.api_type == 'remote_api':
+            return self._call_remote_api(ai_service, prompt)
         
         return None
     
-    def _call_openai(self, ai_service, prompt: str):
+    def _call_local_llm(self, ai_service, prompt: str):
         try:
             import requests
             
+            model = ai_service.model if ai_service.model else 'qwen2.5:7b'
+            
+            system_prompt = """你是一位专业的任务管理智能助手，拥有丰富的时间管理和项目规划经验。你的职责是帮助用户分析任务数据，提供专业的建议和优先执行任务推荐。
+
+你的核心能力：
+1. 任务内容分析：深入理解任务内容，识别任务之间的关联性和依赖关系
+2. 优先级判断：综合考虑截止时间、任务重要性、紧急程度等因素，合理判断任务优先级
+3. 风险预警：识别可能逾期或存在风险的任务，提前预警
+4. 效率优化：分析任务完成模式，提供效率提升建议
+5. 行动建议：给出具体、可执行的下一步行动建议
+
+输出要求：
+- 必须严格返回JSON格式，不要包含任何其他文字说明
+- 建议内容要具体、可操作，避免泛泛而谈
+- 优先任务推荐要给出明确的理由
+- 语言简洁专业，突出重点"""
+
+            response = requests.post(
+                f'{ai_service.api_base}/v1/chat/completions',
+                headers={'Content-Type': 'application/json'},
+                json={
+                    'model': model,
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': prompt}
+                    ],
+                    'temperature': 0.7
+                },
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result['choices'][0]['message']['content']
+            else:
+                print(f"Local LLM调用失败: {response.status_code}")
+        except Exception as e:
+            print(f"Local LLM调用失败: {e}")
+        
+        return None
+    
+    def _call_remote_api(self, ai_service, prompt: str):
+        try:
+            import requests
+            
+            model = ai_service.model if ai_service.model else 'gpt-3.5-turbo'
+            
+            system_prompt = """你是一位专业的任务管理智能助手，拥有丰富的时间管理和项目规划经验。你的职责是帮助用户分析任务数据，提供专业的建议和优先执行任务推荐。
+
+你的核心能力：
+1. 任务内容分析：深入理解任务内容，识别任务之间的关联性和依赖关系
+2. 优先级判断：综合考虑截止时间、任务重要性、紧急程度等因素，合理判断任务优先级
+3. 风险预警：识别可能逾期或存在风险的任务，提前预警
+4. 效率优化：分析任务完成模式，提供效率提升建议
+5. 行动建议：给出具体、可执行的下一步行动建议
+
+输出要求：
+- 必须严格返回JSON格式，不要包含任何其他文字说明
+- 建议内容要具体、可操作，避免泛泛而谈
+- 优先任务推荐要给出明确的理由
+- 语言简洁专业，突出重点"""
+
             response = requests.post(
                 f'{ai_service.api_base}/chat/completions',
                 headers={
@@ -130,9 +221,9 @@ class SmartSuggestionService:
                     'Content-Type': 'application/json'
                 },
                 json={
-                    'model': 'gpt-3.5-turbo',
+                    'model': model,
                     'messages': [
-                        {'role': 'system', 'content': '你是一个专业的任务管理助手，请根据任务数据提供智能建议。只返回JSON格式结果。'},
+                        {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': prompt}
                     ],
                     'temperature': 0.7
@@ -143,127 +234,10 @@ class SmartSuggestionService:
             if response.status_code == 200:
                 result = response.json()
                 return result['choices'][0]['message']['content']
+            else:
+                print(f"Remote API调用失败: {response.status_code}")
         except Exception as e:
-            print(f"OpenAI调用失败: {e}")
-        
-        return None
-    
-    def _call_qwen(self, ai_service, prompt: str):
-        try:
-            import requests
-            
-            response = requests.post(
-                'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
-                headers={
-                    'Authorization': f'Bearer {ai_service.api_key}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': 'qwen-turbo',
-                    'input': {'messages': [
-                        {'role': 'system', 'content': '你是一个专业的任务管理助手，请根据任务数据提供智能建议。只返回JSON格式结果。'},
-                        {'role': 'user', 'content': prompt}
-                    ]},
-                    'parameters': {'temperature': 0.7, 'result_format': 'message'}
-                },
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if 'output' in result and 'choices' in result['output']:
-                    return result['output']['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"Qwen调用失败: {e}")
-        
-        return None
-    
-    def _call_zhipu(self, ai_service, prompt: str):
-        try:
-            import requests
-            
-            response = requests.post(
-                'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {ai_service.api_key}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': 'glm-4-flash',
-                    'messages': [
-                        {'role': 'system', 'content': '你是一个专业的任务管理助手，请根据任务数据提供智能建议。只返回JSON格式结果。'},
-                        {'role': 'user', 'content': prompt}
-                    ],
-                    'temperature': 0.7
-                },
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"Zhipu调用失败: {e}")
-        
-        return None
-    
-    def _call_doubao(self, ai_service, prompt: str):
-        try:
-            import requests
-            
-            api_base = ai_service.api_base or 'https://ark.cn-beijing.volces.com/api/v3'
-            response = requests.post(
-                f'{api_base}/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {ai_service.api_key}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': 'doubao-pro-32k-241215',
-                    'messages': [
-                        {'role': 'system', 'content': '你是一个专业的任务管理助手，请根据任务数据提供智能建议。只返回JSON格式结果。'},
-                        {'role': 'user', 'content': prompt}
-                    ],
-                    'temperature': 0.7
-                },
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"Doubao调用失败: {e}")
-        
-        return None
-    
-    def _call_kimi(self, ai_service, prompt: str):
-        try:
-            import requests
-            
-            api_base = ai_service.api_base or 'https://api.moonshot.cn/v1'
-            response = requests.post(
-                f'{api_base}/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {ai_service.api_key}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': 'moonshot-v1-8k',
-                    'messages': [
-                        {'role': 'system', 'content': '你是一个专业的任务管理助手，请根据任务数据提供智能建议。只返回JSON格式结果。'},
-                        {'role': 'user', 'content': prompt}
-                    ],
-                    'temperature': 0.7
-                },
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"Kimi调用失败: {e}")
+            print(f"Remote API调用失败: {e}")
         
         return None
     
@@ -457,8 +431,7 @@ class SmartSuggestionService:
             'afternoon': medium_priority[:3],
             'evening': low_priority[:2],
             'total_tasks': len(all_tasks),
-            'high_count': len(high_priority),
-            'suggestions': self.get_smart_suggestions()
+            'high_count': len(high_priority)
         }
         
         return plan

@@ -102,6 +102,21 @@ class StatsDialog(QDialog):
             QLabel {
                 color: #333;
             }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px;
+            }
+            QFrame {
+                background-color: transparent;
+            }
         ''')
         
         main_layout = QVBoxLayout(self)

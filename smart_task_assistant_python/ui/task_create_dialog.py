@@ -45,6 +45,66 @@ class TaskCreateDialog(QDialog):
             self.content_edit.setText(initial_content)
     
     def _init_ui(self):
+        self.setStyleSheet('''
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: #333;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px;
+            }
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+            }
+            QTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QTextEdit:focus {
+                border-color: #2196F3;
+            }
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QComboBox:focus {
+                border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
+            }
+            QCheckBox {
+                spacing: 6px;
+            }
+        ''')
+        
         self.setWindowTitle('创建任务')
         self.setMinimumSize(550, 700)
         
@@ -107,26 +167,19 @@ class TaskCreateDialog(QDialog):
         layout.addWidget(content_group)
         
         self.result_group = QGroupBox('🤖 识别结果')
-        result_layout = QVBoxLayout(self.result_group)
-        
-        self.result_frame = QFrame()
-        self.result_frame.setStyleSheet('''
-            QFrame {
-                background-color: #E3F2FD;
-                border-radius: 8px;
-                padding: 8px;
-            }
-        ''')
-        result_inner = QVBoxLayout(self.result_frame)
+        self.result_group.setMaximumHeight(100)
+        result_layout = QHBoxLayout(self.result_group)
+        result_layout.setSpacing(20)
         
         self.confidence_label = QLabel('置信度: --')
         self.confidence_label.setStyleSheet('font-weight: bold;')
-        result_inner.addWidget(self.confidence_label)
+        result_layout.addWidget(self.confidence_label)
         
         self.ai_type_label = QLabel('识别方式: --')
-        result_inner.addWidget(self.ai_type_label)
+        result_layout.addWidget(self.ai_type_label)
         
-        result_layout.addWidget(self.result_frame)
+        result_layout.addStretch()
+        
         layout.addWidget(self.result_group)
         
         form_group = QGroupBox('📋 任务详情')
@@ -135,15 +188,18 @@ class TaskCreateDialog(QDialog):
         
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText('任务标题')
+        self.title_edit.setMinimumHeight(32)
         form_layout.addRow('标题:', self.title_edit)
         
         self.owner_edit = QLineEdit()
         self.owner_edit.setPlaceholderText('负责人（默认为当前用户）')
+        self.owner_edit.setMinimumHeight(32)
         form_layout.addRow('负责人:', self.owner_edit)
         
         self.deadline_edit = QDateTimeEdit()
         self.deadline_edit.setCalendarPopup(True)
         self.deadline_edit.setDateTime(QDateTime.currentDateTime().addSecs(6 * 3600))
+        self.deadline_edit.setMinimumHeight(32)
         form_layout.addRow('截止时间:', self.deadline_edit)
         
         priority_layout = QHBoxLayout()
@@ -161,6 +217,7 @@ class TaskCreateDialog(QDialog):
         
         self.acceptance_edit = QLineEdit()
         self.acceptance_edit.setPlaceholderText('验收标准')
+        self.acceptance_edit.setMinimumHeight(32)
         form_layout.addRow('验收标准:', self.acceptance_edit)
         
         tags_frame = QFrame()
@@ -289,24 +346,24 @@ class TaskCreateDialog(QDialog):
         self.ai_type_label.setText(f"识别方式: {api_type_names.get(api_type, '本地规则')}")
         
         if confidence >= 0.7:
-            self.result_frame.setStyleSheet('''
-                QFrame {
+            self.result_group.setStyleSheet('''
+                QGroupBox {
                     background-color: #E8F5E9;
                     border-radius: 8px;
                     padding: 8px;
                 }
             ''')
         elif confidence >= 0.4:
-            self.result_frame.setStyleSheet('''
-                QFrame {
+            self.result_group.setStyleSheet('''
+                QGroupBox {
                     background-color: #FFF3E0;
                     border-radius: 8px;
                     padding: 8px;
                 }
             ''')
         else:
-            self.result_frame.setStyleSheet('''
-                QFrame {
+            self.result_group.setStyleSheet('''
+                QGroupBox {
                     background-color: #FFEBEE;
                     border-radius: 8px;
                     padding: 8px;

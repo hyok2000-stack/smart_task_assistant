@@ -8,7 +8,7 @@
   "ai_mode": "remote_api",
   "local_llm_service": "ollama",
   "local_llm_address": "http://localhost:11434",
-  "local_llm_model": "",
+  "local_llm_model": "gpt-oss:20b",
   "api_service_name": "通义千问",
   "ai_api_key": "sk-190f4264289e4f7fb70848fd245247c7",
   "ai_api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -16,7 +16,7 @@
   "chat_mode": "remote_api",
   "chat_local_llm_service": "ollama",
   "chat_local_llm_address": "http://localhost:11434",
-  "chat_local_llm_model": "",
+  "chat_local_llm_model": "gpt-oss:20b",
   "chat_api_service_name": "通义千问",
   "chat_api_key": "sk-190f4264289e4f7fb70848fd245247c7",
   "chat_api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -24,8 +24,8 @@
   "external_enabled": false,
   "external_url": "",
   "external_token": "",
-  "sync_on_create": true,
-  "sync_on_complete": true,
+  "sync_on_create": false,
+  "sync_on_complete": false,
   "remind_enabled": true,
   "remind_minutes": 30
 }

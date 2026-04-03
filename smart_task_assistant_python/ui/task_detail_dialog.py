@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QTextEdit, QPushButton, QComboBox, QDateTimeEdit,
-    QFormLayout, QGroupBox, QMessageBox, QFrame, QCheckBox
+    QFormLayout, QGroupBox, QMessageBox, QFrame, QCheckBox, QWidget
 )
 from PyQt5.QtCore import Qt, QDateTime
 import uuid
@@ -33,10 +33,85 @@ class TaskDetailDialog(QDialog):
         self._load_task()
     
     def _init_ui(self):
-        self.setWindowTitle('任务详情')
-        self.setMinimumSize(550, 750)
+        self.setStyleSheet('''
+            QDialog {
+                background-color: white;
+            }
+            QLabel {
+                color: #333;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 8px;
+            }
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+            }
+            QTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QTextEdit:focus {
+                border-color: #2196F3;
+            }
+            QComboBox {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QComboBox:focus {
+                border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
+            }
+            QDateTimeEdit {
+                padding: 6px 12px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QDateTimeEdit:focus {
+                border-color: #2196F3;
+            }
+            QCheckBox {
+                spacing: 6px;
+            }
+        ''')
         
-        layout = QVBoxLayout(self)
+        self.setWindowTitle('任务详情')
+        self.setMinimumSize(700, 600)
+        
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(12)
+        
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
         
         header_layout = QHBoxLayout()
         
@@ -61,19 +136,24 @@ class TaskDetailDialog(QDialog):
         
         header_layout.addStretch()
         
-        layout.addLayout(header_layout)
+        left_layout.addLayout(header_layout)
         
         form_group = QGroupBox('任务信息')
         form_layout = QFormLayout(form_group)
+        form_layout.setSpacing(8)
         
         self.title_edit = QLineEdit()
+        self.title_edit.setMinimumHeight(32)
         form_layout.addRow('标题:', self.title_edit)
         
         self.owner_edit = QLineEdit()
+        self.owner_edit.setMinimumHeight(32)
         form_layout.addRow('负责人:', self.owner_edit)
         
         self.deadline_edit = QDateTimeEdit()
         self.deadline_edit.setCalendarPopup(True)
+        self.deadline_edit.setDisplayFormat('yyyy-MM-dd HH:mm')
+        self.deadline_edit.setMinimumHeight(32)
         form_layout.addRow('截止时间:', self.deadline_edit)
         
         self.status_combo = QComboBox()
@@ -85,16 +165,80 @@ class TaskDetailDialog(QDialog):
         form_layout.addRow('优先级:', self.priority_combo)
         
         self.content_edit = QTextEdit()
-        self.content_edit.setMaximumHeight(100)
+        self.content_edit.setMinimumHeight(100)
+        self.content_edit.setPlaceholderText('输入任务详细内容...')
         form_layout.addRow('内容:', self.content_edit)
         
         self.acceptance_edit = QLineEdit()
+        self.acceptance_edit.setMinimumHeight(32)
         form_layout.addRow('验收标准:', self.acceptance_edit)
         
-        layout.addWidget(form_group)
+        left_layout.addWidget(form_group)
         
-        source_group = QGroupBox('来源信息')
+        tags_group = QGroupBox('标签')
+        tags_layout = QVBoxLayout(tags_group)
+        tags_layout.setSpacing(4)
+        
+        self.tags_container = QFrame()
+        self.tags_layout_inner = QHBoxLayout(self.tags_container)
+        self.tags_layout_inner.setContentsMargins(0, 0, 0, 0)
+        self.tags_layout_inner.setSpacing(8)
+        
+        self.tag_checkboxes = []
+        self._load_tags_editable()
+        
+        tags_layout.addWidget(self.tags_container)
+        
+        left_layout.addWidget(tags_group)
+        
+        left_layout.addStretch()
+        
+        main_layout.addWidget(left_widget, 3)
+        
+        right_widget = QWidget()
+        right_widget.setMaximumWidth(220)
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(10)
+        
+        header_spacer = QWidget()
+        header_spacer.setFixedHeight(28)
+        right_layout.addWidget(header_spacer)
+        
+        reminder_group = QGroupBox('提醒设置')
+        reminder_layout = QVBoxLayout(reminder_group)
+        reminder_layout.setSpacing(6)
+        
+        self.reminder_30_check = QCheckBox('30分钟')
+        self.reminder_1h_check = QCheckBox('1小时')
+        self.reminder_1d_check = QCheckBox('1天')
+        self.reminder_3d_check = QCheckBox('3天')
+        
+        reminder_layout.addWidget(self.reminder_30_check)
+        reminder_layout.addWidget(self.reminder_1h_check)
+        reminder_layout.addWidget(self.reminder_1d_check)
+        reminder_layout.addWidget(self.reminder_3d_check)
+        
+        right_layout.addWidget(reminder_group)
+        
+        recurring_group = QGroupBox('重复任务')
+        recurring_layout = QVBoxLayout(recurring_group)
+        recurring_layout.setSpacing(6)
+        
+        self.recurring_check = QCheckBox('启用重复')
+        self.recurring_check.stateChanged.connect(self._on_recurring_changed)
+        recurring_layout.addWidget(self.recurring_check)
+        
+        self.recurring_combo = QComboBox()
+        self.recurring_combo.addItems(['每日', '每周', '每月'])
+        self.recurring_combo.setEnabled(False)
+        recurring_layout.addWidget(self.recurring_combo)
+        
+        right_layout.addWidget(recurring_group)
+        
+        source_group = QGroupBox('📋 来源信息')
         source_layout = QFormLayout(source_group)
+        source_layout.setSpacing(8)
         
         source_type_label = QLabel(self._get_source_display())
         source_layout.addRow('来源:', source_type_label)
@@ -107,57 +251,11 @@ class TaskDetailDialog(QDialog):
         created_label = QLabel(self.task.get('created_at', ''))
         source_layout.addRow('创建时间:', created_label)
         
-        layout.addWidget(source_group)
+        right_layout.addWidget(source_group)
         
-        reminder_group = QGroupBox('提醒设置')
-        reminder_layout = QHBoxLayout(reminder_group)
+        right_layout.addStretch()
         
-        reminder_label = QLabel('提前提醒:')
-        reminder_layout.addWidget(reminder_label)
-        
-        self.reminder_30_check = QCheckBox('30分钟')
-        self.reminder_1h_check = QCheckBox('1小时')
-        self.reminder_1d_check = QCheckBox('1天')
-        self.reminder_3d_check = QCheckBox('3天')
-        
-        reminder_layout.addWidget(self.reminder_30_check)
-        reminder_layout.addWidget(self.reminder_1h_check)
-        reminder_layout.addWidget(self.reminder_1d_check)
-        reminder_layout.addWidget(self.reminder_3d_check)
-        reminder_layout.addStretch()
-        
-        layout.addWidget(reminder_group)
-        
-        recurring_group = QGroupBox('重复任务')
-        recurring_layout = QHBoxLayout(recurring_group)
-        
-        self.recurring_check = QCheckBox('启用重复')
-        self.recurring_check.stateChanged.connect(self._on_recurring_changed)
-        recurring_layout.addWidget(self.recurring_check)
-        
-        self.recurring_combo = QComboBox()
-        self.recurring_combo.addItems(['每日', '每周', '每月'])
-        self.recurring_combo.setEnabled(False)
-        recurring_layout.addWidget(self.recurring_combo)
-        
-        recurring_layout.addStretch()
-        
-        layout.addWidget(recurring_group)
-        
-        tags_group = QGroupBox('标签')
-        tags_layout = QVBoxLayout(tags_group)
-        
-        self.tags_container = QFrame()
-        self.tags_layout_inner = QHBoxLayout(self.tags_container)
-        self.tags_layout_inner.setContentsMargins(0, 0, 0, 0)
-        self.tags_layout_inner.setSpacing(8)
-        
-        self.tag_checkboxes = []
-        self._load_tags_editable()
-        
-        tags_layout.addWidget(self.tags_container)
-        
-        layout.addWidget(tags_group)
+        main_layout.addWidget(right_widget, 1)
         
         action_layout = QHBoxLayout()
         
@@ -185,7 +283,7 @@ class TaskDetailDialog(QDialog):
         
         action_layout.addStretch()
         
-        layout.addLayout(action_layout)
+        left_layout.addLayout(action_layout)
         
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -199,7 +297,7 @@ class TaskDetailDialog(QDialog):
         save_btn.setDefault(True)
         button_layout.addWidget(save_btn)
         
-        layout.addLayout(button_layout)
+        left_layout.addLayout(button_layout)
     
     def _load_task(self):
         self.title_edit.setText(self.task['title'])

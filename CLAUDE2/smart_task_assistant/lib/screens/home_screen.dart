@@ -16,6 +16,7 @@ import '../widgets/city_selector_dialog.dart';
 import 'add_task_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
+import 'habit_screen.dart';
 
 /// 主页面 - 互联网风格设计
 class HomeScreen extends StatefulWidget {
@@ -28,6 +29,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _currentIndex = 0;
   String? _selectedFilter;
+  String? _selectedTagId; // 标签筛选，null=全部
   late AnimationController _fabAnimationController;
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
 
@@ -149,8 +151,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       case 1:
         return _buildAllTasksPage();
       case 2:
-        return const StatsScreen();
+        return const HabitScreen();
       case 3:
+        return const StatsScreen();
+      case 4:
         return const SettingsScreen();
       default:
         return _buildTodayPage();
@@ -575,6 +579,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
+                      // 标签筛选
+                      Consumer<TaskProvider>(
+                        builder: (context, provider, _) {
+                          final tags = _getAllTags(provider);
+                          if (tags.isEmpty) return const SizedBox.shrink();
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildTagFilterChip(null, '全部标签', null),
+                                const SizedBox(width: 8),
+                                ...tags.map((tag) => Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _buildTagFilterChip(tag.id, tag.name, tag.color),
+                                )),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 8),
                     ],
                   ),
@@ -732,6 +756,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// 标签筛选芯片
+  Widget _buildTagFilterChip(String? tagId, String label, String? colorHex) {
+    final isSelected = _selectedTagId == tagId;
+    Color? tagColor;
+    if (colorHex != null) {
+      tagColor = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
+    }
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedTagId = tagId;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (tagColor ?? AppTheme.primaryColor)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? (tagColor ?? AppTheme.primaryColor)
+                : Colors.grey.shade200,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (tagColor != null && !isSelected) ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: tagColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? Colors.white : AppTheme.textSecondaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState({bool isWhite = false}) {
     final l = context.l;
     return Center(
@@ -802,8 +882,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               _buildNavItem(0, Icons.today_rounded, l.navToday),
               _buildNavItem(1, Icons.list_rounded, l.navAll),
-              _buildNavItem(2, Icons.bar_chart_rounded, l.navStats),
-              _buildNavItem(3, Icons.settings_rounded, l.navSettings),
+              _buildNavItem(2, Icons.event_repeat_rounded, '习惯'),
+              _buildNavItem(3, Icons.bar_chart_rounded, l.navStats),
+              _buildNavItem(4, Icons.settings_rounded, l.navSettings),
             ],
           ),
         ),
@@ -2484,9 +2565,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   List<Task> _getFilteredTaskList(TaskProvider provider) {
-    if (_selectedFilter == 'overdue') {
-      return provider.overdueTasks;
+    var tasks = _selectedFilter == 'overdue'
+        ? provider.overdueTasks
+        : provider.filteredTasks;
+
+    // 标签筛选
+    if (_selectedTagId != null) {
+      tasks = tasks.where((t) => t.tagIds.contains(_selectedTagId)).toList();
     }
-    return provider.filteredTasks;
+
+    return tasks;
   }
 }

@@ -47,7 +47,6 @@ class MainWindow(QMainWindow):
         self.filter_priority = ''
         self.filter_owner = ''
         self.filter_time = ''
-        self.filter_title = ''
         self.filter_tag = ''
         
         self.is_icon_flashing = False
@@ -160,6 +159,19 @@ class MainWindow(QMainWindow):
                 background-color: #7B1FA2;
             }
         ''')
+        self.smart_btn.setStyleSheet('''
+            QPushButton {
+                background-color: #9C27B0;
+                color: white;
+                border: none;
+                padding: 4px 6px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+        ''')
         self.smart_btn.clicked.connect(self._show_smart_suggestions)
         header_layout.addWidget(self.smart_btn)
         
@@ -177,13 +189,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(header_frame)
         
         stats_frame = QFrame()
-        stats_frame.setStyleSheet('''
-            QFrame {
-                background-color: transparent;
-            }
-        ''')
+        stats_frame.setStyleSheet('background-color: transparent;')
         stats_layout = QHBoxLayout(stats_frame)
-        stats_layout.setSpacing(10)
+        stats_layout.setSpacing(12)
+        stats_layout.setContentsMargins(0, 0, 0, 0)
         
         self.all_card = StatsCard('全部', 0, '#9E9E9E', '📋', 'all')
         self.pending_card = StatsCard('待处理', 0, '#FF9800', '⏳', 'pending')
@@ -226,9 +235,20 @@ class MainWindow(QMainWindow):
                 padding: 4px 8px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
+                background-color: white;
             }
             QComboBox:focus {
                 border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
             }
         ''')
         filter_layout.addWidget(self.priority_combo)
@@ -241,7 +261,7 @@ class MainWindow(QMainWindow):
         
         self.owner_input = QLineEdit()
         self.owner_input.setPlaceholderText('姓名...')
-        self.owner_input.setMaximumWidth(100)
+        self.owner_input.setMinimumWidth(80)
         self.owner_input.setStyleSheet('''
             QLineEdit {
                 padding: 4px 8px;
@@ -254,15 +274,10 @@ class MainWindow(QMainWindow):
         ''')
         filter_layout.addWidget(self.owner_input)
         
-        filter_layout.addSpacing(16)
+        filter_layout.addSpacing(8)
         
-        time_label = QLabel('时间')
-        time_label.setStyleSheet('''
-            font-weight: 600;
-            color: #4a5568;
-            font-size: 13px;
-            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-        ''')
+        time_label = QLabel('时间:')
+        time_label.setStyleSheet('font-weight: bold;')
         filter_layout.addWidget(time_label)
         
         self.time_combo = QComboBox()
@@ -272,30 +287,29 @@ class MainWindow(QMainWindow):
         self.time_combo.addItem('本周', 'this_week')
         self.time_combo.addItem('本月', 'this_month')
         self.time_combo.addItem('已逾期', 'overdue')
-        self.time_combo.setMinimumWidth(100)
-        filter_layout.addWidget(self.time_combo)
-        filter_layout.addWidget(self.time_combo)
-        
-        filter_layout.addSpacing(8)
-        
-        title_filter_label = QLabel('标题:')
-        title_filter_label.setStyleSheet('font-weight: bold;')
-        filter_layout.addWidget(title_filter_label)
-        
-        self.title_input = QLineEdit()
-        self.title_input.setPlaceholderText('关键词...')
-        self.title_input.setMaximumWidth(120)
-        self.title_input.setStyleSheet('''
-            QLineEdit {
+        self.time_combo.setMinimumWidth(80)
+        self.time_combo.setStyleSheet('''
+            QComboBox {
                 padding: 4px 8px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
+                background-color: white;
             }
-            QLineEdit:focus {
+            QComboBox:focus {
                 border-color: #2196F3;
             }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
+            }
         ''')
-        filter_layout.addWidget(self.title_input)
+        filter_layout.addWidget(self.time_combo)
         
         filter_layout.addSpacing(8)
         
@@ -311,9 +325,20 @@ class MainWindow(QMainWindow):
                 padding: 4px 8px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
+                background-color: white;
             }
             QComboBox:focus {
                 border-color: #2196F3;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #333;
+                selection-background-color: #E3F2FD;
+                selection-color: #333;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #333;
+                padding: 4px 8px;
             }
         ''')
         filter_layout.addWidget(self.tag_combo)
@@ -466,6 +491,7 @@ class MainWindow(QMainWindow):
                 background-color: #E3F2FD;
             }
         ''')
+        self.task_list.itemClicked.connect(self._on_task_clicked)
         self.task_list.itemDoubleClicked.connect(self._on_task_double_clicked)
         self.task_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.task_list.customContextMenuRequested.connect(self._show_context_menu)
@@ -545,7 +571,6 @@ class MainWindow(QMainWindow):
         self.time_combo.currentIndexChanged.connect(self._on_filter_changed)
         
         self.owner_input.textChanged.connect(self._on_filter_changed)
-        self.title_input.textChanged.connect(self._on_filter_changed)
         self.tag_combo.currentIndexChanged.connect(self._on_filter_changed)
     
     def _on_card_clicked(self, filter_key: str):
@@ -566,7 +591,6 @@ class MainWindow(QMainWindow):
         self.filter_priority = self.priority_combo.currentData() or ''
         self.filter_owner = self.owner_input.text().strip()
         self.filter_time = self.time_combo.currentData() or ''
-        self.filter_title = self.title_input.text().strip()
         self.filter_tag = self.tag_combo.currentData() or ''
         
         self._load_tasks()
@@ -578,7 +602,6 @@ class MainWindow(QMainWindow):
         self.filter_priority = ''
         self.filter_owner = ''
         self.filter_time = ''
-        self.filter_title = ''
         self.filter_tag = ''
         
         self.all_card.set_selected(True)
@@ -594,12 +617,10 @@ class MainWindow(QMainWindow):
         self.priority_combo.setCurrentIndex(0)
         self.time_combo.setCurrentIndex(0)
         self.owner_input.clear()
-        self.title_input.clear()
         self.tag_combo.setCurrentIndex(0)
         self.filter_priority = ''
         self.filter_owner = ''
         self.filter_time = ''
-        self.filter_title = ''
         self.filter_tag = ''
     
     def _load_data(self):
@@ -628,14 +649,13 @@ class MainWindow(QMainWindow):
         self.task_list.clear()
         self.selected_tasks.clear()
         
-        has_filters = self.filter_priority or self.filter_owner or self.filter_time or self.filter_title or self.filter_tag
+        has_filters = self.filter_priority or self.filter_owner or self.filter_time or self.filter_tag
         
         if has_filters or self.current_status_filter != 'all':
             tasks = self.db.get_tasks_by_filters(
                 priority=self.filter_priority,
                 owner=self.filter_owner,
                 time_filter=self.filter_time,
-                title=self.filter_title,
                 tag_id=self.filter_tag,
                 status_filter=self.current_status_filter
             )
@@ -675,8 +695,6 @@ class MainWindow(QMainWindow):
         if self.filter_time:
             time_names = {'today': '今天', 'tomorrow': '明天', 'this_week': '本周', 'this_month': '本月', 'overdue': '已逾期'}
             filter_desc.append(time_names.get(self.filter_time, ''))
-        if self.filter_title:
-            filter_desc.append(f'标题:{self.filter_title}')
         if self.filter_tag:
             tag_name = self.tag_combo.currentText()
             filter_desc.append(f'标签:{tag_name}')
@@ -685,6 +703,19 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f'🔍 筛选: {", ".join(filter_desc)}')
         else:
             self.statusBar().showMessage('🔍 显示全部任务')
+    
+    def _on_task_clicked(self, item: QListWidgetItem):
+        try:
+            task_id = item.data(Qt.UserRole)
+            if task_id:
+                from ui.task_detail_dialog import TaskDetailDialog
+                dialog = TaskDetailDialog(self, self.db, self.recognition, str(task_id))
+                if dialog.exec_():
+                    self._load_data()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"打开任务详情失败: {e}")
     
     def _on_task_selection_changed(self, task_id: str, selected: bool):
         if selected:
@@ -1065,20 +1096,6 @@ class MainWindow(QMainWindow):
             QFrame {
                 background-color: transparent;
             }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 4px;
-                background-color: white;
-                border: 2px solid #ddd;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #2196F3;
-                border-color: #2196F3;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #2196F3;
-            }
             QMenu {
                 background-color: white;
                 border: 1px solid #ddd;
@@ -1103,6 +1120,51 @@ class MainWindow(QMainWindow):
                 color: #666;
                 font-size: 12px;
                 padding: 4px 12px;
+            }
+            QDateTimeEdit {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QDateTimeEdit::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QDateTimeEdit::down-arrow {
+                width: 12px;
+                height: 12px;
+            }
+            QCalendarWidget {
+                background-color: white;
+                border: 1px solid #ddd;
+            }
+            QCalendarWidget QToolButton {
+                background-color: white;
+                color: black;
+                border: none;
+                padding: 4px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background-color: #f0f0f0;
+            }
+            QCalendarWidget QSpinBox {
+                background-color: white;
+                color: black;
+            }
+            QCalendarWidget QTableView {
+                background-color: white;
+                alternate-background-color: #f9f9f9;
+                selection-background-color: #2196F3;
+                selection-color: white;
+            }
+            QCalendarWidget QHeaderView {
+                background-color: white;
+            }
+            QCalendarWidget QHeaderView::section {
+                background-color: white;
+                color: black;
+                padding: 4px;
             }
         ''')
     
@@ -1307,14 +1369,33 @@ class MainWindow(QMainWindow):
         dialog.exec_()
     
     def _on_suggestion_action(self, action: str, param: str):
-        if action == 'filter':
-            if param == 'overdue':
-                self.status_combo.setCurrentText('已逾期')
-            elif param == 'high':
-                self.filter_priority_combo.setCurrentText('高优先级')
-            self._load_data()
-        elif action == 'show_stats':
-            self._show_stats()
+        try:
+            if action == 'filter':
+                if param == 'overdue':
+                    self.time_combo.setCurrentText('已逾期')
+                elif param == 'high':
+                    self.priority_combo.setCurrentText('🔴 高')
+                self._load_data()
+            elif action == 'show_stats':
+                self._show_stats()
+            elif action == 'view_task':
+                if param:
+                    try:
+                        task_id = int(param)
+                        task = self.db.get_task_by_id(task_id)
+                        if task:
+                            from ui.task_detail_dialog import TaskDetailDialog
+                            dialog = TaskDetailDialog(self, task, self.db)
+                            dialog.task_updated.connect(self._load_data)
+                            dialog.exec_()
+                    except Exception as e:
+                        print(f"查看任务失败: {e}")
+            elif action == 'adjust_priority':
+                QMessageBox.information(self, '提示', '请在任务列表中选择任务，右键点击调整优先级')
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"建议动作处理失败: {e}")
     
     def _on_search_changed(self, text: str):
         if not text:

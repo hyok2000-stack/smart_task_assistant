@@ -1,0 +1,2 @@
+# This file ensures the changes directory is tracked by git even when empty.
+# Change records should be added here to document spec updates and code changes.
