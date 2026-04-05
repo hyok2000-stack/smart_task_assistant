@@ -23,7 +23,8 @@ class HabitProvider extends ChangeNotifier {
   void _notifyNativeDataChanged(String type, [String? id]) {
     if (!Platform.isAndroid) return;
     try {
-      _reminderChannel.invokeMethod('notifyDataChanged', {'type': type, 'id': id});
+      _reminderChannel
+          .invokeMethod('notifyDataChanged', {'type': type, 'id': id});
     } catch (_) {}
   }
 
@@ -40,8 +41,7 @@ class HabitProvider extends ChangeNotifier {
 
   // Getters
   List<Habit> get habits => _habits;
-  List<Habit> get activeHabits =>
-      _habits.where((h) => h.isEnabled).toList();
+  List<Habit> get activeHabits => _habits.where((h) => h.isEnabled).toList();
   List<HabitLog> get logs => _logs;
   Map<String, int> get todayProgress => _todayProgress;
   bool get isLoading => _isLoading;
@@ -105,7 +105,7 @@ class HabitProvider extends ChangeNotifier {
   /// 加载今日日志
   Future<void> _loadTodayLogs() async {
     _logs = await _dbHelper.getTodayLogs();
-    _updateTodayProgress();
+    await _updateTodayProgress();
   }
 
   /// 更新今日进度
@@ -135,6 +135,21 @@ class HabitProvider extends ChangeNotifier {
         return;
       }
 
+      // 对于有目标的习惯，检查是否已经达到目标
+      if (habit.hasTarget) {
+        final currentCount = _todayProgress[habitId] ?? 0;
+        debugPrint('当前进度: $currentCount/${habit.targetCount}');
+
+        // 如果已经达到或超过目标，先清除今日记录，然后重新开始
+        if (currentCount >= habit.targetCount) {
+          debugPrint(
+              '习惯 ${habit.title} 已达标($currentCount/${habit.targetCount})，清除记录后重新开始');
+          await _dbHelper.clearHabitTodayLogs(habit.id);
+          // 直接清空缓存，不需要重新加载
+          _todayProgress[habitId] = 0;
+        }
+      }
+
       final log = HabitLog(
         id: const Uuid().v4(),
         habitId: habitId,
@@ -147,8 +162,12 @@ class HabitProvider extends ChangeNotifier {
 
       await _dbHelper.insertHabitLog(log);
 
-      // 重新加载今日日志
-      await _loadTodayLogs();
+      // 直接更新进度缓存，而不是重新加载所有日志
+      if (habit.hasTarget) {
+        final currentCount = _todayProgress[habitId] ?? 0;
+        _todayProgress[habitId] = currentCount + 1;
+        debugPrint('更新后进度: ${_todayProgress[habitId]}/${habit.targetCount}');
+      }
 
       notifyListeners();
       _notifyNativeDataChanged('habit', habitId);
@@ -182,8 +201,7 @@ class HabitProvider extends ChangeNotifier {
       }
 
       // 检查提醒相关字段是否改变
-      final reminderFieldsChanged =
-          oldHabit.isEnabled != habit.isEnabled ||
+      final reminderFieldsChanged = oldHabit.isEnabled != habit.isEnabled ||
           oldHabit.triggerType != habit.triggerType ||
           oldHabit.intervalMinutes != habit.intervalMinutes ||
           oldHabit.fixedTime != habit.fixedTime ||
@@ -191,8 +209,9 @@ class HabitProvider extends ChangeNotifier {
           oldHabit.referenceTime != habit.referenceTime;
 
       // 检查是否是上下班打卡时间变化
-      final isClockTimeChanged = (habit.id == 'habit_clock_in' || habit.id == 'habit_clock_out') &&
-          oldHabit.referenceTime != habit.referenceTime;
+      final isClockTimeChanged =
+          (habit.id == 'habit_clock_in' || habit.id == 'habit_clock_out') &&
+              oldHabit.referenceTime != habit.referenceTime;
 
       debugPrint('===== updateHabit =====');
       debugPrint('习惯: ${habit.title}');
@@ -201,9 +220,11 @@ class HabitProvider extends ChangeNotifier {
       if (reminderFieldsChanged) {
         debugPrint('  - 启用状态: ${oldHabit.isEnabled} -> ${habit.isEnabled}');
         debugPrint('  - 触发类型: ${oldHabit.triggerType} -> ${habit.triggerType}');
-        debugPrint('  - 间隔分钟: ${oldHabit.intervalMinutes} -> ${habit.intervalMinutes}');
+        debugPrint(
+            '  - 间隔分钟: ${oldHabit.intervalMinutes} -> ${habit.intervalMinutes}');
         debugPrint('  - 固定时间: ${oldHabit.fixedTime} -> ${habit.fixedTime}');
-        debugPrint('  - 参考时间: ${oldHabit.referenceTime} -> ${habit.referenceTime}');
+        debugPrint(
+            '  - 参考时间: ${oldHabit.referenceTime} -> ${habit.referenceTime}');
       }
 
       await _dbHelper.updateHabit(habit);
