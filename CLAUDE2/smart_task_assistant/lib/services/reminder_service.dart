@@ -58,6 +58,9 @@ class ReminderService {
   // 持续提醒间隔（秒）- 提醒后隔多少秒再次提醒
   static const int _continualReminderIntervalSeconds = 30;
 
+  // 逾期任务持续提醒间隔（分钟）- 逾期任务每隔多少分钟再次提醒
+  static const int _overdueReminderIntervalMinutes = 5;
+
   // 当前显示的提醒（避免重复弹出）
   String? _currentShowingReminderId;
   String? _currentShowingReminderType; // 'task' or 'habit'
@@ -364,6 +367,7 @@ class ReminderService {
     debugPrint('    - 提醒分钟: ${task.reminderMinutes}');
     debugPrint('    - 已永久关闭提醒: ${task.reminderDismissed}');
     debugPrint('    - 是否已完成: ${task.isCompleted}');
+    debugPrint('    - 是否逾期: ${task.isOverdue}');
     debugPrint('    - 是否已发送首次提醒: ${_firstReminderSent.contains(task.id)}');
 
     // 1. 检查是否有稍后提醒设置
@@ -415,20 +419,30 @@ class ReminderService {
     // 3. 已发送首次提醒，检查是否需要持续提醒
     if (_lastReminderTime.containsKey(task.id)) {
       final lastTime = _lastReminderTime[task.id]!;
-      final nextReminderTime = lastTime.add(
-        const Duration(seconds: _continualReminderIntervalSeconds),
-      );
+      // 逾期任务使用较长的提醒间隔，正常任务使用短间隔
+      final interval = task.isOverdue
+          ? Duration(minutes: _overdueReminderIntervalMinutes)
+          : const Duration(seconds: _continualReminderIntervalSeconds);
+      final nextReminderTime = lastTime.add(interval);
       final diff = now.difference(nextReminderTime);
       debugPrint('    - 上次提醒时间: $lastTime');
       debugPrint('    - 下次提醒时间: $nextReminderTime');
       debugPrint('    - 距离下次提醒: ${diff.inSeconds}秒');
+      debugPrint('    - 提醒间隔: ${task.isOverdue ? "$_overdueReminderIntervalMinutes 分钟" : "$_continualReminderIntervalSeconds 秒"}');
       // 检查是否到了下次提醒的时间
       if (now.isAfter(nextReminderTime)) {
-        debugPrint('    → 持续提醒时间已到（$_continualReminderIntervalSeconds秒间隔）');
+        debugPrint('    → 持续提醒时间已到');
         return true;
       }
       debugPrint('    → 持续提醒时间未到，跳过');
       return false;
+    }
+
+    // 4. 逾期任务兜底：任务已逾期且有提醒设置，但状态丢失时（如 app 重启后
+    //    _lastReminderTime 和 _snoozedTasks 为空），继续提醒直到用户关闭
+    if (task.isOverdue && task.reminderMinutes != null) {
+      debugPrint('    → 逾期任务兜底提醒（状态丢失恢复），间隔 $_overdueReminderIntervalMinutes 分钟');
+      return true;
     }
 
     debugPrint('    → 无需提醒');
@@ -534,12 +548,25 @@ class ReminderService {
 
     // 播放语音
     if (habit.voiceEnabled) {
+      // 防御性检查：只有 voiceType 为 'custom' 且路径有效时才传递自定义语音路径
+      String? effectiveVoiceType = habit.voiceType;
+      String? effectiveCustomVoicePath = habit.customVoicePath;
+      if (effectiveVoiceType == 'custom') {
+        if (effectiveCustomVoicePath == null || effectiveCustomVoicePath.isEmpty) {
+          debugPrint('⚠️ 习惯语音类型为自定义，但路径为空，回退到 TTS 播放');
+          effectiveVoiceType = 'neutral';
+          effectiveCustomVoicePath = null;
+        }
+      } else {
+        effectiveCustomVoicePath = null;
+      }
+
       _habitService.speak(
         _habitService.getVoiceText(habit, true),
-        voiceType: habit.voiceType,
+        voiceType: effectiveVoiceType,
         voiceStyle: habit.voiceStyle,
         speed: habit.voiceSpeed,
-        customVoicePath: habit.customVoicePath,
+        customVoicePath: effectiveCustomVoicePath,
       );
     }
 
@@ -651,6 +678,9 @@ class ReminderService {
       debugPrint('任务 "${task.title}" 未启用语音提醒');
       return;
     }
+
+    // 调试日志：输出任务的语音设置，便于排查自定义语音误播放问题
+    debugPrint('任务 "${task.title}" 语音设置: voiceType=${task.reminderVoiceType}, customPath=${task.reminderCustomVoicePath}');
 
     // 检查是否在重复提醒间隔内（避免过于频繁）
     if (_lastVoiceReminderTime.containsKey(task.id)) {

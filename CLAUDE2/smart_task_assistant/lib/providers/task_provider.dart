@@ -425,6 +425,16 @@ class TaskProvider extends ChangeNotifier {
         return true;
       }
 
+      // 包含今天完成的任务
+      if (t.completedAt != null) {
+        final completedDate = t.completedAt!;
+        if (completedDate.year == now.year &&
+            completedDate.month == now.month &&
+            completedDate.day == now.day) {
+          return true;
+        }
+      }
+
       // 包含今天创建的任务（即使已完成）
       if (t.createdAt != null) {
         final createdDate = t.createdAt!;

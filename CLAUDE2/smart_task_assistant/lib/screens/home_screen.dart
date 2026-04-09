@@ -441,8 +441,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-            // 已完成任务分组
-            if (provider.todayTasks.where((t) => t.isCompleted).isNotEmpty)
+            // 已完成任务分组（从全部任务中获取已完成任务，不受 todayTasks 过滤限制）
+            if (provider.tasks.where((t) => t.isCompleted).isNotEmpty)
               SliverToBoxAdapter(
                 child: _buildCompletedSection(provider),
               ),
@@ -1115,23 +1115,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// 构建进度卡片 - 紧凑版
   Widget _buildProgressCard(TaskProvider provider) {
     final l = context.l;
-    final todayTasks = provider.todayTasks;
+    final allTasks = provider.tasks;
     final overdueTasks = provider.overdueTasks;
 
-    final completedTasks = todayTasks.where((t) => t.isCompleted).toList();
-    final inProgressTasks = todayTasks
-        .where((t) => t.status == TaskStatus.inProgress && !t.isOverdue)
+    // 已完成计数从全部任务获取，确保与已完成卡片一致
+    final completedCount = allTasks.where((t) => t.isCompleted).length;
+    final inProgressTasks = allTasks
+        .where((t) =>
+            t.status == TaskStatus.inProgress && !t.isCompleted && !t.isOverdue)
         .toList();
-    final pendingTasks = todayTasks
+    final pendingTasks = allTasks
         .where((t) =>
             t.status == TaskStatus.pending && !t.isCompleted && !t.isOverdue)
         .toList();
 
-    final completedCount = completedTasks.length;
     final inProgressCount = inProgressTasks.length;
     final pendingCount = pendingTasks.length;
     final overdueCount = overdueTasks.length;
-    final totalCount = todayTasks.length;
+    final totalCount = allTasks.length;
     final activeTotal =
         completedCount + inProgressCount + pendingCount + overdueCount;
     final progressPercent =
@@ -2403,8 +2404,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildCompletedSection(TaskProvider provider) {
     final l = context.l;
+    // 从全部任务中获取已完成任务，确保数量与实际一致
     final completedTasks =
-        provider.todayTasks.where((t) => t.isCompleted).toList();
+        provider.tasks.where((t) => t.isCompleted).toList();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

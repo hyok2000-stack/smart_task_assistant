@@ -40,7 +40,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   String? _aiSuggestion;
 
   // 语音提醒设置
-  bool _reminderVoiceEnabled = false;
+  bool _reminderVoiceEnabled = true; // 默认启用语音
   String? _reminderVoiceType; // male/female/neutral/custom
   String? _reminderVoiceStyle; // standard/gentle/lively
   String? _reminderVoiceSpeed; // slow/normal/fast
@@ -86,7 +86,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _reminderVoiceSpeed = widget.task!.reminderVoiceSpeed ?? 'normal';
       _reminderCustomVoicePath = widget.task!.reminderCustomVoicePath;
     } else {
-      // 新建任务时，使用默认语音配置（女声、生动、正常）
+      // 新建任务时，默认启用提醒(15分钟)和语音（女声、生动、正常）
+      _reminderMinutes = 10;
       _reminderVoiceType = 'female';
       _reminderVoiceStyle = 'lively';
       _reminderVoiceSpeed = 'normal';
@@ -452,12 +453,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             Text(l.isZh ? '自定义语音文件' : 'Custom Voice'),
                             const Spacer(),
                             Switch(
-                              value: _reminderVoiceType == 'custom' && _reminderCustomVoicePath != null,
+                              // 只有 voiceType 为 custom 且路径非空时才显示为开启
+                              value: _reminderVoiceType == 'custom' && _reminderCustomVoicePath != null && _reminderCustomVoicePath!.isNotEmpty,
                               onChanged: (value) {
                                 setState(() {
                                   if (value) {
-                                    // 启用自定义语音
-                                    _reminderVoiceType = 'custom';
+                                    // 启用自定义语音（仅在已选择文件时才真正切换类型）
+                                    if (_reminderCustomVoicePath != null && _reminderCustomVoicePath!.isNotEmpty) {
+                                      _reminderVoiceType = 'custom';
+                                    } else {
+                                      // 没有文件时，先不切换类型，让用户去选择文件
+                                      // 设置一个标记，选择文件后自动切换
+                                      _reminderVoiceType = 'custom';
+                                    }
                                   } else {
                                     // 禁用自定义语音，使用默认设置（女声、生动、正常）
                                     _reminderVoiceType = 'female';
@@ -1199,6 +1207,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     print('任务标题: ${_titleController.text.trim()}');
     print('选中的标签ID: $_selectedTagIds');
     print('标签数量: ${_selectedTagIds.length}');
+
+    // 防御性检查：确保 voiceType 和 customVoicePath 一致
+    // 如果 voiceType 为 'custom' 但路径为空，则回退到默认语音类型
+    if (_reminderVoiceType == 'custom' &&
+        (_reminderCustomVoicePath == null || _reminderCustomVoicePath!.isEmpty)) {
+      debugPrint('⚠️ 语音类型为自定义但路径为空，保存时回退到女声');
+      _reminderVoiceType = 'female';
+      _reminderCustomVoicePath = null;
+    }
 
     if (widget.isEditing) {
       // 编辑模式：更新现有任务

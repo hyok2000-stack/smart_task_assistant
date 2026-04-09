@@ -394,12 +394,28 @@ class TTSService {
         ? _getRepeatReminderText(task)
         : _getTaskReminderText(task);
 
+    // 防御性检查：只有 voiceType 为 'custom' 且路径有效时才传递自定义语音路径
+    // 避免 voiceType='custom' 但路径为空/无效时出现异常行为
+    String? effectiveVoiceType = task.reminderVoiceType;
+    String? effectiveCustomVoicePath = task.reminderCustomVoicePath;
+
+    if (effectiveVoiceType == 'custom') {
+      if (effectiveCustomVoicePath == null || effectiveCustomVoicePath.isEmpty) {
+        debugPrint('⚠️ 任务语音类型为自定义，但路径为空，回退到 TTS 播放');
+        effectiveVoiceType = 'neutral';
+        effectiveCustomVoicePath = null;
+      }
+    } else {
+      // 非 custom 类型时，确保不传递自定义语音路径
+      effectiveCustomVoicePath = null;
+    }
+
     await speak(
       text: text,
-      voiceType: task.reminderVoiceType,
+      voiceType: effectiveVoiceType,
       voiceStyle: task.reminderVoiceStyle,
       speed: task.reminderVoiceSpeed,
-      customVoicePath: task.reminderCustomVoicePath,
+      customVoicePath: effectiveCustomVoicePath,
     );
   }
 
