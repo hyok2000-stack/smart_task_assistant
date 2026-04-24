@@ -12,8 +12,12 @@ type Tag struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	LocalID   string         `gorm:"size:36" json:"local_id"`           // 客户端本地 ID
 	Name      string         `gorm:"not null" json:"name"`
 	Color     string         `json:"color"`
+	Icon      string         `json:"icon"`                              // 标签图标
+	SortOrder int            `gorm:"default:0" json:"sort_order"`       // 排序
+	IsDefault bool           `gorm:"default:false" json:"is_default"`   // 是否为默认标签
 }
 
 type Device struct {

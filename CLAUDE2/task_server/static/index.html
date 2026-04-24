@@ -1,1583 +1,1248 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Task Server - 后台管理</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg-body: #f0f2f5;
+            --bg-card: #fff;
+            --bg-sidebar: #1e293b;
+            --bg-sidebar-hover: #334155;
+            --bg-sidebar-active: #667eea;
+            --text-primary: #1a202c;
+            --text-secondary: #718096;
+            --text-sidebar: #cbd5e0;
+            --border-color: #e2e8f0;
+            --accent: #667eea;
+            --accent-hover: #5568d3;
+            --success: #48bb78;
+            --danger: #f56565;
+            --warning: #ed8936;
+            --info: #4299e1;
+            --shadow: 0 2px 10px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 20px rgba(0,0,0,0.12);
         }
+        [data-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --bg-sidebar: #0f172a;
+            --bg-sidebar-hover: #1e293b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --shadow: 0 2px 10px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-body);
+            color: var(--text-primary);
             min-height: 100vh;
-            padding: 20px;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .header h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .header .user-info {
+        /* ===== Auth Pages ===== */
+        .auth-page {
+            min-height: 100vh;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
         }
-        .login-form, .register-form {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
-        }
-        .form-group input, .form-group textarea, .form-group select {
+        .auth-card {
+            background: var(--bg-card);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
+            max-width: 420px;
         }
-        .form-group textarea {
-            resize: vertical;
-            min-height: 80px;
+        .auth-card h2 { text-align: center; margin-bottom: 24px; color: var(--text-primary); }
+        .auth-card .auth-link { text-align: center; margin-top: 16px; }
+        .auth-card .auth-link a { color: var(--accent); text-decoration: none; }
+        /* ===== Layout ===== */
+        .app-layout {
+            display: flex;
+            min-height: 100vh;
         }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s;
+        .sidebar {
+            width: 240px;
+            background: var(--bg-sidebar);
+            color: var(--text-sidebar);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            z-index: 100;
+            transition: transform 0.3s;
         }
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        .btn-primary:hover {
-            background: #5568d3;
-        }
-        .btn-danger {
-            background: #f56565;
-            color: white;
-        }
-        .btn-danger:hover {
-            background: #e53e3e;
-        }
-        .btn-success {
-            background: #48bb78;
-            color: white;
-        }
-        .btn-success:hover {
-            background: #38a169;
-        }
-        .btn-secondary {
-            background: #718096;
-            color: white;
-        }
-        .btn-secondary:hover {
-            background: #4a5568;
-        }
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-        .task-list {
-            background: white;
+        .sidebar-logo {
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .task-item {
-            border-bottom: 1px solid #eee;
-            padding: 15px 0;
+            font-size: 18px;
+            font-weight: 700;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
             display: flex;
-            justify-content: space-between;
             align-items: center;
-        }
-        .task-item:last-child {
-            border-bottom: none;
-        }
-        .task-info {
-            flex: 1;
-        }
-        .task-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        .task-meta {
-            font-size: 12px;
-            color: #666;
-        }
-        .task-actions {
-            display: flex;
             gap: 10px;
         }
-        .badge {
-            padding: 3px 8px;
-            border-radius: 10px;
-            font-size: 12px;
-            font-weight: 500;
+        .sidebar-nav { flex: 1; padding: 10px 0; overflow-y: auto; }
+        .nav-section {
+            padding: 8px 20px 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 1px;
+            margin-top: 8px;
         }
-        .badge-priority-high {
-            background: #fed7d7;
-            color: #c53030;
-        }
-        .badge-priority-medium {
-            background: #feebc8;
-            color: #c05621;
-        }
-        .badge-priority-low {
-            background: #c6f6d5;
-            color: #2f855a;
-        }
-        .badge-completed {
-            background: #c6f6d5;
-            color: #2f855a;
-        }
-        .badge-forwarded {
-            background: #e2e8f0;
-            color: #4a5568;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            max-width: 500px;
-            margin: 50px auto;
-            position: relative;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .close {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 24px;
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
             cursor: pointer;
-            color: #999;
+            transition: all 0.2s;
+            color: var(--text-sidebar);
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 14px;
         }
-        .close:hover {
-            color: #333;
+        .nav-item:hover { background: var(--bg-sidebar-hover); color: #fff; }
+        .nav-item.active { background: var(--bg-sidebar-active); color: #fff; font-weight: 500; }
+        .nav-item .icon { width: 20px; text-align: center; }
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+        .sidebar-footer .user-avatar {
+            width: 32px; height: 32px;
+            background: var(--bg-sidebar-active);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 600;
+        }
+        .sidebar-footer .user-meta { flex: 1; }
+        .sidebar-footer .user-meta .name { font-size: 13px; color: #e2e8f0; }
+        .sidebar-footer .user-meta .role { font-size: 11px; color: #64748b; }
+        .sidebar-footer .logout-btn {
+            background: none; border: none; color: #94a3b8; cursor: pointer;
+            padding: 4px; border-radius: 4px;
+        }
+        .sidebar-footer .logout-btn:hover { color: #f56565; }
+        .main-content {
+            flex: 1;
+            margin-left: 240px;
+            padding: 24px;
+            min-height: 100vh;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .page-header h1 { font-size: 24px; font-weight: 600; }
+        .page-header .actions { display: flex; gap: 10px; align-items: center; }
+        /* ===== Theme Toggle ===== */
+        .theme-toggle {
+            background: none; border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 6px 10px; cursor: pointer; color: var(--text-primary);
+            font-size: 16px; display: flex; align-items: center; gap: 4px;
+        }
+        .theme-toggle:hover { background: var(--border-color); }
+        /* ===== Cards ===== */
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            padding: 20px;
             margin-bottom: 20px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
         }
         .stat-card {
-            background: white;
+            background: var(--bg-card);
+            border-radius: 12px;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: var(--shadow);
             text-align: center;
         }
-        .stat-number {
-            font-size: 36px;
-            font-weight: bold;
-            color: #667eea;
+        .stat-card .number { font-size: 32px; font-weight: 700; }
+        .stat-card .label { color: var(--text-secondary); margin-top: 4px; font-size: 13px; }
+        /* ===== Buttons ===== */
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
         }
-        .stat-label {
-            color: #666;
-            margin-top: 5px;
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover { background: #e53e3e; }
+        .btn-success { background: var(--success); color: #fff; }
+        .btn-success:hover { background: #38a169; }
+        .btn-secondary { background: var(--bg-body); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: var(--border-color); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-ghost { background: none; color: var(--accent); }
+        .btn-ghost:hover { background: rgba(102,126,234,0.1); }
+        /* ===== Forms ===== */
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-secondary); }
+        .form-input {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border-color);
+            border-radius: 8px; font-size: 14px; background: var(--bg-card);
+            color: var(--text-primary); transition: border-color 0.2s;
         }
+        .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(102,126,234,0.15); }
+        textarea.form-input { resize: vertical; min-height: 80px; }
+        select.form-input { cursor: pointer; }
+        /* ===== Table ===== */
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .data-table th { background: var(--bg-body); font-weight: 600; font-size: 12px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; }
+        .data-table tbody tr:hover { background: rgba(102,126,234,0.04); }
+        /* ===== Badge ===== */
+        .badge {
+            padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+            display: inline-block;
+        }
+        .badge-success { background: #c6f6d5; color: #22543d; }
+        .badge-danger { background: #fed7d7; color: #822727; }
+        .badge-warning { background: #feebc8; color: #7b341e; }
+        .badge-info { background: #bee3f8; color: #2a4365; }
+        .badge-neutral { background: #e2e8f0; color: #4a5568; }
+        [data-theme="dark"] .badge-success { background: #22543d; color: #c6f6d5; }
+        [data-theme="dark"] .badge-danger { background: #822727; color: #fed7d7; }
+        [data-theme="dark"] .badge-warning { background: #7b341e; color: #feebc8; }
+        [data-theme="dark"] .badge-info { background: #2a4365; color: #bee3f8; }
+        [data-theme="dark"] .badge-neutral { background: #334155; color: #cbd5e0; }
+        /* ===== Modal ===== */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); z-index: 200;
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: var(--bg-card); border-radius: 16px;
+            padding: 28px; width: 90%; max-width: 520px;
+            max-height: 85vh; overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { font-size: 18px; }
+        .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); padding: 4px; }
+        .modal-close:hover { color: var(--text-primary); }
+        /* ===== Alert ===== */
         .alert {
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            display: none;
+            padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+            font-size: 13px; display: none;
         }
-        .alert-success {
-            background: #c6f6d5;
-            color: #2f855a;
+        .alert.show { display: block; }
+        .alert-success { background: #c6f6d5; color: #22543d; }
+        .alert-error { background: #fed7d7; color: #822727; }
+        [data-theme="dark"] .alert-success { background: #22543d; color: #c6f6d5; }
+        [data-theme="dark"] .alert-error { background: #822727; color: #fed7d7; }
+        /* ===== Progress Bar ===== */
+        .progress-bar { height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; background: var(--accent); }
+        .progress-fill.complete { background: var(--success); }
+        /* ===== Chat ===== */
+        .chat-fab {
+            position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+            background: var(--accent); color: #fff; border: none; border-radius: 50%;
+            font-size: 24px; cursor: pointer; box-shadow: var(--shadow-lg); z-index: 150;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.2s;
         }
-        .alert-error {
-            background: #fed7d7;
-            color: #c53030;
+        .chat-fab:hover { transform: scale(1.1); }
+        .chat-panel {
+            position: fixed; bottom: 90px; right: 24px; width: 380px; max-height: 500px;
+            background: var(--bg-card); border-radius: 16px; box-shadow: var(--shadow-lg);
+            z-index: 150; display: none; flex-direction: column; overflow: hidden;
         }
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #666;
+        .chat-panel.open { display: flex; }
+        .chat-header { padding: 16px; border-bottom: 1px solid var(--border-color); font-weight: 600; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 16px; max-height: 340px; min-height: 200px; }
+        .chat-msg { margin-bottom: 12px; }
+        .chat-msg.user { text-align: right; }
+        .chat-msg .bubble {
+            display: inline-block; padding: 8px 14px; border-radius: 12px;
+            max-width: 80%; font-size: 13px; line-height: 1.5;
         }
-        .hidden {
-            display: none !important;
+        .chat-msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+        .chat-msg.ai .bubble { background: var(--bg-body); color: var(--text-primary); border-bottom-left-radius: 4px; }
+        .chat-input-area { display: flex; padding: 12px; border-top: 1px solid var(--border-color); gap: 8px; }
+        .chat-input-area input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); }
+        .chat-input-area input:focus { outline: none; border-color: var(--accent); }
+        /* ===== Tags ===== */
+        .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 20px; font-size: 13px;
+            background: rgba(102,126,234,0.1); color: var(--accent);
         }
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+        .tag-chip .tag-color { width: 10px; height: 10px; border-radius: 50%; }
+        .tag-chip .tag-actions { display: flex; gap: 4px; }
+        .tag-chip .tag-actions button { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+        /* ===== Habit Card ===== */
+        .habit-card {
+            background: var(--bg-card); border-radius: 12px; padding: 20px;
+            box-shadow: var(--shadow); margin-bottom: 12px;
         }
-        .tab-btn {
-            padding: 10px 20px;
-            border: none;
-            background: white;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 500;
+        .habit-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .habit-name { font-weight: 600; font-size: 16px; }
+        .habit-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .habit-progress { margin-top: 12px; }
+        .habit-progress .progress-info { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
+        /* ===== Pagination ===== */
+        .pagination { display: flex; gap: 6px; justify-content: center; margin-top: 20px; align-items: center; }
+        .pagination .page-info { font-size: 12px; color: var(--text-secondary); margin: 0 12px; }
+        /* ===== Utility ===== */
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .flex-center { display: flex; align-items: center; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .text-secondary { color: var(--text-secondary); }
+        .text-sm { font-size: 13px; }
+        .text-xs { font-size: 11px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        /* ===== Responsive ===== */
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .mobile-header {
+                display: flex !important; position: sticky; top: 0; z-index: 50;
+                background: var(--bg-card); padding: 12px 16px; align-items: center; gap: 12px;
+                box-shadow: var(--shadow);
+            }
+            .chat-panel { width: calc(100vw - 32px); right: 16px; bottom: 80px; }
         }
-        .tab-btn.active {
-            background: #667eea;
-            color: white;
-        }
-        .tab-btn:hover:not(.active) {
-            background: #e2e8f0;
-        }
-        .user-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-top: 10px;
-        }
-        .user-item {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .user-item:last-child {
-            border-bottom: none;
-        }
-        .user-item:hover {
-            background: #f7fafc;
-        }
-        .user-item input[type="checkbox"] {
-            width: auto;
-            margin-right: 10px;
-        }
-        .forward-item {
-            border-bottom: 1px solid #eee;
-            padding: 15px 0;
-        }
-        .forward-item:last-child {
-            border-bottom: none;
-        }
-        .forward-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .forward-info {
-            color: #666;
-            font-size: 14px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        table th, table td {
-            padding: 12px;
-            text-align: left;
-        }
-        table tbody tr:hover {
-            background: #f7fafc;
-        }
+        .mobile-header { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- 登录页面 -->
-        <div id="loginPage">
-            <div class="login-form" style="max-width: 400px; margin: 50px auto;">
-                <h2 style="margin-bottom: 20px; text-align: center;">用户登录</h2>
-                <div id="loginAlert" class="alert"></div>
-                <form id="loginForm">
-                    <div class="form-group">
-                        <label>用户名</label>
-                        <input type="text" id="loginUsername" required>
-                    </div>
-                    <div class="form-group">
-                        <label>密码</label>
-                        <input type="password" id="loginPassword" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">登录</button>
-                </form>
-                <p style="margin-top: 15px; text-align: center;">
-                    还没有账号？<a href="#" id="showRegister" style="color: #667eea;">立即注册</a>
-                </p>
-            </div>
-        </div>
 
-        <!-- 注册页面 -->
-        <div id="registerPage" class="hidden">
-            <div class="register-form" style="max-width: 400px; margin: 50px auto;">
-                <h2 style="margin-bottom: 20px; text-align: center;">用户注册</h2>
-                <div id="registerAlert" class="alert"></div>
-                <form id="registerForm">
-                    <div class="form-group">
-                        <label>用户名</label>
-                        <input type="text" id="registerUsername" required>
-                    </div>
-                    <div class="form-group">
-                        <label>邮箱</label>
-                        <input type="email" id="registerEmail" required>
-                    </div>
-                    <div class="form-group">
-                        <label>密码</label>
-                        <input type="password" id="registerPassword" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">注册</button>
-                </form>
-                <p style="margin-top: 15px; text-align: center;">
-                    已有账号？<a href="#" id="showLogin" style="color: #667eea;">立即登录</a>
-                </p>
-            </div>
-        </div>
-
-        <!-- 主页面 -->
-        <div id="mainPage" class="hidden">
-            <div class="header">
-                <div class="user-info">
-                    <h1>📋 Task Server - 后台管理</h1>
-                    <div>
-                        <span id="welcomeUser">欢迎，用户</span>
-                        <button id="logoutBtn" class="btn btn-danger" style="margin-left: 10px;">退出</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 统计卡片 -->
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-number" id="totalTasks">0</div>
-                    <div class="stat-label">总任务数</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="completedTasks" style="color: #48bb78;">0</div>
-                    <div class="stat-label">已完成</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="pendingTasks" style="color: #ed8936;">0</div>
-                    <div class="stat-label">待完成</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="receivedForwards" style="color: #667eea;">0</div>
-                    <div class="stat-label">收到转发</div>
-                </div>
-            </div>
-
-            <!-- 标签页 -->
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="myTasks">我的任务</button>
-                <button class="tab-btn" data-tab="receivedForwards">收到的转发</button>
-                <button class="tab-btn" data-tab="users">用户管理</button>
-                <button class="tab-btn" data-tab="adminPanel" id="adminTabBtn" style="display: none;">管理员面板</button>
-            </div>
-
-            <!-- 我的任务页面 -->
-            <div id="myTasksPage">
-                <div class="task-list">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h2>任务列表</h2>
-                        <button id="addTaskBtn" class="btn btn-primary">+ 新建任务</button>
-                    </div>
-                    <div id="taskAlert" class="alert"></div>
-                    <div class="loading" id="taskLoading">加载中...</div>
-                    <div id="taskList"></div>
-                </div>
-            </div>
-
-            <!-- 收到的转发页面 -->
-            <div id="receivedForwardsPage" class="hidden">
-                <div class="task-list">
-                    <h2 style="margin-bottom: 15px;">收到的转发任务</h2>
-                    <div id="forwardAlert" class="alert"></div>
-                    <div class="loading" id="forwardLoading">加载中...</div>
-                    <div id="forwardList"></div>
-                </div>
-            </div>
-
-            <!-- 用户管理页面 -->
-            <div id="usersPage" class="hidden">
-                <div class="task-list">
-                    <h2 style="margin-bottom: 15px;">已注册用户</h2>
-                    <div id="usersAlert" class="alert"></div>
-                    <div style="margin-bottom: 15px;">
-                        <input type="text" id="usersSearchInput" placeholder="搜索用户名或邮箱..."
-                            style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; width: 300px;">
-                    </div>
-                    <div class="loading" id="usersLoading">加载中...</div>
-                    <div id="usersList"></div>
-                    <div id="usersPagination" style="margin-top: 20px; text-align: center;"></div>
-                </div>
-            </div>
-
-            <!-- 管理员面板 -->
-            <div id="adminPanelPage" class="hidden">
-                <div class="task-list">
-                    <h2 style="margin-bottom: 15px;">所有任务（管理员视图）</h2>
-                    <div id="adminAlert" class="alert"></div>
-                    <div style="margin-bottom: 15px;">
-                        <input type="text" id="adminSearchInput" placeholder="搜索任务标题或描述..."
-                            style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; width: 300px;">
-                        <select id="adminFilterUser" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; margin-left: 10px;">
-                            <option value="">所有用户</option>
-                        </select>
-                        <select id="adminFilterStatus" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; margin-left: 10px;">
-                            <option value="">所有状态</option>
-                            <option value="true">已完成</option>
-                            <option value="false">未完成</option>
-                        </select>
-                    </div>
-                    <div class="loading" id="adminLoading">加载中...</div>
-                    <div id="adminTaskList"></div>
-                    <div id="adminPagination" style="margin-top: 20px; text-align: center;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 添加/编辑任务模态框 -->
-    <div id="taskModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2 id="modalTitle" style="margin-bottom: 20px;">新建任务</h2>
-            <div id="taskModalAlert" class="alert"></div>
-            <form id="taskForm">
+<!-- ===== Login Page ===== -->
+<div id="authContainer" class="auth-page">
+    <div id="loginPage">
+        <div class="auth-card">
+            <h2>Task Server 管理后台</h2>
+            <div id="loginAlert" class="alert"></div>
+            <form id="loginForm">
                 <div class="form-group">
-                    <label>任务标题 *</label>
-                    <input type="text" id="taskTitle" required>
+                    <label>用户名</label>
+                    <input type="text" id="loginUsername" class="form-input" required>
                 </div>
                 <div class="form-group">
-                    <label>任务描述</label>
-                    <textarea id="taskDescription"></textarea>
+                    <label>密码</label>
+                    <input type="password" id="loginPassword" class="form-input" required>
                 </div>
-                <div class="form-group">
-                    <label>优先级</label>
-                    <select id="taskPriority">
-                        <option value="1">高</option>
-                        <option value="2">中</option>
-                        <option value="3">低</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>分类</label>
-                    <input type="text" id="taskCategory" placeholder="例如：工作、学习、生活">
-                </div>
-                <button type="submit" class="btn btn-primary">保存</button>
+                <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">登录</button>
             </form>
+            <div class="auth-link">
+                <p>还没有账号？<a href="#" id="showRegister">立即注册</a></p>
+            </div>
         </div>
     </div>
-
-    <!-- 转发任务模态框 -->
-    <div id="forwardModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2 style="margin-bottom: 20px;">转发任务</h2>
-            <div id="forwardModalAlert" class="alert"></div>
-            <form id="forwardForm">
+    <div id="registerPage" class="hidden">
+        <div class="auth-card">
+            <h2>注册新账号</h2>
+            <div id="registerAlert" class="alert"></div>
+            <form id="registerForm">
                 <div class="form-group">
-                    <label>搜索用户</label>
-                    <input type="text" id="searchUserInput" placeholder="输入用户名或邮箱搜索">
-                    <div id="userSearchResults" class="user-list"></div>
+                    <label>用户名</label>
+                    <input type="text" id="regUsername" class="form-input" required>
                 </div>
                 <div class="form-group">
-                    <label>转发的用户</label>
-                    <div id="selectedUsers" style="min-height: 30px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></div>
+                    <label>邮箱</label>
+                    <input type="email" id="regEmail" class="form-input" required>
                 </div>
                 <div class="form-group">
-                    <label>转发消息</label>
-                    <textarea id="forwardMessage" placeholder="请添加转发说明（可选）"></textarea>
+                    <label>密码</label>
+                    <input type="password" id="regPassword" class="form-input" required>
                 </div>
-                <button type="submit" class="btn btn-primary">转发</button>
+                <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">注册</button>
             </form>
+            <div class="auth-link">
+                <p>已有账号？<a href="#" id="showLogin">立即登录</a></p>
+            </div>
         </div>
     </div>
+</div>
 
-    <!-- 转发记录模态框 -->
-    <div id="forwardRecordsModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2 style="margin-bottom: 20px;">转发记录</h2>
-            <div id="forwardRecordsAlert" class="alert"></div>
-            <div class="loading" id="forwardRecordsLoading">加载中...</div>
-            <div id="forwardRecordsList"></div>
+<!-- ===== Main App Layout ===== -->
+<div id="appContainer" class="app-layout hidden">
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <button onclick="document.querySelector('.sidebar').classList.toggle('open')" style="background:none;border:none;font-size:20px;cursor:pointer;">&#9776;</button>
+        <span style="font-weight:600;">Task Server</span>
+    </div>
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-logo">&#128203; Task Server</div>
+        <div class="sidebar-nav">
+            <div class="nav-section">概览</div>
+            <button class="nav-item active" data-page="dashboard"><span class="icon">&#128202;</span> 仪表盘</button>
+            <div class="nav-section">任务</div>
+            <button class="nav-item" data-page="tasks"><span class="icon">&#128221;</span> 我的任务</button>
+            <button class="nav-item" data-page="forwards"><span class="icon">&#128230;</span> 收到转发</button>
+            <div class="nav-section">习惯</div>
+            <button class="nav-item" data-page="habits"><span class="icon">&#127919;</span> 习惯管理</button>
+            <div class="nav-section">数据</div>
+            <button class="nav-item" data-page="tags"><span class="icon">&#127991;</span> 标签管理</button>
+            <button class="nav-item" data-page="devices"><span class="icon">&#128241;</span> 设备管理</button>
+            <button class="nav-item" data-page="sync"><span class="icon">&#128260;</span> 同步状态</button>
+            <div class="nav-section" id="adminSection" style="display:none;">管理</div>
+            <button class="nav-item" data-page="admin" id="adminNavItem" style="display:none;"><span class="icon">&#128100;</span> 管理面板</button>
+            <button class="nav-item" data-page="users" id="usersNavItem" style="display:none;"><span class="icon">&#128101;</span> 用户管理</button>
+        </div>
+        <div class="sidebar-footer">
+            <div class="user-avatar" id="userAvatar">?</div>
+            <div class="user-meta">
+                <div class="name" id="sidebarUsername">用户</div>
+                <div class="role" id="sidebarRole">普通用户</div>
+            </div>
+            <button class="logout-btn" id="logoutBtn" title="退出登录">&#x2716;</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- Dashboard Page -->
+        <div id="page-dashboard" class="page-content">
+            <div class="page-header">
+                <h1>仪表盘</h1>
+                <div class="actions">
+                    <button class="theme-toggle" id="themeToggle" title="切换主题">&#9790;</button>
+                </div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="number" id="statTotal" style="color:var(--accent);">0</div><div class="label">总任务</div></div>
+                <div class="stat-card"><div class="number" id="statCompleted" style="color:var(--success);">0</div><div class="label">已完成</div></div>
+                <div class="stat-card"><div class="number" id="statPending" style="color:var(--warning);">0</div><div class="label">待完成</div></div>
+                <div class="stat-card"><div class="number" id="statOverdue" style="color:var(--danger);">0</div><div class="label">已逾期</div></div>
+                <div class="stat-card"><div class="number" id="statHabits" style="color:var(--info);">0</div><div class="label">习惯数</div></div>
+                <div class="stat-card"><div class="number" id="statForwards" style="color:#9f7aea;">0</div><div class="label">转发数</div></div>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom:12px;">今日习惯进度</h3>
+                <div id="dashboardHabits"><div class="empty-state"><div class="icon">&#127919;</div><p>暂无习惯数据</p></div></div>
+            </div>
+        </div>
+
+        <!-- Tasks Page -->
+        <div id="page-tasks" class="page-content hidden">
+            <div class="page-header">
+                <h1>我的任务</h1>
+                <div class="actions">
+                    <button class="btn btn-primary" id="addTaskBtn">+ 新建任务</button>
+                    <button class="theme-toggle" id="themeToggle2">&#9790;</button>
+                </div>
+            </div>
+            <div class="card">
+                <div id="taskAlert" class="alert"></div>
+                <div id="taskList"></div>
+            </div>
+        </div>
+
+        <!-- Forwards Page -->
+        <div id="page-forwards" class="page-content hidden">
+            <div class="page-header">
+                <h1>收到的转发</h1>
+                <div class="actions"><button class="theme-toggle" id="themeToggle3">&#9790;</button></div>
+            </div>
+            <div class="card">
+                <div id="forwardAlert" class="alert"></div>
+                <div id="forwardList"></div>
+            </div>
+        </div>
+
+        <!-- Habits Page -->
+        <div id="page-habits" class="page-content hidden">
+            <div class="page-header">
+                <h1>习惯管理</h1>
+                <div class="actions">
+                    <button class="btn btn-secondary" id="initDefaultHabitsBtn">初始化默认习惯</button>
+                    <button class="btn btn-primary" id="addHabitBtn">+ 新建习惯</button>
+                    <button class="theme-toggle" id="themeToggle4">&#9790;</button>
+                </div>
+            </div>
+            <div id="habitList"></div>
+        </div>
+
+        <!-- Tags Page -->
+        <div id="page-tags" class="page-content hidden">
+            <div class="page-header">
+                <h1>标签管理</h1>
+                <div class="actions">
+                    <button class="btn btn-primary" id="addTagBtn">+ 新建标签</button>
+                    <button class="theme-toggle" id="themeToggle5">&#9790;</button>
+                </div>
+            </div>
+            <div class="card">
+                <div id="tagAlert" class="alert"></div>
+                <div id="tagList"></div>
+            </div>
+        </div>
+
+        <!-- Devices Page -->
+        <div id="page-devices" class="page-content hidden">
+            <div class="page-header">
+                <h1>设备管理</h1>
+                <div class="actions">
+                    <button class="btn btn-primary" id="addDeviceBtn">+ 注册设备</button>
+                    <button class="theme-toggle" id="themeToggle6">&#9790;</button>
+                </div>
+            </div>
+            <div class="card">
+                <div id="deviceAlert" class="alert"></div>
+                <div id="deviceList"></div>
+            </div>
+        </div>
+
+        <!-- Sync Page -->
+        <div id="page-sync" class="page-content hidden">
+            <div class="page-header">
+                <h1>同步状态</h1>
+                <div class="actions"><button class="theme-toggle" id="themeToggle7">&#9790;</button></div>
+            </div>
+            <div class="card">
+                <div class="form-group">
+                    <label>设备 ID</label>
+                    <input type="text" id="syncDeviceId" class="form-input" placeholder="输入设备ID查看同步状态">
+                </div>
+                <button class="btn btn-primary" id="checkSyncBtn">查询同步状态</button>
+                <button class="btn btn-success mt-2" id="syncPullBtn">拉取同步数据</button>
+            </div>
+            <div class="card mt-3" id="syncResult" style="display:none;">
+                <h3 style="margin-bottom:12px;">同步结果</h3>
+                <pre id="syncData" style="background:var(--bg-body);padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;white-space:pre-wrap;"></pre>
+            </div>
+        </div>
+
+        <!-- Admin Page -->
+        <div id="page-admin" class="page-content hidden">
+            <div class="page-header">
+                <h1>管理面板 - 所有任务</h1>
+                <div class="actions"><button class="theme-toggle" id="themeToggle8">&#9790;</button></div>
+            </div>
+            <div class="card">
+                <div class="flex gap-2 mb-3" style="flex-wrap:wrap;">
+                    <input type="text" id="adminSearch" class="form-input" placeholder="搜索任务..." style="width:260px;">
+                    <select id="adminFilterUser" class="form-input" style="width:180px;"><option value="">所有用户</option></select>
+                    <select id="adminFilterStatus" class="form-input" style="width:140px;"><option value="">所有状态</option><option value="true">已完成</option><option value="false">未完成</option></select>
+                </div>
+                <div id="adminAlert" class="alert"></div>
+                <div id="adminTaskList"></div>
+                <div id="adminPagination" class="pagination"></div>
+            </div>
+        </div>
+
+        <!-- Users Page -->
+        <div id="page-users" class="page-content hidden">
+            <div class="page-header">
+                <h1>用户管理</h1>
+                <div class="actions"><button class="theme-toggle" id="themeToggle9">&#9790;</button></div>
+            </div>
+            <div class="card">
+                <input type="text" id="usersSearch" class="form-input mb-3" placeholder="搜索用户名或邮箱..." style="width:300px;">
+                <div id="usersAlert" class="alert"></div>
+                <div id="usersList"></div>
+                <div id="usersPagination" class="pagination"></div>
+            </div>
         </div>
     </div>
+</div>
 
-    <script>
-        // API 基础路径
-        const API_BASE = '/api/v1';
+<!-- ===== Modals ===== -->
+<!-- Task Modal -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2 id="taskModalTitle">新建任务</h2><button class="modal-close" onclick="closeModal('taskModal')">&times;</button></div>
+        <div id="taskModalAlert" class="alert"></div>
+        <form id="taskForm">
+            <div class="form-group"><label>任务标题 *</label><input type="text" id="taskTitle" class="form-input" required></div>
+            <div class="form-group"><label>任务描述</label><textarea id="taskDesc" class="form-input"></textarea></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group"><label>优先级</label><select id="taskPriority" class="form-input"><option value="1">高</option><option value="2" selected>中</option><option value="3">低</option></select></div>
+                <div class="form-group"><label>分类</label><input type="text" id="taskCategory" class="form-input" placeholder="如：工作、学习"></div>
+            </div>
+            <div class="form-group"><label>截止日期</label><input type="datetime-local" id="taskDueDate" class="form-input"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">保存</button>
+        </form>
+    </div>
+</div>
 
-        // 当前用户和 token
-        let currentUser = null;
-        let token = localStorage.getItem('token');
+<!-- Forward Modal -->
+<div class="modal-overlay" id="forwardModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>转发任务</h2><button class="modal-close" onclick="closeModal('forwardModal')">&times;</button></div>
+        <div id="forwardModalAlert" class="alert"></div>
+        <form id="forwardForm">
+            <div class="form-group"><label>搜索用户</label><input type="text" id="fwdSearchUser" class="form-input" placeholder="输入用户名或邮箱"></div>
+            <div id="fwdSearchResults" style="max-height:150px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;margin-bottom:12px;"></div>
+            <div class="form-group"><label>已选用户</label><div id="fwdSelectedUsers" style="min-height:36px;padding:8px;border:1px solid var(--border-color);border-radius:8px;"><span class="text-secondary text-sm">尚未选择</span></div></div>
+            <div class="form-group"><label>转发消息</label><textarea id="fwdMessage" class="form-input" placeholder="可选转发说明"></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">确认转发</button>
+        </form>
+    </div>
+</div>
 
-        // 当前编辑的任务 ID
-        let editingTaskId = null;
+<!-- Forward Records Modal -->
+<div class="modal-overlay" id="fwdRecordsModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>转发记录</h2><button class="modal-close" onclick="closeModal('fwdRecordsModal')">&times;</button></div>
+        <div id="fwdRecordsList"></div>
+    </div>
+</div>
 
-        // 当前转发的任务 ID
-        let forwardingTaskId = null;
+<!-- Habit Modal -->
+<div class="modal-overlay" id="habitModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2 id="habitModalTitle">新建习惯</h2><button class="modal-close" onclick="closeModal('habitModal')">&times;</button></div>
+        <div id="habitModalAlert" class="alert"></div>
+        <form id="habitForm">
+            <div class="form-group"><label>习惯 ID *</label><input type="text" id="habitHabitId" class="form-input" required placeholder="如：habit_water"></div>
+            <div class="form-group"><label>习惯名称 *</label><input type="text" id="habitName" class="form-input" required></div>
+            <div class="form-group"><label>描述</label><textarea id="habitDesc" class="form-input"></textarea></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group"><label>分类</label><input type="text" id="habitCategory" class="form-input" placeholder="如：健康"></div>
+                <div class="form-group"><label>目标次数</label><input type="number" id="habitTarget" class="form-input" value="8" min="1"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group"><label>触发类型</label><select id="habitTriggerType" class="form-input"><option value="time">定时</option><option value="interval">间隔</option></select></div>
+                <div class="form-group"><label>调度类型</label><select id="habitScheduleType" class="form-input"><option value="daily">每天</option><option value="weekdays">工作日</option></select></div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">保存</button>
+        </form>
+    </div>
+</div>
 
-        // 选中的用户列表（用于转发）
-        let selectedUsers = [];
+<!-- Habit Detail Modal -->
+<div class="modal-overlay" id="habitDetailModal">
+    <div class="modal-box" style="max-width:600px;">
+        <div class="modal-header"><h2 id="habitDetailTitle">习惯详情</h2><button class="modal-close" onclick="closeModal('habitDetailModal')">&times;</button></div>
+        <div id="habitDetailContent"></div>
+    </div>
+</div>
 
-        // 搜索防抖定时器
-        let searchTimeout = null;
+<!-- Tag Modal -->
+<div class="modal-overlay" id="tagModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2 id="tagModalTitle">新建标签</h2><button class="modal-close" onclick="closeModal('tagModal')">&times;</button></div>
+        <div id="tagModalAlert" class="alert"></div>
+        <form id="tagForm">
+            <div class="form-group"><label>标签名称 *</label><input type="text" id="tagName" class="form-input" required></div>
+            <div class="form-group"><label>颜色</label><input type="color" id="tagColor" class="form-input" value="#667eea" style="height:40px;padding:4px;"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">保存</button>
+        </form>
+    </div>
+</div>
 
-        // DOM 元素
-        const loginPage = document.getElementById('loginPage');
-        const registerPage = document.getElementById('registerPage');
-        const mainPage = document.getElementById('mainPage');
-        const myTasksPage = document.getElementById('myTasksPage');
-        const receivedForwardsPage = document.getElementById('receivedForwardsPage');
+<!-- Device Modal -->
+<div class="modal-overlay" id="deviceModal">
+    <div class="modal-box">
+        <div class="modal-header"><h2>注册设备</h2><button class="modal-close" onclick="closeModal('deviceModal')">&times;</button></div>
+        <div id="deviceModalAlert" class="alert"></div>
+        <form id="deviceForm">
+            <div class="form-group"><label>设备 ID *</label><input type="text" id="deviceId" class="form-input" required></div>
+            <div class="form-group"><label>设备类型</label><input type="text" id="deviceType" class="form-input" placeholder="如：android, ios, web"></div>
+            <div class="form-group"><label>设备名称</label><input type="text" id="deviceName" class="form-input" placeholder="如：我的手机"></div>
+            <div class="form-group"><label>推送 Token</label><input type="text" id="devicePushToken" class="form-input"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;">注册</button>
+        </form>
+    </div>
+</div>
 
-        // 检查登录状态
-        function checkAuth() {
-            if (token) {
-                showMainPage();
-                loadUserInfo();
-                loadTasks();
-                loadReceivedForwards();
-            } else {
-                showLoginPage();
+<!-- ===== AI Chat ===== -->
+<button class="chat-fab hidden" id="chatFab" title="AI 助手">&#128172;</button>
+<div class="chat-panel" id="chatPanel">
+    <div class="chat-header">AI 助手 <button style="float:right;background:none;border:none;cursor:pointer;font-size:16px;" onclick="toggleChat()">&times;</button></div>
+    <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg ai"><div class="bubble">你好！我是 AI 助手，有什么可以帮你的吗？</div></div>
+    </div>
+    <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="if(event.key==='Enter')sendChat()">
+        <button class="btn btn-primary btn-sm" onclick="sendChat()">发送</button>
+    </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let token = localStorage.getItem('token');
+let currentUser = null;
+let currentPage = 'dashboard';
+let editingTaskId = null;
+let editingHabitId = null;
+let editingTagId = null;
+let forwardingTaskId = null;
+let selectedFwdUsers = [];
+let searchTimer = null;
+
+// ===== Utility =====
+function $(id) { return document.getElementById(id); }
+function headers() { return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }; }
+function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleString('zh-CN'); }
+function alert(id, msg, type='success') {
+    const el = $(id); if (!el) return;
+    el.className = `alert alert-${type} show`; el.textContent = msg;
+    setTimeout(() => el.className = 'alert', 3000);
+}
+function closeModal(id) { $(id).classList.remove('open'); }
+function openModal(id) { $(id).classList.add('open'); }
+function priorityText(p) { return {1:'高',2:'中',3:'低'}[p]||'低'; }
+function priorityBadge(p) { const m={1:'badge-danger',2:'badge-warning',3:'badge-success'}; return m[p]||'badge-success'; }
+function emptyHTML(icon, text) { return `<div class="empty-state"><div class="icon">${icon}</div><p>${text}</p></div>`; }
+
+// ===== Auth =====
+function showAuth() { $('authContainer').classList.remove('hidden'); $('appContainer').classList.add('hidden'); $('chatFab').classList.add('hidden'); }
+function showApp() { $('authContainer').classList.add('hidden'); $('appContainer').classList.remove('hidden'); $('chatFab').classList.remove('hidden'); }
+
+$('loginForm').onsubmit = async e => {
+    e.preventDefault();
+    try {
+        const r = await fetch(`${API}/auth/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:$('loginUsername').value, password:$('loginPassword').value}) });
+        const d = await r.json();
+        if (d.code===0 && d.data?.token) { token=d.data.token; localStorage.setItem('token',token); currentUser=d.data.user; init(); }
+        else alert('loginAlert', d.message||'登录失败', 'error');
+    } catch { alert('loginAlert','网络错误','error'); }
+};
+
+$('registerForm').onsubmit = async e => {
+    e.preventDefault();
+    try {
+        const r = await fetch(`${API}/auth/register`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:$('regUsername').value, email:$('regEmail').value, password:$('regPassword').value}) });
+        const d = await r.json();
+        if (d.code===0) { alert('registerAlert','注册成功，请登录','success'); setTimeout(()=>{$('loginPage').classList.remove('hidden');$('registerPage').classList.add('hidden');},1500); }
+        else alert('registerAlert', d.message||'注册失败','error');
+    } catch { alert('registerAlert','网络错误','error'); }
+};
+
+$('showRegister').onclick = e => { e.preventDefault(); $('loginPage').classList.add('hidden'); $('registerPage').classList.remove('hidden'); };
+$('showLogin').onclick = e => { e.preventDefault(); $('registerPage').classList.add('hidden'); $('loginPage').classList.remove('hidden'); };
+$('logoutBtn').onclick = () => { localStorage.removeItem('token'); token=null; currentUser=null; showAuth(); };
+
+// ===== Theme =====
+function toggleTheme() {
+    const t = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
+    document.querySelectorAll('.theme-toggle').forEach(b => b.textContent = t==='dark'?'\u2600':'\u263E');
+}
+document.querySelectorAll('.theme-toggle').forEach(b => b.onclick = toggleTheme);
+const savedTheme = localStorage.getItem('theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+
+// ===== Navigation =====
+document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+    btn.onclick = () => navigateTo(btn.dataset.page);
+});
+
+function navigateTo(page) {
+    currentPage = page;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
+    document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
+    $(`page-${page}`)?.classList.remove('hidden');
+    $('sidebar').classList.remove('open');
+    // Load data
+    const loaders = { dashboard: loadDashboard, tasks: loadTasks, forwards: loadForwards, habits: loadHabits, tags: loadTags, devices: loadDevices, admin: loadAdminTasks, users: loadUsers };
+    loaders[page]?.();
+}
+
+// ===== Init =====
+async function init() {
+    showApp();
+    try {
+        const r = await fetch(`${API}/user/profile`, {headers:headers()});
+        const d = await r.json();
+        if (d.code===0 && d.data) {
+            currentUser = d.data;
+            $('sidebarUsername').textContent = currentUser.username;
+            $('sidebarRole').textContent = currentUser.role==='admin'?'管理员':'普通用户';
+            $('userAvatar').textContent = (currentUser.nickname||currentUser.username)[0].toUpperCase();
+            if (currentUser.role==='admin') {
+                $('adminNavItem').style.display=''; $('usersNavItem').style.display='';
+                $('adminSection').style.display=''; loadAdminUsers();
             }
         }
+    } catch {}
+    navigateTo('dashboard');
+}
 
-        // 显示登录页面
-        function showLoginPage() {
-            loginPage.classList.remove('hidden');
-            registerPage.classList.add('hidden');
-            mainPage.classList.add('hidden');
+// ===== Dashboard =====
+async function loadDashboard() {
+    try {
+        const r = await fetch(`${API}/tasks/stats`, {headers:headers()});
+        const d = await r.json();
+        if (d.code===0 && d.data) {
+            const s = d.data;
+            $('statTotal').textContent = s.total||0;
+            $('statCompleted').textContent = s.completed||0;
+            $('statPending').textContent = s.pending||0;
+            $('statOverdue').textContent = s.overdue||0;
         }
-
-        // 显示注册页面
-        function showRegisterPage() {
-            loginPage.classList.add('hidden');
-            registerPage.classList.remove('hidden');
-            mainPage.classList.add('hidden');
-        }
-
-        // 显示主页面
-        function showMainPage() {
-            loginPage.classList.add('hidden');
-            registerPage.classList.add('hidden');
-            mainPage.classList.remove('hidden');
-        }
-
-        // 显示提示信息
-        function showAlert(elementId, message, type = 'success') {
-            const alert = document.getElementById(elementId);
-            if (!alert) return;
-            alert.className = `alert alert-${type}`;
-            alert.textContent = message;
-            alert.style.display = 'block';
-            setTimeout(() => {
-                alert.style.display = 'none';
-            }, 3000);
-        }
-
-        // 获取请求头
-        function getHeaders() {
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            };
-        }
-
-        // 标签页切换
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                const tab = btn.dataset.tab;
-                if (tab === 'myTasks') {
-                    myTasksPage.classList.remove('hidden');
-                    receivedForwardsPage.classList.add('hidden');
-                    document.getElementById('usersPage').classList.add('hidden');
-                    document.getElementById('adminPanelPage').classList.add('hidden');
-                    loadTasks();
-                } else if (tab === 'receivedForwards') {
-                    myTasksPage.classList.add('hidden');
-                    receivedForwardsPage.classList.remove('hidden');
-                    document.getElementById('usersPage').classList.add('hidden');
-                    document.getElementById('adminPanelPage').classList.add('hidden');
-                    loadReceivedForwards();
-                } else if (tab === 'users') {
-                    myTasksPage.classList.add('hidden');
-                    receivedForwardsPage.classList.add('hidden');
-                    document.getElementById('usersPage').classList.remove('hidden');
-                    document.getElementById('adminPanelPage').classList.add('hidden');
-                    loadUsers();
-                } else if (tab === 'adminPanel') {
-                    myTasksPage.classList.add('hidden');
-                    receivedForwardsPage.classList.add('hidden');
-                    document.getElementById('usersPage').classList.add('hidden');
-                    document.getElementById('adminPanelPage').classList.remove('hidden');
-                    loadAdminTasks();
+    } catch {}
+    try {
+        const r = await fetch(`${API}/habits`, {headers:headers()});
+        const d = await r.json();
+        if (d.code===0 && d.data) {
+            const habits = d.data.habits||[];
+            $('statHabits').textContent = habits.length;
+            if (habits.length>0) {
+                let html = '';
+                for (const h of habits.slice(0,5)) {
+                    let pct=0;
+                    try { const sr=await fetch(`${API}/habits/${h.habit_id}/stats`,{headers:headers()}); const sd=await sr.json(); if(sd.code===0&&sd.data) pct=sd.data.percentage||0; } catch{}
+                    html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+                        <span style="min-width:120px;font-weight:500;">${h.name}</span>
+                        <div style="flex:1;"><div class="progress-bar"><div class="progress-fill${pct>=100?' complete':''}" style="width:${pct}%"></div></div></div>
+                        <span class="text-sm" style="min-width:40px;text-align:right;">${pct}%</span>
+                    </div>`;
                 }
-            });
-        });
-
-        // 用户登录
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-
-            try {
-                const response = await fetch(`${API_BASE}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data.token) {
-                    token = data.data.token;
-                    localStorage.setItem('token', token);
-                    currentUser = data.data.user;
-                    showAlert('loginAlert', '登录成功！', 'success');
-                    checkAuth();
-                } else {
-                    showAlert('loginAlert', data.message || '登录失败', 'error');
-                }
-            } catch (error) {
-                showAlert('loginAlert', '网络错误，请重试', 'error');
-            }
-        });
-
-        // 用户注册
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('registerUsername').value;
-            const email = document.getElementById('registerEmail').value;
-            const password = document.getElementById('registerPassword').value;
-
-            try {
-                const response = await fetch(`${API_BASE}/auth/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, email, password })
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0) {
-                    showAlert('registerAlert', '注册成功！请登录', 'success');
-                    setTimeout(showLoginPage, 1500);
-                } else {
-                    showAlert('registerAlert', data.message || '注册失败', 'error');
-                }
-            } catch (error) {
-                showAlert('registerAlert', '网络错误，请重试', 'error');
-            }
-        });
-
-        // 切换登录/注册页面
-        document.getElementById('showRegister').addEventListener('click', (e) => {
-            e.preventDefault();
-            showRegisterPage();
-        });
-
-        document.getElementById('showLogin').addEventListener('click', (e) => {
-            e.preventDefault();
-            showLoginPage();
-        });
-
-        // 退出登录
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('token');
-            token = null;
-            currentUser = null;
-            showLoginPage();
-        });
-
-        // 加载用户信息
-        async function loadUserInfo() {
-            try {
-                const response = await fetch(`${API_BASE}/user/profile`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    currentUser = data.data;
-                    document.getElementById('welcomeUser').textContent = `欢迎，${currentUser.username}`;
-
-                    // 如果是管理员，显示管理员面板
-                    if (currentUser.role === 'admin') {
-                        document.getElementById('adminTabBtn').style.display = 'block';
-                        loadAllUsersForFilter();
-                    }
-                }
-            } catch (error) {
-                console.error('加载用户信息失败:', error);
+                $('dashboardHabits').innerHTML = html;
             }
         }
+    } catch {}
+    try {
+        const r = await fetch(`${API}/forwards/received?page=1&page_size=1`, {headers:headers()});
+        const d = await r.json();
+        if (d.code===0 && d.data) $('statForwards').textContent = d.data.total||0;
+    } catch {}
+}
 
-        // 加载任务列表
-        async function loadTasks() {
-            const loading = document.getElementById('taskLoading');
-            const taskList = document.getElementById('taskList');
-
-            loading.style.display = 'block';
-            taskList.innerHTML = '';
-
-            try {
-                const response = await fetch(`${API_BASE}/tasks`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const tasks = data.data.tasks || data.data;
-                    renderTasks(tasks);
-                    updateStats(tasks);
-                } else {
-                    taskList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无任务</p>';
-                }
-            } catch (error) {
-                showAlert('taskAlert', '加载任务失败', 'error');
-                taskList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
-
-        // 渲染任务列表
-        function renderTasks(tasks) {
-            const taskList = document.getElementById('taskList');
-
-            if (!tasks || tasks.length === 0) {
-                taskList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无任务，点击"新建任务"开始吧！</p>';
-                return;
-            }
-
-            taskList.innerHTML = tasks.map(task => `
-                <div class="task-item">
-                    <div class="task-info">
-                        <div class="task-title">
-                            ${task.completed ? '✅ ' : ''}${task.title}
-                            ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
-                            ${task.is_forwarded ? '<span class="badge badge-forwarded">转发任务</span>' : ''}
+// ===== Tasks =====
+async function loadTasks() {
+    $('taskList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        const r = await fetch(`${API}/tasks`, {headers:headers()});
+        const d = await r.json();
+        if (d.code===0 && d.data) {
+            const tasks = d.data.tasks || d.data || [];
+            if (!tasks.length) { $('taskList').innerHTML = emptyHTML('&#128221;','暂无任务'); return; }
+            $('taskList').innerHTML = tasks.map(t => `
+                <div style="padding:16px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+                    <div style="flex:1;">
+                        <div style="font-weight:600;">${t.completed?'&#9989; ':''}${t.title} ${t.completed?'<span class="badge badge-success">已完成</span>':''}${t.is_forwarded?'<span class="badge badge-neutral">转发</span>':''}</div>
+                        <div class="text-sm text-secondary mt-2">
+                            <span class="badge ${priorityBadge(t.priority)}">${priorityText(t.priority)}</span>
+                            ${t.category?`<span style="margin-left:8px;">${t.category}</span>`:''}
+                            <span style="margin-left:8px;">${formatDate(t.created_at)}</span>
                         </div>
-                        <div class="task-meta">
-                            <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
-                            ${task.category ? `<span>分类: ${task.category}</span>` : ''}
-                            ${task.created_at ? `<span style="margin-left: 10px;">创建时间: ${formatDate(task.created_at)}</span>` : ''}
+                        ${t.description?`<div class="text-sm text-secondary mt-2">${t.description}</div>`:''}
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="toggleTask(${t.id})" class="btn btn-sm ${t.completed?'btn-success':'btn-primary'}">${t.completed?'取消':'完成'}</button>
+                        ${!t.is_forwarded?`<button onclick="openFwdModal(${t.id})" class="btn btn-sm btn-secondary">转发</button>`:''}
+                        <button onclick="editTask(${t.id})" class="btn btn-sm btn-secondary">编辑</button>
+                        <button onclick="deleteTask(${t.id})" class="btn btn-sm btn-danger">删除</button>
+                        ${!t.is_forwarded?`<button onclick="viewFwdRecords(${t.id})" class="btn btn-sm btn-ghost">记录</button>`:''}
+                    </div>
+                </div>`).join('');
+        } else $('taskList').innerHTML = emptyHTML('&#128221;','加载失败');
+    } catch { $('taskList').innerHTML = emptyHTML('&#128221;','网络错误'); }
+}
+
+$('addTaskBtn').onclick = () => { editingTaskId=null; $('taskModalTitle').textContent='新建任务'; $('taskForm').reset(); openModal('taskModal'); };
+
+$('taskForm').onsubmit = async e => {
+    e.preventDefault();
+    const body = { title:$('taskTitle').value, description:$('taskDesc').value, priority:+$('taskPriority').value, category:$('taskCategory').value };
+    if ($('taskDueDate').value) body.due_date = new Date($('taskDueDate').value).toISOString();
+    try {
+        const url = editingTaskId ? `${API}/tasks/${editingTaskId}` : `${API}/tasks`;
+        const r = await fetch(url, {method:editingTaskId?'PUT':'POST', headers:headers(), body:JSON.stringify(body)});
+        const d = await r.json();
+        if (d.code===0) { closeModal('taskModal'); loadTasks(); } else alert('taskModalAlert',d.message||'操作失败','error');
+    } catch { alert('taskModalAlert','网络错误','error'); }
+};
+
+async function editTask(id) {
+    try {
+        const r = await fetch(`${API}/tasks/${id}`,{headers:headers()});
+        const d = await r.json();
+        if (d.code===0&&d.data) {
+            editingTaskId=d.data.id; $('taskModalTitle').textContent='编辑任务';
+            $('taskTitle').value=d.data.title||''; $('taskDesc').value=d.data.description||'';
+            $('taskPriority').value=d.data.priority||2; $('taskCategory').value=d.data.category||'';
+            openModal('taskModal');
+        }
+    } catch {}
+}
+
+async function toggleTask(id) { try { await fetch(`${API}/tasks/${id}/toggle`,{method:'PATCH',headers:headers()}); loadTasks(); } catch{} }
+
+async function deleteTask(id) {
+    if (!confirm('确定删除此任务？')) return;
+    try { await fetch(`${API}/tasks/${id}`,{method:'DELETE',headers:headers()}); loadTasks(); } catch{}
+}
+
+// ===== Forward =====
+async function loadForwards() {
+    $('forwardList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        const r = await fetch(`${API}/forwards/received?page=1&page_size=50`,{headers:headers()});
+        const d = await r.json();
+        if (d.code===0&&d.data) {
+            const fwds = d.data.forwards||[];
+            if (!fwds.length) { $('forwardList').innerHTML = emptyHTML('&#128230;','暂无转发任务'); return; }
+            // Load task details
+            for (const f of fwds) {
+                try { const tr=await fetch(`${API}/tasks/${f.forwarded_task_id}`,{headers:headers()}); const td=await tr.json(); if(td.code===0) f.task=td.data; } catch{}
+            }
+            $('forwardList').innerHTML = fwds.map(f => {
+                const t = f.task||{};
+                return `<div style="padding:16px 0;border-bottom:1px solid var(--border-color);">
+                    <div class="flex" style="justify-content:space-between;">
+                        <span class="text-sm text-secondary">${f.forwarded_by?.nickname||f.forwarded_by?.username||'用户'} 转发于 ${formatDate(f.created_at)}</span>
+                        ${f.is_expired?'<span class="badge badge-danger">已过期</span>':'<span class="badge badge-success">进行中</span>'}
+                    </div>
+                    ${f.message?`<p class="text-sm text-secondary mt-2">${f.message}</p>`:''}
+                    ${t.title?`<div style="background:var(--bg-body);padding:12px;border-radius:8px;border-left:3px solid var(--accent);margin:8px 0;">
+                        <div style="font-weight:600;">${t.completed?'&#9989; ':''}${t.title}</div>
+                        ${t.description?`<div class="text-sm text-secondary mt-2">${t.description}</div>`:''}
+                    </div>`:''}
+                    ${t.id?`<button onclick="toggleTask(${t.id});loadForwards();" class="btn btn-sm ${t.completed?'btn-success':'btn-primary'} mt-2">${t.completed?'取消完成':'完成'}</button>`:''}
+                </div>`;
+            }).join('');
+        }
+    } catch { $('forwardList').innerHTML = emptyHTML('&#128230;','加载失败'); }
+}
+
+function openFwdModal(taskId) { forwardingTaskId=taskId; selectedFwdUsers=[]; $('forwardForm').reset(); $('fwdSearchResults').innerHTML=''; $('fwdSelectedUsers').innerHTML='<span class="text-secondary text-sm">尚未选择</span>'; openModal('forwardModal'); }
+
+$('fwdSearchUser').oninput = e => { clearTimeout(searchTimer); const kw=e.target.value.trim(); if(kw.length<2){$('fwdSearchResults').innerHTML='';return;} searchTimer=setTimeout(async()=>{try{const r=await fetch(`${API}/user/search?keyword=${encodeURIComponent(kw)}&limit=10`,{headers:headers()});const d=await r.json();if(d.code===0&&d.data){const users=d.data.users||[];$('fwdSearchResults').innerHTML=users.map(u=>`<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;" onclick="toggleFwdUser(${u.id},'${(u.nickname||u.username).replace(/'/g,"\\'")}')"><span><b>${u.nickname||u.username}</span><span class="text-secondary text-sm">${u.email}</span></span>${selectedFwdUsers.some(x=>x.id===u.id)?'&#9989;':''}</div>`).join('');}}catch{}},300); };
+
+window.toggleFwdUser = function(id, name) {
+    const idx=selectedFwdUsers.findIndex(u=>u.id===id);
+    if(idx>=0) selectedFwdUsers.splice(idx,1); else selectedFwdUsers.push({id,name});
+    $('fwdSelectedUsers').innerHTML = selectedFwdUsers.length ? selectedFwdUsers.map(u=>`<span class="badge badge-info" style="margin:2px;">${u.name}</span>`).join('') : '<span class="text-secondary text-sm">尚未选择</span>';
+    // Refresh search results to show checkmarks
+    $('fwdSearchUser').dispatchEvent(new Event('input'));
+};
+
+$('forwardForm').onsubmit = async e => {
+    e.preventDefault();
+    if(!selectedFwdUsers.length){alert('forwardModalAlert','请选择用户','error');return;}
+    try {
+        const r = await fetch(`${API}/tasks/${forwardingTaskId}/forward`,{method:'POST',headers:headers(),body:JSON.stringify({target_user_ids:selectedFwdUsers.map(u=>u.id),message:$('fwdMessage').value})});
+        const d = await r.json();
+        if(d.code===0){closeModal('forwardModal');loadTasks();}else alert('forwardModalAlert',d.message||'转发失败','error');
+    } catch{alert('forwardModalAlert','网络错误','error');}
+};
+
+async function viewFwdRecords(taskId) {
+    $('fwdRecordsList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    openModal('fwdRecordsModal');
+    try {
+        const r = await fetch(`${API}/tasks/${taskId}/forwards`,{headers:headers()});
+        const d = await r.json();
+        if(d.code===0&&d.data) {
+            const fwds = d.data.forwards||[];
+            if(!fwds.length){$('fwdRecordsList').innerHTML=emptyHTML('&#128230;','暂无转发记录');return;}
+            $('fwdRecordsList').innerHTML = fwds.map(f => `
+                <div style="padding:12px 0;border-bottom:1px solid var(--border-color);">
+                    <div class="flex" style="justify-content:space-between;"><b>${f.forwarded_to?.username||'用户'}</b><span class="badge ${f.is_active?'badge-success':'badge-danger'}">${f.is_active?'有效':'已撤回'}</span></div>
+                    ${f.message?`<p class="text-sm text-secondary mt-2">${f.message}</p>`:''}
+                    ${f.is_active?`<button onclick="revokeForward(${f.id})" class="btn btn-sm btn-danger mt-2">撤回</button>`:''}
+                </div>`).join('');
+        }
+    } catch{}
+}
+
+window.revokeForward = async function(id) {
+    if(!confirm('确定撤回此转发？'))return;
+    try{const r=await fetch(`${API}/forwards/${id}/revoke`,{method:'POST',headers:headers(),body:JSON.stringify({reason:'用户撤回'})});const d=await r.json();if(d.code===0){closeModal('fwdRecordsModal');loadTasks();}}catch{}
+};
+
+// ===== Habits =====
+async function loadHabits() {
+    $('habitList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        const r = await fetch(`${API}/habits`,{headers:headers()});
+        const d = await r.json();
+        if(d.code===0&&d.data) {
+            const habits = d.data.habits||[];
+            if(!habits.length){$('habitList').innerHTML=emptyHTML('&#127919;','暂无习惯，点击"初始化默认习惯"开始');return;}
+            let html='';
+            for(const h of habits) {
+                let stats={today_progress:0,target_count:h.target_count||1,percentage:0,streak_days:0};
+                try{const sr=await fetch(`${API}/habits/${h.habit_id}/stats`,{headers:headers()});const sd=await sr.json();if(sd.code===0&&sd.data)stats=sd.data;}catch{}
+                html += `<div class="habit-card">
+                    <div class="habit-header">
+                        <div><div class="habit-name">${h.name} ${h.is_enabled?'':'<span class="badge badge-danger">已禁用</span>'}</div><div class="habit-meta">${h.category||'未分类'} | 目标: ${h.target_count||1}次 | 连续: ${stats.streak_days}天</div></div>
+                        <div class="flex gap-2">
+                            <button onclick="viewHabitDetail('${h.habit_id}')" class="btn btn-sm btn-secondary">详情</button>
+                            <button onclick="logHabitCompletion('${h.habit_id}')" class="btn btn-sm btn-success">完成+1</button>
+                            <button onclick="toggleHabit('${h.habit_id}')" class="btn btn-sm btn-primary">${h.is_enabled?'禁用':'启用'}</button>
+                            <button onclick="editHabit('${h.habit_id}')" class="btn btn-sm btn-secondary">编辑</button>
+                            <button onclick="deleteHabit('${h.habit_id}')" class="btn btn-sm btn-danger">删除</button>
                         </div>
-                        ${task.description ? `<div style="margin-top: 5px; color: #666; font-size: 14px;">${task.description}</div>` : ''}
                     </div>
-                    <div class="task-actions">
-                        <button onclick="toggleTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
-                            ${task.completed ? '取消完成' : '完成'}
-                        </button>
-                        ${!task.is_forwarded ? `
-                            <button onclick="openForwardModal(${task.id})" class="btn btn-secondary">转发</button>
-                        ` : ''}
-                        <button onclick="editTask(${task.id})" class="btn btn-primary">编辑</button>
-                        <button onclick="deleteTask(${task.id})" class="btn btn-danger">删除</button>
-                        ${!task.is_forwarded ? `
-                            <button onclick="viewForwardRecords(${task.id})" class="btn btn-secondary">转发记录</button>
-                        ` : ''}
+                    <div class="habit-progress">
+                        <div class="progress-info"><span>今日进度: ${stats.today_progress}/${stats.target_count}</span><span>${stats.percentage}%</span></div>
+                        <div class="progress-bar"><div class="progress-fill${stats.percentage>=100?' complete':''}" style="width:${stats.percentage}%"></div></div>
                     </div>
-                </div>
-            `).join('');
-        }
-
-        // 加载接收到的转发任务
-        async function loadReceivedForwards() {
-            const loading = document.getElementById('forwardLoading');
-            const forwardList = document.getElementById('forwardList');
-
-            loading.style.display = 'block';
-            forwardList.innerHTML = '';
-
-            try {
-                const response = await fetch(`${API_BASE}/forwards/received?page=1&page_size=50`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const forwards = data.data.forwards || [];
-                    // 获取转发的任务详情
-                    await loadForwardedTasksDetails(forwards);
-                    renderReceivedForwards(forwards);
-                    document.getElementById('receivedForwards').textContent = forwards.length;
-                } else {
-                    forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无接收的转发任务</p>';
-                    document.getElementById('receivedForwards').textContent = '0';
-                }
-            } catch (error) {
-                showAlert('forwardAlert', '加载转发任务失败', 'error');
-                forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
-            } finally {
-                loading.style.display = 'none';
+                </div>`;
             }
+            $('habitList').innerHTML = html;
         }
+    } catch{ $('habitList').innerHTML=emptyHTML('&#127919;','加载失败'); }
+}
 
-        // 加载转发任务的详情
-        async function loadForwardedTasksDetails(forwards) {
-            for (const forward of forwards) {
-                try {
-                    const response = await fetch(`${API_BASE}/tasks/${forward.forwarded_task_id}`, {
-                        headers: getHeaders()
-                    });
-                    const data = await response.json();
-                    if (data.code === 0 && data.data) {
-                        forward.task_details = data.data;
-                    }
-                } catch (error) {
-                    console.error('Failed to load task details:', error);
-                }
-            }
+$('addHabitBtn').onclick = () => { editingHabitId=null; $('habitModalTitle').textContent='新建习惯'; $('habitForm').reset(); $('habitHabitId').disabled=false; openModal('habitModal'); };
+$('initDefaultHabitsBtn').onclick = async () => {
+    try{const r=await fetch(`${API}/habits/initialize-defaults`,{method:'POST',headers:headers()});const d=await r.json();if(d.code===0)loadHabits();else alert('habitList',d.message||'初始化失败','error');}catch{}
+};
+
+$('habitForm').onsubmit = async e => {
+    e.preventDefault();
+    const body = {
+        habit_id:$('habitHabitId').value, name:$('habitName').value, description:$('habitDesc').value,
+        category:$('habitCategory').value, target_count:+$('habitTarget').value,
+        trigger_type:$('habitTriggerType').value, schedule_type:$('habitScheduleType').value,
+    };
+    try {
+        const url = editingHabitId ? `${API}/habits/${editingHabitId}` : `${API}/habits`;
+        const r = await fetch(url,{method:editingHabitId?'PUT':'POST',headers:headers(),body:JSON.stringify(body)});
+        const d = await r.json();
+        if(d.code===0){closeModal('habitModal');loadHabits();}else alert('habitModalAlert',d.message||'操作失败','error');
+    } catch{alert('habitModalAlert','网络错误','error');}
+};
+
+async function editHabit(habitId) {
+    try {
+        const r=await fetch(`${API}/habits/${habitId}`,{headers:headers()});
+        const d=await r.json();
+        if(d.code===0&&d.data) {
+            editingHabitId=habitId; $('habitModalTitle').textContent='编辑习惯';
+            $('habitHabitId').value=d.data.habit_id; $('habitHabitId').disabled=true;
+            $('habitName').value=d.data.name||''; $('habitDesc').value=d.data.description||'';
+            $('habitCategory').value=d.data.category||''; $('habitTarget').value=d.data.target_count||8;
+            $('habitTriggerType').value=d.data.trigger_type||'time'; $('habitScheduleType').value=d.data.schedule_type||'daily';
+            openModal('habitModal');
         }
+    } catch{}
+}
 
-        // 渲染接收到的转发任务
-        function renderReceivedForwards(forwards) {
-            const forwardList = document.getElementById('forwardList');
+async function toggleHabit(habitId) { try{await fetch(`${API}/habits/${habitId}/toggle`,{method:'PATCH',headers:headers()});loadHabits();}catch{} }
+async function deleteHabit(habitId) { if(!confirm('确定删除此习惯？'))return; try{await fetch(`${API}/habits/${habitId}`,{method:'DELETE',headers:headers()});loadHabits();}catch{} }
 
-            if (!forwards || forwards.length === 0) {
-                forwardList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无接收的转发任务</p>';
-                return;
-            }
+async function logHabitCompletion(habitId) {
+    try{const r=await fetch(`${API}/habits/${habitId}/logs`,{method:'POST',headers:headers(),body:JSON.stringify({count:1,status:0})});if(r.ok)loadHabits();}catch{}
+}
 
-            forwardList.innerHTML = forwards.map(forward => {
-                const task = forward.task_details || {};
-                return `
-                <div class="forward-item">
-                    <div class="forward-header">
-                        <div>
-                            <span style="color: #666;">${forward.forwarded_by?.nickname || forward.forwarded_by?.username || '未知用户'} 转发于 ${formatDate(forward.created_at)}</span>
-                        </div>
-                        ${!forward.is_expired ? '<span class="badge badge-completed">进行中</span>' : '<span class="badge badge-priority-high">已过期</span>'}
+async function viewHabitDetail(habitId) {
+    $('habitDetailContent').innerHTML='<div class="empty-state"><p>加载中...</p></div>';
+    openModal('habitDetailModal');
+    try {
+        const [hr,sr,lr] = await Promise.all([
+            fetch(`${API}/habits/${habitId}`,{headers:headers()}).then(r=>r.json()),
+            fetch(`${API}/habits/${habitId}/stats`,{headers:headers()}).then(r=>r.json()),
+            fetch(`${API}/habits/${habitId}/logs?page=1&page_size=10`,{headers:headers()}).then(r=>r.json()),
+        ]);
+        const h = hr.code===0?hr.data:null;
+        const stats = sr.code===0?sr.data:{};
+        const logs = lr.code===0?lr.data:{};
+        if(!h){$('habitDetailContent').innerHTML=emptyHTML('&#127919;','加载失败');return;}
+        $('habitDetailTitle').textContent = h.name;
+        let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+            <div class="stat-card"><div class="number" style="color:var(--success);font-size:24px;">${stats.today_progress||0}/${stats.target_count||1}</div><div class="label">今日进度</div></div>
+            <div class="stat-card"><div class="number" style="color:var(--accent);font-size:24px;">${stats.streak_days||0}</div><div class="label">连续天数</div></div>
+            <div class="stat-card"><div class="number" style="color:var(--warning);font-size:24px;">${stats.percentage||0}%</div><div class="label">完成率</div></div>
+        </div>`;
+        const logList = logs.logs||[];
+        if(logList.length) {
+            html += '<h4 style="margin-bottom:8px;">最近完成记录</h4>';
+            html += '<table class="data-table"><thead><tr><th>时间</th><th>次数</th><th>设备</th></tr></thead><tbody>';
+            logList.forEach(l => html += `<tr><td>${formatDate(l.completed_at)}</td><td>${l.count}</td><td>${l.device_id||'-'}</td></tr>`);
+            html += '</tbody></table>';
+        }
+        $('habitDetailContent').innerHTML = html;
+    } catch{}
+}
+
+// ===== Tags =====
+async function loadTags() {
+    $('tagList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        const r = await fetch(`${API}/tags`,{headers:headers()});
+        const d = await r.json();
+        if(d.code===0&&d.data) {
+            const tags = d.data||[];
+            if(!tags.length){$('tagList').innerHTML=emptyHTML('&#127991;','暂无标签');return;}
+            $('tagList').innerHTML = '<div class="tag-grid">' + tags.map(t => `
+                <div class="tag-chip">
+                    <span class="tag-color" style="background:${t.color||'#667eea'};"></span>
+                    <span>${t.name}</span>
+                    <div class="tag-actions">
+                        <button onclick="editTag(${t.id},'${t.name.replace(/'/g,"\\'")}','${t.color||'#667eea'}')">&#9998;</button>
+                        <button onclick="deleteTag(${t.id})">&#128465;</button>
                     </div>
-                    ${forward.message ? `<p style="margin-bottom: 10px; color: #666;">${forward.message}</p>` : ''}
-                    ${task.title ? `
-                    <div style="background: #f7fafc; padding: 12px; border-radius: 5px; border-left: 3px solid #667eea; margin: 10px 0;">
-                        <div class="task-title">
-                            ${task.completed ? '✅ ' : ''}${task.title}
-                            ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
-                        </div>
-                        ${task.description ? `<div style="margin-top: 5px; color: #666; font-size: 14px;">${task.description}</div>` : ''}
-                        <div class="task-meta" style="margin-top: 8px;">
-                            <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
-                            ${task.category ? `<span>分类: ${task.category}</span>` : ''}
-                        </div>
-                    </div>
-                    ` : '<p style="color: #999; font-style: italic;">任务详情加载失败</p>'}
-                    ${forward.deadline ? `<p style="color: #666; font-size: 12px; margin-top: 5px;">截止时间: ${formatDate(forward.deadline)}</p>` : ''}
-                    ${task.id ? `
-                    <div class="task-actions" style="margin-top: 10px;">
-                        <button onclick="toggleForwardedTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
-                            ${task.completed ? '取消完成' : '完成'}
-                        </button>
-                    </div>
-                    ` : ''}
-                </div>
-            `}).join('');
+                </div>`).join('') + '</div>';
         }
+    } catch{}
+}
 
-        // 切换转发任务的完成状态
-        async function toggleForwardedTask(taskId) {
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}/toggle`, {
-                    method: 'PATCH',
-                    headers: getHeaders()
-                });
+$('addTagBtn').onclick = () => { editingTagId=null; $('tagModalTitle').textContent='新建标签'; $('tagForm').reset(); $('tagColor').value='#667eea'; openModal('tagModal'); };
 
-                if (response.ok) {
-                    loadReceivedForwards();
-                } else {
-                    showAlert('forwardAlert', '操作失败', 'error');
-                }
-            } catch (error) {
-                showAlert('forwardAlert', '网络错误', 'error');
-            }
+$('tagForm').onsubmit = async e => {
+    e.preventDefault();
+    const body = {name:$('tagName').value, color:$('tagColor').value};
+    try {
+        const url = editingTagId ? `${API}/tags/${editingTagId}` : `${API}/tags`;
+        const r = await fetch(url,{method:editingTagId?'PUT':'POST',headers:headers(),body:JSON.stringify(body)});
+        const d = await r.json();
+        if(d.code===0){closeModal('tagModal');loadTags();}else alert('tagModalAlert',d.message||'操作失败','error');
+    } catch{alert('tagModalAlert','网络错误','error');}
+};
+
+window.editTag = function(id,name,color) { editingTagId=id; $('tagModalTitle').textContent='编辑标签'; $('tagName').value=name; $('tagColor').value=color; openModal('tagModal'); };
+window.deleteTag = async function(id) { if(!confirm('确定删除此标签？'))return; try{await fetch(`${API}/tags/${id}`,{method:'DELETE',headers:headers()});loadTags();}catch{} };
+
+// ===== Devices =====
+async function loadDevices() {
+    $('deviceList').innerHTML = '<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        const r = await fetch(`${API}/devices`,{headers:headers()});
+        const d = await r.json();
+        if(d.code===0&&d.data) {
+            const devs = d.data||[];
+            if(!devs.length){$('deviceList').innerHTML=emptyHTML('&#128241;','暂无设备');return;}
+            $('deviceList').innerHTML = '<table class="data-table"><thead><tr><th>ID</th><th>设备ID</th><th>类型</th><th>名称</th><th>注册时间</th><th>操作</th></tr></thead><tbody>' +
+                devs.map(d => `<tr><td>${d.id}</td><td>${d.device_id}</td><td>${d.device_type||'-'}</td><td>${d.device_name||'-'}</td><td>${formatDate(d.created_at)}</td><td><button onclick="deleteDevice(${d.id})" class="btn btn-sm btn-danger">删除</button></td></tr>`).join('') +
+                '</tbody></table>';
         }
+    } catch{}
+}
 
-        // 获取优先级样式类
-        function getPriorityClass(priority) {
-            switch(priority) {
-                case 1: return 'high';
-                case 2: return 'medium';
-                case 3: return 'low';
-                default: return 'low';
-            }
+$('addDeviceBtn').onclick = () => { $('deviceForm').reset(); openModal('deviceModal'); };
+$('deviceForm').onsubmit = async e => {
+    e.preventDefault();
+    const body = {device_id:$('deviceId').value, device_type:$('deviceType').value, device_name:$('deviceName').value, push_token:$('devicePushToken').value};
+    try{const r=await fetch(`${API}/devices`,{method:'POST',headers:headers(),body:JSON.stringify(body)});const d=await r.json();if(d.code===0){closeModal('deviceModal');loadDevices();}else alert('deviceModalAlert',d.message||'注册失败','error');}catch{alert('deviceModalAlert','网络错误','error');}
+};
+window.deleteDevice = async function(id) { if(!confirm('确定删除此设备？'))return; try{await fetch(`${API}/devices/${id}`,{method:'DELETE',headers:headers()});loadDevices();}catch{} };
+
+// ===== Sync =====
+$('checkSyncBtn').onclick = async () => {
+    const did = $('syncDeviceId').value.trim(); if(!did){alert('syncResult','请输入设备ID','error');return;}
+    try {
+        const r = await fetch(`${API}/sync/status?device_id=${encodeURIComponent(did)}`,{headers:headers()});
+        const d = await r.json();
+        $('syncResult').style.display=''; $('syncData').textContent = JSON.stringify(d,null,2);
+    } catch{ $('syncData').textContent='网络错误'; }
+};
+
+$('syncPullBtn').onclick = async () => {
+    const did = $('syncDeviceId').value.trim(); if(!did){alert('syncResult','请输入设备ID','error');return;}
+    try {
+        const r = await fetch(`${API}/sync/pull`,{method:'POST',headers:headers(),body:JSON.stringify({device_id:did})});
+        const d = await r.json();
+        $('syncResult').style.display=''; $('syncData').textContent = JSON.stringify(d,null,2);
+    } catch{ $('syncData').textContent='网络错误'; }
+};
+
+// ===== Admin =====
+let adminPage=1, adminTotal=0;
+async function loadAdminTasks(page=1) {
+    adminPage=page;
+    $('adminTaskList').innerHTML='<div class="empty-state"><p>加载中...</p></div>';
+    let url=`${API}/admin/tasks?page=${page}&page_size=20`;
+    const kw=$('adminSearch').value.trim(); if(kw) url+=`&keyword=${encodeURIComponent(kw)}`;
+    const fu=$('adminFilterUser').value; if(fu) url+=`&user_id=${fu}`;
+    const fs=$('adminFilterStatus').value; if(fs!=='') url+=`&completed=${fs}`;
+    try {
+        const r=await fetch(url,{headers:headers()});
+        const d=await r.json();
+        if(d.code===0&&d.data) {
+            const tasks=d.data.tasks||[]; adminTotal=d.data.total||0;
+            if(!tasks.length){$('adminTaskList').innerHTML=emptyHTML('&#128221;','暂无任务');$('adminPagination').innerHTML='';return;}
+            $('adminTaskList').innerHTML = tasks.map(t => {
+                const owner = t.user?.nickname||t.user?.username||`用户${t.user_id}`;
+                return `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+                    <div><div style="font-weight:500;">${t.completed?'&#9989; ':''}${t.title} ${t.completed?'<span class="badge badge-success">已完成</span>':''} ${t.is_forwarded?'<span class="badge badge-neutral">转发</span>':''}</div>
+                    <div class="text-sm text-secondary mt-2"><span class="badge ${priorityBadge(t.priority)}">${priorityText(t.priority)}</span> <span style="margin-left:8px;">创建者: ${owner}</span> <span style="margin-left:8px;">${formatDate(t.created_at)}</span></div></div>
+                    <button onclick="toggleAdminTask(${t.id})" class="btn btn-sm ${t.completed?'btn-success':'btn-primary'}">${t.completed?'取消':'完成'}</button>
+                </div>`;
+            }).join('');
+            const tp=Math.ceil(adminTotal/20);
+            $('adminPagination').innerHTML = tp>1 ? `<span class="page-info">共${adminTotal}条</span>`+Array.from({length:tp},(_,i)=>`<button onclick="loadAdminTasks(${i+1})" class="btn btn-sm ${i+1===adminPage?'btn-primary':'btn-secondary'}">${i+1}</button>`).join('') : '';
         }
+    } catch{}
+}
+async function toggleAdminTask(id) { try{await fetch(`${API}/tasks/${id}/toggle`,{method:'PATCH',headers:headers()});loadAdminTasks(adminPage);}catch{} }
 
-        // 获取优先级文本
-        function getPriorityText(priority) {
-            switch(priority) {
-                case 1: return '高优先级';
-                case 2: return '中优先级';
-                case 3: return '低优先级';
-                default: return '低优先级';
-            }
+$('adminSearch').oninput = e => { clearTimeout(searchTimer); if(e.target.value.trim().length===0||e.target.value.trim().length>=2) searchTimer=setTimeout(()=>loadAdminTasks(1),300); };
+$('adminFilterUser').onchange = () => loadAdminTasks(1);
+$('adminFilterStatus').onchange = () => loadAdminTasks(1);
+
+async function loadAdminUsers() {
+    try{const r=await fetch(`${API}/users?page=1&page_size=100`,{headers:headers()});const d=await r.json();if(d.code===0&&d.data){const users=d.data.users||[];$('adminFilterUser').innerHTML='<option value="">所有用户</option>'+users.map(u=>`<option value="${u.id}">${u.nickname||u.username}</option>`).join('');}}catch{}
+}
+
+// ===== Users =====
+let usersPage=1, usersTotal=0, usersKw='';
+async function loadUsers(page=1) {
+    usersPage=page; usersKw=$('usersSearch').value.trim();
+    $('usersList').innerHTML='<div class="empty-state"><p>加载中...</p></div>';
+    try {
+        let url = usersKw ? `${API}/user/search?keyword=${encodeURIComponent(usersKw)}&limit=20` : `${API}/users?page=${page}&page_size=20`;
+        const r=await fetch(url,{headers:headers()});
+        const d=await r.json();
+        if(d.code===0&&d.data) {
+            const users=d.data.users||[]; usersTotal=d.data.total||0;
+            if(!users.length){$('usersList').innerHTML=emptyHTML('&#128101;','暂无用户');$('usersPagination').innerHTML='';return;}
+            $('usersList').innerHTML='<table class="data-table"><thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>邮箱</th><th>状态</th><th>注册时间</th></tr></thead><tbody>'+
+                users.map(u=>`<tr${u.id===currentUser?.id?' style="background:rgba(102,126,234,0.08);"':''}><td>${u.id}</td><td style="font-weight:500;">${u.username}</td><td>${u.nickname||'-'}</td><td class="text-secondary">${u.email}</td><td>${u.is_active?'<span class="badge badge-success">活跃</span>':'<span class="badge badge-danger">禁用</span>'}</td><td class="text-sm">${formatDate(u.created_at)}</td></tr>`).join('')+
+                '</tbody></table>';
+            const tp=Math.ceil(usersTotal/20);
+            $('usersPagination').innerHTML = (!usersKw&&tp>1)?`<span class="page-info">共${usersTotal}用户</span>`+Array.from({length:tp},(_,i)=>`<button onclick="loadUsers(${i+1})" class="btn btn-sm ${i+1===usersPage?'btn-primary':'btn-secondary'}">${i+1}</button>`).join(''):'';
         }
-
-        // 格式化日期
-        function formatDate(dateStr) {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            return date.toLocaleString('zh-CN');
-        }
-
-        // 更新统计信息
-        function updateStats(tasks) {
-            const total = tasks.length;
-            const completed = tasks.filter(t => t.completed).length;
-            const pending = total - completed;
-
-            document.getElementById('totalTasks').textContent = total;
-            document.getElementById('completedTasks').textContent = completed;
-            document.getElementById('pendingTasks').textContent = pending;
-        }
-
-        // 打开任务模态框
-        document.getElementById('addTaskBtn').addEventListener('click', () => {
-            editingTaskId = null;
-            document.getElementById('modalTitle').textContent = '新建任务';
-            document.getElementById('taskForm').reset();
-            document.getElementById('taskModal').style.display = 'block';
-        });
-
-        // 关闭模态框
-        document.querySelectorAll('.close').forEach(close => {
-            close.addEventListener('click', (e) => {
-                e.target.closest('.modal').style.display = 'none';
-            });
-        });
-
-        // 保存任务
-        document.getElementById('taskForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const taskData = {
-                title: document.getElementById('taskTitle').value,
-                description: document.getElementById('taskDescription').value,
-                priority: parseInt(document.getElementById('taskPriority').value),
-                category: document.getElementById('taskCategory').value
-            };
-
-            try {
-                const url = editingTaskId
-                    ? `${API_BASE}/tasks/${editingTaskId}`
-                    : `${API_BASE}/tasks`;
-
-                const response = await fetch(url, {
-                    method: editingTaskId ? 'PUT' : 'POST',
-                    headers: getHeaders(),
-                    body: JSON.stringify(taskData)
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0) {
-                    showAlert('taskModalAlert', editingTaskId ? '更新成功' : '创建成功', 'success');
-                    document.getElementById('taskModal').style.display = 'none';
-                    loadTasks();
-                } else {
-                    showAlert('taskModalAlert', data.message || '操作失败', 'error');
-                }
-            } catch (error) {
-                showAlert('taskModalAlert', '网络错误，请重试', 'error');
-            }
-        });
-
-        // 编辑任务
-        async function editTask(taskId) {
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const task = data.data;
-                    editingTaskId = task.id;
-                    document.getElementById('modalTitle').textContent = '编辑任务';
-                    document.getElementById('taskTitle').value = task.title || '';
-                    document.getElementById('taskDescription').value = task.description || '';
-                    document.getElementById('taskPriority').value = task.priority || 3;
-                    document.getElementById('taskCategory').value = task.category || '';
-                    document.getElementById('taskModal').style.display = 'block';
-                } else {
-                    showAlert('taskAlert', '加载任务失败', 'error');
-                }
-            } catch (error) {
-                showAlert('taskAlert', '网络错误', 'error');
-            }
-        }
-
-        // 切换任务完成状态
-        async function toggleTask(taskId) {
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}/toggle`, {
-                    method: 'PATCH',
-                    headers: getHeaders()
-                });
-
-                if (response.ok) {
-                    loadTasks();
-                } else {
-                    showAlert('taskAlert', '操作失败', 'error');
-                }
-            } catch (error) {
-                showAlert('taskAlert', '网络错误', 'error');
-            }
-        }
-
-        // 删除任务
-        async function deleteTask(taskId) {
-            if (!confirm('确定要删除这个任务吗？')) return;
-
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
-                    method: 'DELETE',
-                    headers: getHeaders()
-                });
-
-                if (response.ok) {
-                    showAlert('taskAlert', '删除成功', 'success');
-                    loadTasks();
-                } else {
-                    showAlert('taskAlert', '删除失败', 'error');
-                }
-            } catch (error) {
-                showAlert('taskAlert', '网络错误', 'error');
-            }
-        }
-
-        // 搜索用户
-        document.getElementById('searchUserInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            const keyword = e.target.value.trim();
-
-            if (keyword.length < 2) {
-                document.getElementById('userSearchResults').innerHTML = '';
-                return;
-            }
-
-            searchTimeout = setTimeout(() => searchUsers(keyword), 300);
-        });
-
-        async function searchUsers(keyword) {
-            try {
-                const response = await fetch(`${API_BASE}/user/search?keyword=${encodeURIComponent(keyword)}&limit=10`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    renderUserSearchResults(data.data.users || []);
-                }
-            } catch (error) {
-                console.error('搜索用户失败:', error);
-            }
-        }
-
-        function renderUserSearchResults(users) {
-            const container = document.getElementById('userSearchResults');
-
-            if (!users || users.length === 0) {
-                container.innerHTML = '<p style="padding: 10px; color: #999; text-align: center;">未找到用户</p>';
-                return;
-            }
-
-            container.innerHTML = users.map(user => `
-                <div class="user-item">
-                    <div>
-                        <strong>${user.nickname || user.username}</strong>
-                        <span style="color: #666; margin-left: 10px;">${user.email}</span>
-                    </div>
-                    <input type="checkbox" value="${user.id}" data-name="${user.nickname || user.username}"
-                        ${selectedUsers.some(u => u.id === user.id) ? 'checked' : ''}>
-                </div>
-            `).join('');
-
-            // 添加 checkbox 变化监听
-            container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-                checkbox.addEventListener('change', () => {
-                    updateSelectedUsers();
-                });
-            });
-        }
-
-        function updateSelectedUsers() {
-            selectedUsers = [];
-            const checkboxes = document.querySelectorAll('#userSearchResults input[type="checkbox"]:checked');
-            checkboxes.forEach(checkbox => {
-                selectedUsers.push({
-                    id: parseInt(checkbox.value),
-                    name: checkbox.dataset.name
-                });
-            });
-
-            renderSelectedUsers();
-        }
-
-        function renderSelectedUsers() {
-            const container = document.getElementById('selectedUsers');
-            if (selectedUsers.length === 0) {
-                container.innerHTML = '<span style="color: #999;">尚未选择用户</span>';
-            } else {
-                container.innerHTML = selectedUsers.map(u => `<span class="badge badge-priority-medium">${u.name}</span>`).join(' ');
-            }
-        }
-
-        // 打开转发模态框
-        function openForwardModal(taskId) {
-            forwardingTaskId = taskId;
-            selectedUsers = [];
-            document.getElementById('forwardForm').reset();
-            document.getElementById('userSearchResults').innerHTML = '';
-            renderSelectedUsers();
-            document.getElementById('forwardModal').style.display = 'block';
-        }
-
-        // 提交转发
-        document.getElementById('forwardForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (selectedUsers.length === 0) {
-                showAlert('forwardModalAlert', '请至少选择一个用户', 'error');
-                return;
-            }
-
-            const forwardData = {
-                target_user_ids: selectedUsers.map(u => u.id),
-                message: document.getElementById('forwardMessage').value
-            };
-
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${forwardingTaskId}/forward`, {
-                    method: 'POST',
-                    headers: getHeaders(),
-                    body: JSON.stringify(forwardData)
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0) {
-                    showAlert('forwardModalAlert', `成功转发给 ${data.data.total} 个用户`, 'success');
-                    document.getElementById('forwardModal').style.display = 'none';
-                    loadTasks();
-                } else {
-                    showAlert('forwardModalAlert', data.message || '转发失败', 'error');
-                }
-            } catch (error) {
-                showAlert('forwardModalAlert', '网络错误，请重试', 'error');
-            }
-        });
-
-        // 查看转发记录
-        async function viewForwardRecords(taskId) {
-            const loading = document.getElementById('forwardRecordsLoading');
-            const list = document.getElementById('forwardRecordsList');
-
-            loading.style.display = 'block';
-            list.innerHTML = '';
-
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}/forwards`, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const forwards = data.data.forwards || [];
-                    renderForwardRecords(forwards);
-                    document.getElementById('forwardRecordsModal').style.display = 'block';
-                } else {
-                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无转发记录</p>';
-                }
-            } catch (error) {
-                showAlert('forwardRecordsAlert', '加载转发记录失败', 'error');
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
-
-        function renderForwardRecords(forwards) {
-            const list = document.getElementById('forwardRecordsList');
-
-            if (!forwards || forwards.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无转发记录</p>';
-                return;
-            }
-
-            list.innerHTML = forwards.map(forward => `
-                <div class="forward-item">
-                    <div class="forward-header">
-                        <div>
-                            <strong>${forward.forwarded_to?.username || '未知用户'}</strong>
-                            <span style="color: #666; margin-left: 10px;">${formatDate(forward.created_at)}</span>
-                        </div>
-                        ${forward.is_active
-                            ? '<span class="badge badge-completed">有效</span>'
-                            : '<span class="badge badge-priority-high">已撤回</span>'}
-                    </div>
-                    ${forward.message ? `<p style="margin-bottom: 10px; color: #666;">${forward.message}</p>` : ''}
-                    ${forward.deadline ? `<p style="color: #666;">截止时间: ${formatDate(forward.deadline)}</p>` : ''}
-                    ${forward.is_active ? `
-                        <button onclick="revokeForward(${forward.id})" class="btn btn-sm btn-danger" style="margin-top: 10px;">撤回转发</button>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        // 撤回转发
-        async function revokeForward(forwardId) {
-            if (!confirm('确定要撤回这个转发吗？')) return;
-
-            try {
-                const response = await fetch(`${API_BASE}/forwards/${forwardId}/revoke`, {
-                    method: 'POST',
-                    headers: getHeaders(),
-                    body: JSON.stringify({ reason: '用户撤回' })
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0) {
-                    showAlert('forwardRecordsAlert', '撤回成功', 'success');
-                    document.getElementById('forwardRecordsModal').style.display = 'none';
-                    loadTasks();
-                } else {
-                    showAlert('forwardRecordsAlert', data.message || '撤回失败', 'error');
-                }
-            } catch (error) {
-                showAlert('forwardRecordsAlert', '网络错误', 'error');
-            }
-        }
-
-        // 加载用户列表
-        let usersCurrentPage = 1;
-        let usersPageSize = 20;
-        let usersTotal = 0;
-        let usersKeyword = '';
-
-        async function loadUsers(page = 1) {
-            const loading = document.getElementById('usersLoading');
-            const list = document.getElementById('usersList');
-
-            loading.style.display = 'block';
-            list.innerHTML = '';
-
-            usersCurrentPage = page;
-
-            try {
-                let url;
-                if (usersKeyword) {
-                    // 搜索模式
-                    url = `${API_BASE}/user/search?keyword=${encodeURIComponent(usersKeyword)}&limit=${usersPageSize}`;
-                } else {
-                    // 列表模式
-                    url = `${API_BASE}/users?page=${page}&page_size=${usersPageSize}`;
-                }
-
-                const response = await fetch(url, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const users = data.data.users || [];
-                    usersTotal = data.data.total || 0;
-                    renderUsers(users);
-                    renderUsersPagination();
-                } else {
-                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无用户</p>';
-                    document.getElementById('usersPagination').innerHTML = '';
-                }
-            } catch (error) {
-                showAlert('usersAlert', '加载用户列表失败', 'error');
-                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
-
-        function renderUsers(users) {
-            const list = document.getElementById('usersList');
-
-            if (!users || users.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无用户</p>';
-                return;
-            }
-
-            list.innerHTML = `
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f7fafc; border-bottom: 2px solid #e2e8f0;">
-                            <th style="padding: 12px; text-align: left;">ID</th>
-                            <th style="padding: 12px; text-align: left;">用户名</th>
-                            <th style="padding: 12px; text-align: left;">昵称</th>
-                            <th style="padding: 12px; text-align: left;">邮箱</th>
-                            <th style="padding: 12px; text-align: left;">状态</th>
-                            <th style="padding: 12px; text-align: left;">注册时间</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${users.map(user => `
-                            <tr style="border-bottom: 1px solid #e2e8f0; ${user.id === currentUser?.id ? 'background: #f0f9ff;' : ''}">
-                                <td style="padding: 12px;">${user.id}</td>
-                                <td style="padding: 12px; font-weight: 500;">${user.username}</td>
-                                <td style="padding: 12px;">${user.nickname || '-'}</td>
-                                <td style="padding: 12px; color: #666;">${user.email}</td>
-                                <td style="padding: 12px;">
-                                    ${user.is_active
-                                        ? '<span class="badge badge-completed">活跃</span>'
-                                        : '<span class="badge badge-priority-high">禁用</span>'}
-                                </td>
-                                <td style="padding: 12px; color: #666; font-size: 12px;">${formatDate(user.created_at)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
-
-        function renderUsersPagination() {
-            const container = document.getElementById('usersPagination');
-
-            if (!usersKeyword) {
-                // 只在非搜索模式下显示分页
-                const totalPages = Math.ceil(usersTotal / usersPageSize);
-                if (totalPages <= 1) {
-                    container.innerHTML = '';
-                    return;
-                }
-
-                let html = '<div style="display: flex; gap: 5px; justify-content: center;">';
-                for (let i = 1; i <= totalPages; i++) {
-                    html += `<button onclick="loadUsers(${i})" class="btn ${i === usersCurrentPage ? 'btn-primary' : 'btn-secondary'} btn-sm">${i}</button>`;
-                }
-                html += '</div>';
-                html += `<p style="margin-top: 10px; color: #666; font-size: 12px;">共 ${usersTotal} 个用户</p>`;
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = `<p style="color: #666; font-size: 12px;">找到 ${usersTotal} 个结果</p>`;
-            }
-        }
-
-        // 用户搜索
-        document.getElementById('usersSearchInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            usersKeyword = e.target.value.trim();
-
-            if (usersKeyword.length === 0) {
-                searchTimeout = setTimeout(() => {
-                    usersKeyword = '';
-                    loadUsers(1);
-                }, 300);
-            } else if (usersKeyword.length >= 2) {
-                searchTimeout = setTimeout(() => loadUsers(1), 300);
-            }
-        });
-
-        // 加载管理员所有任务
-        let adminCurrentPage = 1;
-        let adminPageSize = 20;
-        let adminTotal = 0;
-        let adminKeyword = '';
-        let adminFilterUser = '';
-        let adminFilterStatus = '';
-
-        async function loadAdminTasks(page = 1) {
-            const loading = document.getElementById('adminLoading');
-            const list = document.getElementById('adminTaskList');
-
-            loading.style.display = 'block';
-            list.innerHTML = '';
-
-            adminCurrentPage = page;
-            adminKeyword = document.getElementById('adminSearchInput').value.trim();
-            adminFilterUser = document.getElementById('adminFilterUser').value;
-            adminFilterStatus = document.getElementById('adminFilterStatus').value;
-
-            try {
-                let url = `${API_BASE}/admin/tasks?page=${page}&page_size=${adminPageSize}`;
-                if (adminKeyword) {
-                    url += `&keyword=${encodeURIComponent(adminKeyword)}`;
-                }
-                if (adminFilterUser) {
-                    url += `&user_id=${adminFilterUser}`;
-                }
-                if (adminFilterStatus !== '') {
-                    url += `&completed=${adminFilterStatus}`;
-                }
-
-                const response = await fetch(url, {
-                    headers: getHeaders()
-                });
-
-                const data = await response.json();
-
-                if (data.code === 0 && data.data) {
-                    const tasks = data.data.tasks || [];
-                    adminTotal = data.data.total || 0;
-                    renderAdminTasks(tasks);
-                    renderAdminPagination();
-                } else if (response.status === 403) {
-                    list.innerHTML = '<p style="text-align: center; color: #f56565; padding: 20px;">无权访问管理员面板</p>';
-                } else {
-                    list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
-                }
-            } catch (error) {
-                showAlert('adminAlert', '加载任务失败', 'error');
-                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载失败</p>';
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
-
-        function renderAdminTasks(tasks) {
-            const list = document.getElementById('adminTaskList');
-
-            if (!tasks || tasks.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">暂无任务</p>';
-                return;
-            }
-
-            list.innerHTML = tasks.map(task => {
-                const user = task.user || {};
-                const taskOwner = user.nickname || user.username || `用户${task.user_id}`;
-                return `
-                <div class="task-item">
-                    <div class="task-info">
-                        <div class="task-title">
-                            ${task.completed ? '✅ ' : ''}${task.title}
-                            ${task.completed ? '<span class="badge badge-completed">已完成</span>' : ''}
-                            ${task.is_forwarded ? '<span class="badge badge-forwarded">转发任务</span>' : ''}
-                        </div>
-                        <div class="task-meta">
-                            <span class="badge badge-priority-${getPriorityClass(task.priority)}">${getPriorityText(task.priority)}</span>
-                            <span style="margin-left: 10px;">创建者: ${taskOwner}</span>
-                            ${task.category ? `<span style="margin-left: 10px;">分类: ${task.category}</span>` : ''}
-                            ${task.created_at ? `<span style="margin-left: 10px;">创建时间: ${formatDate(task.created_at)}</span>` : ''}
-                        </div>
-                        ${task.description ? `<div style="margin-top: 5px; color: #666; font-size: 14px;">${task.description}</div>` : ''}
-                    </div>
-                    <div class="task-actions">
-                        <button onclick="toggleAdminTask(${task.id})" class="btn ${task.completed ? 'btn-success' : 'btn-primary'}">
-                            ${task.completed ? '取消完成' : '完成'}
-                        </button>
-                    </div>
-                </div>
-            `}).join('');
-        }
-
-        function renderAdminPagination() {
-            const container = document.getElementById('adminPagination');
-            const totalPages = Math.ceil(adminTotal / adminPageSize);
-            if (totalPages <= 1) {
-                container.innerHTML = '';
-                return;
-            }
-
-            let html = '<div style="display: flex; gap: 5px; justify-content: center;">';
-            for (let i = 1; i <= totalPages; i++) {
-                html += `<button onclick="loadAdminTasks(${i})" class="btn ${i === adminCurrentPage ? 'btn-primary' : 'btn-secondary'} btn-sm">${i}</button>`;
-            }
-            html += '</div>';
-            html += `<p style="margin-top: 10px; color: #666; font-size: 12px;">共 ${adminTotal} 个任务</p>`;
-            container.innerHTML = html;
-        }
-
-        async function toggleAdminTask(taskId) {
-            try {
-                const response = await fetch(`${API_BASE}/tasks/${taskId}/toggle`, {
-                    method: 'PATCH',
-                    headers: getHeaders()
-                });
-
-                if (response.ok) {
-                    loadAdminTasks(adminCurrentPage);
-                } else {
-                    showAlert('adminAlert', '操作失败', 'error');
-                }
-            } catch (error) {
-                showAlert('adminAlert', '网络错误', 'error');
-            }
-        }
-
-        // 管理员搜索和过滤
-        document.getElementById('adminSearchInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            if (e.target.value.trim().length === 0) {
-                searchTimeout = setTimeout(() => loadAdminTasks(1), 300);
-            } else if (e.target.value.trim().length >= 2) {
-                searchTimeout = setTimeout(() => loadAdminTasks(1), 300);
-            }
-        });
-
-        document.getElementById('adminFilterUser').addEventListener('change', () => loadAdminTasks(1));
-        document.getElementById('adminFilterStatus').addEventListener('change', () => loadAdminTasks(1));
-
-        // 加载所有用户列表（用于管理员过滤）
-        async function loadAllUsersForFilter() {
-            try {
-                const response = await fetch(`${API_BASE}/users?page=1&page_size=100`, {
-                    headers: getHeaders()
-                });
-                const data = await response.json();
-                if (data.code === 0 && data.data) {
-                    const users = data.data.users || [];
-                    const select = document.getElementById('adminFilterUser');
-                    select.innerHTML = '<option value="">所有用户</option>';
-                    users.forEach(user => {
-                        const name = user.nickname || user.username;
-                        select.innerHTML += `<option value="${user.id}">${name} (${user.username})</option>`;
-                    });
-                }
-            } catch (error) {
-                console.error('Failed to load users for filter:', error);
-            }
-        }
-
-        // 初始化
-        checkAuth();
-    </script>
+    } catch{}
+}
+$('usersSearch').oninput = e => { clearTimeout(searchTimer); searchTimer=setTimeout(()=>loadUsers(1),300); };
+
+// ===== AI Chat =====
+$('chatFab').onclick = toggleChat;
+function toggleChat() { $('chatPanel').classList.toggle('open'); }
+window.sendChat = async function() {
+    const msg = $('chatInput').value.trim(); if(!msg) return;
+    $('chatMessages').innerHTML += `<div class="chat-msg user"><div class="bubble">${msg}</div></div>`;
+    $('chatInput').value = '';
+    try {
+        const r = await fetch(`${API}/ai/chat`,{method:'POST',headers:headers(),body:JSON.stringify({message:msg})});
+        const d = await r.json();
+        const reply = d.code===0&&d.data ? d.data.response : (d.message||'请求失败');
+        $('chatMessages').innerHTML += `<div class="chat-msg ai"><div class="bubble">${reply}</div></div>`;
+        $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+    } catch {
+        $('chatMessages').innerHTML += `<div class="chat-msg ai"><div class="bubble">网络错误，请重试</div></div>`;
+    }
+};
+
+// ===== Startup =====
+if (token) init(); else showAuth();
+</script>
 </body>
 </html>

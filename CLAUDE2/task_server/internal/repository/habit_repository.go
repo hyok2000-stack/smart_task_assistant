@@ -25,6 +25,7 @@ type HabitRepository interface {
 	FindByUserID(userID uint) ([]*model.Habit, error)
 	Update(habit *model.Habit) error
 	Delete(id uint, userID uint) error
+	DeleteByHabitID(habitID string, userID uint) error
 
 	// 切换启用状态
 	ToggleEnabled(habitID string, userID uint) error
@@ -99,6 +100,18 @@ func (r *habitRepository) Update(habit *model.Habit) error {
 // Delete 删除习惯（软删除）
 func (r *habitRepository) Delete(id uint, userID uint) error {
 	result := r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.Habit{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrHabitNotFound
+	}
+	return nil
+}
+
+// DeleteByHabitID 根据 HabitID 删除习惯（软删除）
+func (r *habitRepository) DeleteByHabitID(habitID string, userID uint) error {
+	result := r.db.Where("habit_id = ? AND user_id = ?", habitID, userID).Delete(&model.Habit{})
 	if result.Error != nil {
 		return result.Error
 	}

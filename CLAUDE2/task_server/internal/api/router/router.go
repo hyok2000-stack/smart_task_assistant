@@ -14,6 +14,10 @@ func SetupRouter(
 	forwardHandler *handler.ForwardHandler,
 	habitHandler *handler.HabitHandler,
 	habitLogHandler *handler.HabitLogHandler,
+	syncHandler *handler.SyncHandler,
+	tagHandler *handler.TagHandler,
+	deviceHandler *handler.DeviceHandler,
+	aiHandler *handler.AIHandler,
 ) *gin.Engine {
 	router := gin.New()
 
@@ -132,6 +136,50 @@ func SetupRouter(
 		{
 			forwards.GET("/received", forwardHandler.GetReceivedForwards)
 			forwards.POST("/:id/revoke", forwardHandler.RevokeForward)
+		}
+
+		// 数据同步路由（需要 JWT）
+		syncGroup := v1.Group("/sync")
+		syncGroup.Use(middleware.JWTAuth())
+		{
+			syncGroup.POST("/pull", syncHandler.Pull)
+			syncGroup.POST("/push", syncHandler.Push)
+			syncGroup.GET("/status", syncHandler.GetStatus)
+		}
+
+		// 标签路由（需要 JWT）
+		tagsGroup := v1.Group("/tags")
+		tagsGroup.Use(middleware.JWTAuth())
+		{
+			tagsGroup.GET("", tagHandler.List)
+			tagsGroup.POST("", tagHandler.Create)
+			tagsGroup.PUT("/:id", tagHandler.Update)
+			tagsGroup.DELETE("/:id", tagHandler.Delete)
+		}
+
+		// 设备路由（需要 JWT）
+		devicesGroup := v1.Group("/devices")
+		devicesGroup.Use(middleware.JWTAuth())
+		{
+			devicesGroup.GET("", deviceHandler.List)
+			devicesGroup.POST("", deviceHandler.Register)
+			devicesGroup.DELETE("/:id", deviceHandler.Delete)
+			devicesGroup.PUT("/:id", deviceHandler.UpdatePushToken)
+		}
+
+		// AI 路由（需要 JWT）
+		aiGroup := v1.Group("/ai")
+		aiGroup.Use(middleware.JWTAuth())
+		{
+			aiGroup.POST("/chat", aiHandler.Chat)
+		}
+
+		// 管理员路由（需要 JWT + admin 角色）
+		adminGroup := v1.Group("/admin")
+		adminGroup.Use(middleware.JWTAuth())
+		{
+			adminGroup.GET("/tasks", taskHandler.GetAllTasks)
+			adminGroup.GET("/tasks/stats", taskHandler.GetAllStats)
 		}
 	}
 

@@ -87,6 +87,8 @@ migrate:
 		&model.TaskForward{},
 		&model.Habit{},
 		&model.HabitLog{},
+		&model.SyncRecord{},
+		&model.TaskProgress{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)

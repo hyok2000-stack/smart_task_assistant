@@ -30,16 +30,35 @@ func NewTaskServiceWithForward(taskRepo *repository.TaskRepository, forwardRepo 
 // Create 创建任务
 func (s *TaskService) Create(userID uint, req *model.TaskRequest) (*model.Task, error) {
 	task := &model.Task{
-		UserID:      userID,
-		Title:       req.Title,
-		Description: req.Description,
-		Priority:    req.Priority,
-		DueDate:     req.DueDate,
-		RemindAt:    req.RemindAt,
-		Category:    req.Category,
-		Completed:   false,
-		Reminded:    false,
-		SyncedAt:    time.Now(),
+		UserID:                userID,
+		LocalID:               req.LocalID,
+		Title:                 req.Title,
+		Description:           req.Description,
+		Status:                req.Status,
+		Priority:              req.Priority,
+		DueDate:               req.DueDate,
+		RemindAt:              req.RemindAt,
+		Category:              req.Category,
+		Completed:             req.Completed != nil && *req.Completed,
+		StartTime:             req.StartTime,
+		DeviceID:              req.DeviceID,
+		RecurringRule:         req.RecurringRule,
+		AttachmentPaths:       req.AttachmentPaths,
+		ReminderVoiceEnabled:  true, // 默认启用语音提醒
+		ReminderVoiceType:     req.ReminderVoiceType,
+		ReminderVoiceStyle:    req.ReminderVoiceStyle,
+		ReminderVoiceSpeed:    req.ReminderVoiceSpeed,
+		ReminderCustomVoicePath: req.ReminderCustomVoicePath,
+		Reminded:              false,
+		SyncedAt:              time.Now(),
+	}
+
+	// Set default status
+	if task.Status == "" {
+		task.Status = "pending"
+	}
+	if task.Completed {
+		task.Status = "completed"
 	}
 
 	// 处理标签
@@ -91,6 +110,9 @@ func (s *TaskService) GetList(userID uint, req *model.TaskListRequest) (*model.T
 	if req.Category != "" {
 		filters["category"] = req.Category
 	}
+	if req.Status != "" {
+		filters["status"] = req.Status
+	}
 	if req.Keyword != "" {
 		filters["keyword"] = req.Keyword
 	}
@@ -137,10 +159,21 @@ func (s *TaskService) Update(id uint, userID uint, req *model.TaskRequest) (*mod
 	// 更新字段
 	task.Title = req.Title
 	task.Description = req.Description
+	task.Status = req.Status
 	task.Priority = req.Priority
 	task.DueDate = req.DueDate
 	task.RemindAt = req.RemindAt
 	task.Category = req.Category
+	task.StartTime = req.StartTime
+	task.RecurringRule = req.RecurringRule
+	task.AttachmentPaths = req.AttachmentPaths
+	task.ReminderVoiceType = req.ReminderVoiceType
+	task.ReminderVoiceStyle = req.ReminderVoiceStyle
+	task.ReminderVoiceSpeed = req.ReminderVoiceSpeed
+	task.ReminderCustomVoicePath = req.ReminderCustomVoicePath
+	if req.ReminderVoiceEnabled != nil {
+		task.ReminderVoiceEnabled = *req.ReminderVoiceEnabled
+	}
 	task.SyncedAt = time.Now()
 
 	// 如果标记为完成，记录完成时间

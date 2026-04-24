@@ -146,7 +146,8 @@ func (s *HabitLogService) CalculateStreak(habitID string, userID uint) (int, err
 	// 获取最近 365 天的完成日期
 	dates, err := s.repo.GetUniqueCompletionDates(habitID, userID, 365)
 	if err != nil {
-		return 0, err
+		// Gracefully handle db errors - return 0 streak instead of propagating
+		return 0, nil
 	}
 
 	if len(dates) == 0 {
@@ -232,9 +233,9 @@ func (s *HabitLogService) GetHistory(habitID string, userID uint, days int) (*mo
 	// 转换为历史记录格式
 	history := make([]model.HabitHistoryItem, len(stats))
 	for i, stat := range stats {
-		dateStr := stat["date"].(time.Time).Format("2006-01-02")
-		count := int(stat["count"].(int64))
-		status := stat["status"].(int64)
+		dateStr := stat.Date
+		count := int(stat.Count)
+		status := stat.Status
 
 		// 确定状态
 		var statusStr string

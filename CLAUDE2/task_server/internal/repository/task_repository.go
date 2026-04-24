@@ -2,6 +2,7 @@ package repository
 
 import (
 	"task_server/internal/model"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -49,6 +50,9 @@ func (r *TaskRepository) FindByUserID(userID uint, offset, limit int, filters ma
 	if keyword, ok := filters["keyword"]; ok && keyword != "" {
 		query = query.Where("title LIKE ? OR description LIKE ?", "%"+keyword.(string)+"%", "%"+keyword.(string)+"%")
 	}
+	if status, ok := filters["status"]; ok && status != "" {
+		query = query.Where("status = ?", status)
+	}
 
 	// 获取总数
 	err := query.Count(&total).Error
@@ -92,13 +96,21 @@ func (r *TaskRepository) GetStats(userID uint) (*model.TaskStats, error) {
 	r.db.Model(&model.Task{}).Where("user_id = ? AND priority = ? AND completed = ?", userID, 2, false).Count(&stats.HighPriority)
 
 	// 已过期
-	r.db.Model(&model.Task{}).Where("user_id = ? AND due_date < ? AND completed = ?", userID, gorm.Expr("NOW()"), false).Count(&stats.Overdue)
+	r.db.Model(&model.Task{}).Where("user_id = ? AND due_date < ? AND completed = ?", userID, time.Now(), false).Count(&stats.Overdue)
 
-	// 本周
-	r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= ? AND due_date <= ?", userID, gorm.Expr("DATE_SUB(NOW(), INTERVAL WEEKDAY(NOW()) DAY)"), gorm.Expr("DATE_ADD(NOW(), INTERVAL 6-WEEKDAY(NOW()) DAY)")).Count(&stats.ThisWeek)
-
-	// 本月
-	r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= ? AND due_date <= ?", userID, gorm.Expr("DATE_FORMAT(NOW(), '%Y-%m-01')"), gorm.Expr("LAST_DAY(NOW())")).Count(&stats.ThisMonth)
+	// 检测数据库类型并使用相应的日期函数
+	// SQLite 使用 date('now') 和 strftime，PostgreSQL 使用 DATE_SUB/DATE_ADD
+	if r.db.Dialector.Name() == "sqlite" {
+		// SQLite: 本周计算
+		r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= date('now', 'weekday 0', '-7 days') AND due_date <= date('now', 'weekday 0', '-1 days')", userID).Count(&stats.ThisWeek)
+		// SQLite: 本月计算
+		r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= strftime('%Y-%m-01', 'now') AND due_date <= strftime('%Y-%m-%d', 'now', 'start of month', '+1 month', '-1 day')", userID).Count(&stats.ThisMonth)
+	} else {
+		// PostgreSQL: 本周
+		r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= ? AND due_date <= ?", userID, gorm.Expr("DATE_SUB(NOW(), INTERVAL WEEKDAY(NOW()) DAY)"), gorm.Expr("DATE_ADD(NOW(), INTERVAL 6-WEEKDAY(NOW()) DAY)")).Count(&stats.ThisWeek)
+		// PostgreSQL: 本月
+		r.db.Model(&model.Task{}).Where("user_id = ? AND due_date >= ? AND due_date <= ?", userID, gorm.Expr("DATE_FORMAT(NOW(), '%Y-%m-01')"), gorm.Expr("LAST_DAY(NOW())")).Count(&stats.ThisMonth)
+	}
 
 	return stats, nil
 }
@@ -106,7 +118,7 @@ func (r *TaskRepository) GetStats(userID uint) (*model.TaskStats, error) {
 // FindPendingReminders 查找待提醒的任务
 func (r *TaskRepository) FindPendingReminders() ([]model.Task, error) {
 	var tasks []model.Task
-	err := r.db.Where("remind_at <= ? AND reminded = ?", gorm.Expr("NOW()"), false).Find(&tasks).Error
+	err := r.db.Where("remind_at <= ? AND reminded = ?", time.Now(), false).Find(&tasks).Error
 	return tasks, err
 }
 
@@ -153,13 +165,20 @@ func (r *TaskRepository) GetAllStats() (*model.TaskStats, error) {
 	r.db.Model(&model.Task{}).Where("priority = ? AND completed = ?", 2, false).Count(&stats.HighPriority)
 
 	// 已过期
-	r.db.Model(&model.Task{}).Where("due_date < ? AND completed = ?", gorm.Expr("NOW()"), false).Count(&stats.Overdue)
+	r.db.Model(&model.Task{}).Where("due_date < ? AND completed = ?", time.Now(), false).Count(&stats.Overdue)
 
-	// 本周
-	r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_SUB(NOW(), INTERVAL WEEKDAY(NOW()) DAY)"), gorm.Expr("DATE_ADD(NOW(), INTERVAL 6-WEEKDAY(NOW()) DAY)")).Count(&stats.ThisWeek)
-
-	// 本月
-	r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_FORMAT(NOW(), '%Y-%m-01')"), gorm.Expr("LAST_DAY(NOW())")).Count(&stats.ThisMonth)
+	// 检测数据库类型并使用相应的日期函数
+	if r.db.Dialector.Name() == "sqlite" {
+		// SQLite: 本周计算
+		r.db.Model(&model.Task{}).Where("due_date >= date('now', 'weekday 0', '-7 days') AND due_date <= date('now', 'weekday 0', '-1 days')").Count(&stats.ThisWeek)
+		// SQLite: 本月计算
+		r.db.Model(&model.Task{}).Where("due_date >= strftime('%Y-%m-01', 'now') AND due_date <= strftime('%Y-%m-%d', 'now', 'start of month', '+1 month', '-1 day')").Count(&stats.ThisMonth)
+	} else {
+		// PostgreSQL: 本周
+		r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_SUB(NOW(), INTERVAL WEEKDAY(NOW()) DAY)"), gorm.Expr("DATE_ADD(NOW(), INTERVAL 6-WEEKDAY(NOW()) DAY)")).Count(&stats.ThisWeek)
+		// PostgreSQL: 本月
+		r.db.Model(&model.Task{}).Where("due_date >= ? AND due_date <= ?", gorm.Expr("DATE_FORMAT(NOW(), '%Y-%m-01')"), gorm.Expr("LAST_DAY(NOW())")).Count(&stats.ThisMonth)
+	}
 
 	return stats, nil
 }

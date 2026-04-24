@@ -154,7 +154,7 @@ func (s *HabitService) List(userID uint, req *model.ListHabitsRequest) (*model.L
 	}, nil
 }
 
-// Update 更新习惯
+// Update 更新习惯（根据数据库 ID）
 func (s *HabitService) Update(id uint, userID uint, req *model.UpdateHabitRequest) (*model.Habit, error) {
 	// 获取现有习惯
 	habit, err := s.repo.FindByID(id, userID)
@@ -162,6 +162,55 @@ func (s *HabitService) Update(id uint, userID uint, req *model.UpdateHabitReques
 		return nil, err
 	}
 
+	return s.updateHabit(habit, req)
+}
+
+// Delete 删除习惯
+func (s *HabitService) Delete(id uint, userID uint) error {
+	return s.repo.Delete(id, userID)
+}
+
+// DeleteByHabitID 根据 HabitID 删除习惯
+func (s *HabitService) DeleteByHabitID(habitID string, userID uint) error {
+	return s.repo.DeleteByHabitID(habitID, userID)
+}
+
+// UpdateByHabitID 根据 HabitID 更新习惯
+func (s *HabitService) UpdateByHabitID(habitID string, userID uint, req *model.UpdateHabitRequest) (*model.Habit, error) {
+	// 获取现有习惯
+	habit, err := s.repo.FindByHabitID(habitID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 应用更新（复用 Update 的逻辑）
+	return s.updateHabit(habit, req)
+}
+
+// ToggleEnabled 切换启用状态
+func (s *HabitService) ToggleEnabled(habitID string, userID uint) error {
+	return s.repo.ToggleEnabled(habitID, userID)
+}
+
+// SyncFromDevice 从设备同步习惯
+func (s *HabitService) SyncFromDevice(userID uint, deviceID string, habits []*model.Habit) error {
+	if len(habits) == 0 {
+		return nil
+	}
+
+	// 设置用户 ID 和同步时间
+	now := time.Now().UTC()
+	for _, habit := range habits {
+		habit.UserID = userID
+		habit.DeviceID = deviceID
+		habit.SyncedAt = now
+	}
+
+	return s.repo.BulkUpsert(habits)
+}
+
+// updateHabit 应用更新请求到习惯对象
+func (s *HabitService) updateHabit(habit *model.Habit, req *model.UpdateHabitRequest) (*model.Habit, error) {
 	// 应用更新
 	if req.Title != nil {
 		habit.Title = *req.Title
@@ -237,33 +286,6 @@ func (s *HabitService) Update(id uint, userID uint, req *model.UpdateHabitReques
 	}
 
 	return habit, nil
-}
-
-// Delete 删除习惯
-func (s *HabitService) Delete(id uint, userID uint) error {
-	return s.repo.Delete(id, userID)
-}
-
-// ToggleEnabled 切换启用状态
-func (s *HabitService) ToggleEnabled(habitID string, userID uint) error {
-	return s.repo.ToggleEnabled(habitID, userID)
-}
-
-// SyncFromDevice 从设备同步习惯
-func (s *HabitService) SyncFromDevice(userID uint, deviceID string, habits []*model.Habit) error {
-	if len(habits) == 0 {
-		return nil
-	}
-
-	// 设置用户 ID 和同步时间
-	now := time.Now().UTC()
-	for _, habit := range habits {
-		habit.UserID = userID
-		habit.DeviceID = deviceID
-		habit.SyncedAt = now
-	}
-
-	return s.repo.BulkUpsert(habits)
 }
 
 // validateHabitRequest 验证习惯请求

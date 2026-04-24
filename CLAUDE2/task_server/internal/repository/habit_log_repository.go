@@ -31,7 +31,7 @@ type HabitLogRepository interface {
 
 	// 历史记录查询
 	GetUniqueCompletionDates(habitID string, userID uint, days int) ([]time.Time, error)
-	GetDailyStatsForDateRange(habitID string, userID uint, start, end time.Time) ([]map[string]interface{}, error)
+	GetDailyStatsForDateRange(habitID string, userID uint, start, end time.Time) ([]DailyStat, error)
 	GetLastCompletedTime(habitID string, userID uint) (*time.Time, error)
 
 	// 统计
@@ -196,12 +196,19 @@ func (r *habitLogRepository) FindByDeviceID(deviceID string, userID uint, page, 
 	return logs, total, err
 }
 
+// DailyStat 每日统计数据结构（用于类型安全扫描）
+type DailyStat struct {
+	Date   string `json:"date"`
+	Count  int64  `json:"count"`
+	Status int64  `json:"status"`
+}
+
 // GetDailyStatsForDateRange 获取日期范围内每天的统计
-func (r *habitLogRepository) GetDailyStatsForDateRange(habitID string, userID uint, start, end time.Time) ([]map[string]interface{}, error) {
-	var results []map[string]interface{}
+func (r *habitLogRepository) GetDailyStatsForDateRange(habitID string, userID uint, start, end time.Time) ([]DailyStat, error) {
+	var results []DailyStat
 
 	err := r.db.Model(&model.HabitLog{}).
-		Select("DATE(completed_at) as date, SUM(count) as count, MIN(status) as status").
+		Select("DATE(completed_at) as date, COALESCE(SUM(count), 0) as count, COALESCE(MIN(status), 0) as status").
 		Where("habit_id = ? AND user_id = ? AND completed_at >= ? AND completed_at < ?",
 			habitID, userID, start, end).
 		Group("DATE(completed_at)").

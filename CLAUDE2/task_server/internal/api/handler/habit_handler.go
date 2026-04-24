@@ -127,7 +127,7 @@ func (h *HabitHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// Update 更新习惯
+// Update 更新习惯（使用 habit_id 路由参数）
 func (h *HabitHandler) Update(c *gin.Context) {
 	userID, _ := getUserID(c)
 	if userID == 0 {
@@ -135,10 +135,9 @@ func (h *HabitHandler) Update(c *gin.Context) {
 		return
 	}
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	habitID := c.Param("habit_id")
+	if habitID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing habit_id"})
 		return
 	}
 
@@ -148,7 +147,7 @@ func (h *HabitHandler) Update(c *gin.Context) {
 		return
 	}
 
-	habit, err := h.habitService.Update(uint(id), userID, &req)
+	habit, err := h.habitService.UpdateByHabitID(habitID, userID, &req)
 	if err != nil {
 		handleError(c, err)
 		return
@@ -157,7 +156,7 @@ func (h *HabitHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, habit)
 }
 
-// Delete 删除习惯
+// Delete 删除习惯（使用 habit_id 路由参数）
 func (h *HabitHandler) Delete(c *gin.Context) {
 	userID, _ := getUserID(c)
 	if userID == 0 {
@@ -165,14 +164,13 @@ func (h *HabitHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	habitID := c.Param("habit_id")
+	if habitID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing habit_id"})
 		return
 	}
 
-	if err := h.habitService.Delete(uint(id), userID); err != nil {
+	if err := h.habitService.DeleteByHabitID(habitID, userID); err != nil {
 		handleError(c, err)
 		return
 	}
