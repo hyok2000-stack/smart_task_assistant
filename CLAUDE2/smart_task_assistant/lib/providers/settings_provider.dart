@@ -24,6 +24,7 @@ class SettingsProvider extends ChangeNotifier {
   int _reminderMinutes = 30;
   bool _reminderSoundEnabled = true;
   bool _reminderVibrationEnabled = true;
+  double _ttsVolume = 0.9; // 默认音量较高 (0.0-1.0)
 
   // AI服务配置
   AIMode _aiMode = AIMode.local;
@@ -55,6 +56,7 @@ class SettingsProvider extends ChangeNotifier {
   int get reminderMinutes => _reminderMinutes;
   bool get reminderSoundEnabled => _reminderSoundEnabled;
   bool get reminderVibrationEnabled => _reminderVibrationEnabled;
+  double get ttsVolume => _ttsVolume;
 
   // AI服务getter
   AIMode get aiMode => _aiMode;
@@ -231,6 +233,7 @@ class SettingsProvider extends ChangeNotifier {
 
       _reminderSoundEnabled = prefs.getBool('reminderSoundEnabled') ?? true;
       _reminderVibrationEnabled = prefs.getBool('reminderVibrationEnabled') ?? true;
+      _ttsVolume = prefs.getDouble('ttsVolume') ?? 0.9;
 
       // 加载AI配置
       final aiModeStr = prefs.getString('aiMode');
@@ -328,6 +331,7 @@ class SettingsProvider extends ChangeNotifier {
 
       await prefs.setBool('reminderSoundEnabled', _reminderSoundEnabled);
       await prefs.setBool('reminderVibrationEnabled', _reminderVibrationEnabled);
+      await prefs.setDouble('ttsVolume', _ttsVolume);
 
       await prefs.setString('aiMode', _aiMode.toString());
       await prefs.setString('localLLMAddress', _localLLMAddress);
@@ -408,6 +412,13 @@ class SettingsProvider extends ChangeNotifier {
   /// 设置提醒振动
   void setReminderVibrationEnabled(bool value) {
     _reminderVibrationEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// 设置TTS音量
+  void setTtsVolume(double value) {
+    _ttsVolume = value.clamp(0.0, 1.0);
     _saveSettings();
     notifyListeners();
   }
@@ -525,6 +536,7 @@ class SettingsProvider extends ChangeNotifier {
     _reminderMinutes = 30;
     _reminderSoundEnabled = true;
     _reminderVibrationEnabled = true;
+    _ttsVolume = 0.9;
 
     _aiMode = AIMode.local;
     _localLLMAddress = 'http://localhost:11434';

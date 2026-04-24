@@ -1229,6 +1229,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         completedAt = null;
       }
 
+      // 如果提醒时间改变了，清除"不再提醒"状态，恢复自动提醒
+      final reminderChanged = _reminderMinutes != widget.task!.reminderMinutes ||
+          _dueTime != widget.task!.dueTime;
+
       final updatedTask = widget.task!.copyWith(
         title: _titleController.text.trim(),
         content: _contentController.text.trim().isNotEmpty
@@ -1247,6 +1251,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         reminderCustomVoicePath: _reminderCustomVoicePath,
         isRecurring: _isRecurring,
         recurringRule: _recurringRule,
+        reminderDismissed: reminderChanged ? false : null,
       );
 
       await provider.updateTask(updatedTask);

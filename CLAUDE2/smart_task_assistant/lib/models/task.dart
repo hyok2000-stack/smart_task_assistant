@@ -63,7 +63,7 @@ class Task {
     List<String>? attachmentPaths,
     this.reminderMinutes,
     this.reminderDismissed = false,
-    this.reminderVoiceEnabled = false,
+    this.reminderVoiceEnabled = true,
     this.reminderVoiceType = 'neutral',
     this.reminderVoiceStyle = 'standard',
     this.reminderVoiceSpeed = 'normal',

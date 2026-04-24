@@ -24,8 +24,10 @@ class ReminderChecker(private val context: Context) {
         private const val KEY_HABIT_FIXED = "habit_fixed_%s_%s"
         private const val KEY_HABIT_LAST = "habit_last_%s"
         private const val KEY_LAST_CLEANUP = "last_cleanup"
-        private const val CONTINUAL_INTERVAL = 30_000L // 30s
-        private const val DEADLINE_CUTOFF = 3_600_000L // 1h after deadline
+        private const val CONTINUAL_INTERVAL = 30_000L // 30s（未到期持续提醒间隔）
+        private const val OVERDUE_INTERVAL = 180_000L // 3min（逾期持续提醒间隔）
+        private const val DEADLINE_CUTOFF = Long.MAX_VALUE // 不自动停止，由用户手动关闭
+        private const val HABIT_CONTINUAL_WINDOW = 5 * 60_000L // 5min continual window for interval habits
     }
 
     private val sp: SharedPreferences =
@@ -233,6 +235,21 @@ class ReminderChecker(private val context: Context) {
         return 0
     }
 
+    /**
+     * 查询习惯在指定时间之后的完成次数（用于判断当前时段是否已完成）
+     */
+    fun queryHabitCountSince(db: SQLiteDatabase, habitId: String, sinceTime: Long): Int {
+        val sinceStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date(sinceTime))
+        val cursor = db.rawQuery(
+            "SELECT COUNT(*) FROM habit_logs WHERE habit_id = ? AND completed_at >= ?",
+            arrayOf(habitId, sinceStr)
+        )
+        cursor.use {
+            if (it.moveToFirst()) return it.getInt(0)
+        }
+        return 0
+    }
+
     // --- Time helpers ---
 
     /**
@@ -247,6 +264,9 @@ class ReminderChecker(private val context: Context) {
      */
     private val ISO_DATETIME_REGEX: Pattern =
         Pattern.compile("""(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})""")
+
+    /** 公开包装：供 Service 层构建语音时间上下文使用 */
+    fun parseDueTimeMillisPublic(dueTimeStr: String): Long? = parseDueTimeMillis(dueTimeStr)
 
     private fun parseDueTimeMillis(dueTimeStr: String): Long? {
         // ---- 首选：正则提取，忽略小数秒和时区后缀 ----
@@ -351,12 +371,6 @@ class ReminderChecker(private val context: Context) {
         // Calculate reminder time
         val reminderTime = dueTime - (task.reminderMinutes?.toLong()?.times(60_000) ?: return false)
 
-        // Already past deadline + cutoff
-        if (now > dueTime + DEADLINE_CUTOFF) {
-            Log.d(TAG, "shouldTriggerTask[${task.title}]: past deadline+cutoff, due=${dueTime}, now=${now}")
-            return false
-        }
-
         val firstSentKey = String.format(KEY_FIRST_SENT, task.id)
         val lastRemindKey = String.format(KEY_LAST_REMIND, task.id)
 
@@ -367,10 +381,12 @@ class ReminderChecker(private val context: Context) {
             return trigger
         }
 
-        // Continual reminder check (every 30s)
+        // Continual reminder check — 逾期任务 3 分钟，未到期 30 秒
+        val isOverdue = now > dueTime
+        val interval = if (isOverdue) OVERDUE_INTERVAL else CONTINUAL_INTERVAL
         val lastRemind = sp.getLong(lastRemindKey, 0)
-        val trigger = now >= lastRemind + CONTINUAL_INTERVAL
-        Log.d(TAG, "shouldTriggerTask[${task.title}]: continual check, lastRemind=${lastRemind}, trigger=${trigger}")
+        val trigger = now >= lastRemind + interval
+        Log.d(TAG, "shouldTriggerTask[${task.title}]: continual check, overdue=$isOverdue, interval=${interval}ms, trigger=$trigger")
         return trigger
     }
 
@@ -412,7 +428,7 @@ class ReminderChecker(private val context: Context) {
 
     // --- Habit interval logic ---
 
-    fun shouldTriggerIntervalHabit(habit: HabitRow, workStart: Int, workEnd: Int, now: Long): Boolean {
+    fun shouldTriggerIntervalHabit(habit: HabitRow, workStart: Int, workEnd: Int, now: Long, db: SQLiteDatabase? = null): Boolean {
         val cal = Calendar.getInstance().apply { timeInMillis = now }
         if (!isTodayScheduleMatch(habit.scheduleType, cal)) return false
 
@@ -422,12 +438,13 @@ class ReminderChecker(private val context: Context) {
         val currentHour = cal.get(Calendar.HOUR_OF_DAY)
         if (currentHour < workStart || currentHour >= workEnd) return false
 
-        // Generate trigger times: workStart:00, workStart:00 + interval, ...
+        // Calculate current interval slot
         val workStartMinutes = workStart * 60
         val currentMinutes = currentHour * 60 + cal.get(Calendar.MINUTE)
-        val intervalsPassed = (currentMinutes - workStartMinutes) / interval
-        val triggerMinutes = workStartMinutes + intervalsPassed * interval
+        if (currentMinutes < workStartMinutes) return false
 
+        val currentSlotIndex = (currentMinutes - workStartMinutes) / interval
+        val triggerMinutes = workStartMinutes + currentSlotIndex * interval
         if (triggerMinutes < workStartMinutes) return false
 
         val triggerCal = Calendar.getInstance().apply {
@@ -438,17 +455,53 @@ class ReminderChecker(private val context: Context) {
         }
         val triggerMillis = triggerCal.timeInMillis
 
-        // ±1 minute window
-        if (now < triggerMillis - 60_000 || now > triggerMillis + 60_000) return false
+        // 还没到触发时间
+        if (now < triggerMillis) return false
 
-        // SP guard: check if already triggered for this interval
-        val lastKey = String.format(KEY_HABIT_LAST, habit.id)
-        val lastTrigger = sp.getLong(lastKey, 0)
-        if (lastTrigger > 0 && Math.abs(lastTrigger - triggerMillis) < 60_000) {
-            return false // already triggered at this interval
+        // 持续提醒只在触发时间后5分钟内生效，避免整个间隔周期都在提醒
+        if (now > triggerMillis + HABIT_CONTINUAL_WINDOW) {
+            Log.d(TAG, "shouldTriggerIntervalHabit[${habit.title}]: past 5min continual window, waiting for next slot")
+            return false
         }
 
-        return true
+        // 查询数据库：该时段内是否已完成（防止 Flutter 已完成后原生层重复触发）
+        if (db != null && habit.id != "habit_clock_in" && habit.id != "habit_clock_out") {
+            val completedSince = queryHabitCountSince(db, habit.id, triggerMillis)
+            if (completedSince > 0) {
+                Log.d(TAG, "shouldTriggerIntervalHabit[${habit.title}]: completed for current slot ($completedSince records), skipping")
+                return false
+            }
+        }
+
+        // 用时段索引判断是否为新的间隔周期（修复原先用时间戳比较导致60秒后始终判定为新时段的bug）
+        val lastKey = String.format(KEY_HABIT_LAST, habit.id)
+        val lastTrigger = sp.getLong(lastKey, 0)
+
+        if (lastTrigger <= 0) {
+            Log.d(TAG, "shouldTriggerIntervalHabit[${habit.title}]: no previous trigger, first trigger")
+            return true
+        }
+
+        // 计算 lastTrigger 所在的时段索引
+        val lastCal = Calendar.getInstance().apply { timeInMillis = lastTrigger }
+        val lastMinutes = lastCal.get(Calendar.HOUR_OF_DAY) * 60 + lastCal.get(Calendar.MINUTE)
+        val lastSlotIndex = if (lastMinutes >= workStartMinutes) {
+            (lastMinutes - workStartMinutes) / interval
+        } else {
+            -1
+        }
+
+        if (lastSlotIndex != currentSlotIndex) {
+            Log.d(TAG, "shouldTriggerIntervalHabit[${habit.title}]: new slot (last=$lastSlotIndex, current=$currentSlotIndex), first trigger")
+            return true
+        }
+
+        // 同一时段 — 持续提醒（30 秒）
+        val lastRemindKey = String.format(KEY_LAST_REMIND, habit.id)
+        val lastRemind = sp.getLong(lastRemindKey, 0)
+        val trigger = now >= lastRemind + CONTINUAL_INTERVAL
+        Log.d(TAG, "shouldTriggerIntervalHabit[${habit.title}]: continual check, lastRemind=$lastRemind, trigger=$trigger")
+        return trigger
     }
 
     // --- SP state management ---
@@ -484,11 +537,101 @@ class ReminderChecker(private val context: Context) {
         }
     }
 
+    /**
+     * 清除持续提醒状态：设置 LAST_REMIND 为极大值阻止持续触发，保留 HABIT_LAST
+     */
+    fun clearContinualState(id: String) {
+        val now = System.currentTimeMillis()
+        sp.edit().apply {
+            remove(String.format(KEY_FIRST_SENT, id))
+            // 设置 LAST_REMIND 为极大值，阻止 continual check 通过
+            putLong(String.format(KEY_LAST_REMIND, id), Long.MAX_VALUE)
+            // 更新 HABIT_LAST 为当前时间，使时段索引检查正确
+            putLong(String.format(KEY_HABIT_LAST, id), now)
+            remove(String.format(KEY_SNOOZE, id))
+            apply()
+        }
+    }
+
+    /**
+     * 同步所有习惯的状态为"刚刚处理过"，防止从 Flutter 切换到原生时重复触发。
+     * 设置 HABIT_LAST 和 LAST_REMIND 为当前时间，而非清除它们。
+     */
+    fun syncAllHabitsState() {
+        val db = openDb() ?: return
+        try {
+            val now = System.currentTimeMillis()
+            val editor = sp.edit()
+            val cursor = db.rawQuery("SELECT id FROM habits WHERE is_enabled = 1", null)
+            cursor.use {
+                while (it.moveToNext()) {
+                    val id = it.getString(0)
+                    // 设置 HABIT_LAST 为当前时间（使时段索引检查能正确工作）
+                    val lastKey = String.format(KEY_HABIT_LAST, id)
+                    if (!sp.contains(lastKey) || sp.getLong(lastKey, 0) <= 0) {
+                        editor.putLong(lastKey, now)
+                    }
+                    // 设置 LAST_REMIND 为当前时间（防止 continual check 立即通过）
+                    // 只在未被设为 MAX_VALUE 的情况下设置（MAX_VALUE 表示用户已完成该习惯）
+                    val lastRemindKey = String.format(KEY_LAST_REMIND, id)
+                    val currentLastRemind = sp.getLong(lastRemindKey, 0)
+                    if (currentLastRemind < Long.MAX_VALUE - 1000) {
+                        editor.putLong(lastRemindKey, now)
+                    }
+                }
+            }
+            editor.apply()
+            Log.d(TAG, "Synced state for all enabled habits (set HABIT_LAST and LAST_REMIND)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync habit state", e)
+        } finally {
+            db.close()
+        }
+    }
+
+    /**
+     * 同步所有活跃任务的状态：将已过提醒时间的任务标记为 first_sent + last_remind，
+     * 防止从前台切到后台时原生层重新触发首次提醒（声音+语音+弹窗）。
+     */
+    fun syncAllTasksState() {
+        val db = openDb() ?: return
+        try {
+            val now = System.currentTimeMillis()
+            val editor = sp.edit()
+            val tasks = queryActiveTasks(db)
+            var syncedCount = 0
+            for (task in tasks) {
+                val dueTime = parseDueTimeMillis(task.dueTime ?: continue) ?: continue
+                val reminderMinutes = task.reminderMinutes ?: continue
+                val reminderTime = dueTime - reminderMinutes.toLong() * 60_000
+
+                // 只同步已过提醒时间的任务
+                if (now >= reminderTime) {
+                    val firstSentKey = String.format(KEY_FIRST_SENT, task.id)
+                    val lastRemindKey = String.format(KEY_LAST_REMIND, task.id)
+                    if (!sp.contains(firstSentKey)) {
+                        editor.putLong(firstSentKey, now)
+                    }
+                    editor.putLong(lastRemindKey, now)
+                    syncedCount++
+                }
+            }
+            editor.apply()
+            Log.d(TAG, "Synced state for $syncedCount/${tasks.size} active tasks")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync task state", e)
+        } finally {
+            db.close()
+        }
+    }
+
     fun markHabitTriggered(id: String) {
+        val now = System.currentTimeMillis()
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         sp.edit()
             .putBoolean(String.format(KEY_HABIT_FIXED, id, today), true)
-            .putLong(String.format(KEY_HABIT_LAST, id), System.currentTimeMillis())
+            .putLong(String.format(KEY_HABIT_LAST, id), now)
+            .putLong(String.format(KEY_LAST_REMIND, id), now)
             .apply()
     }
 
@@ -524,7 +667,11 @@ class ReminderChecker(private val context: Context) {
 
     // --- Main entry ---
 
-    fun checkAll(): List<ReminderItem> {
+    /**
+     * @param isForeground 当 APP 在前台时，跳过习惯的触发标记，
+     *   避免原生层"消耗"习惯触发但 Flutter 层因 ±1 分钟窗口错过而无法播放语音
+     */
+    fun checkAll(isForeground: Boolean = false): List<ReminderItem> {
         val items = mutableListOf<ReminderItem>()
         val db = openDb() ?: return items
 
@@ -574,12 +721,16 @@ class ReminderChecker(private val context: Context) {
             for (habit in habits) {
                 val triggered = when (habit.triggerType) {
                     "fixed" -> shouldTriggerFixedHabit(habit, now)
-                    "interval" -> shouldTriggerIntervalHabit(habit, workStart, workEnd, now)
+                    "interval" -> shouldTriggerIntervalHabit(habit, workStart, workEnd, now, db)
                     else -> false
                 }
 
                 if (triggered) {
-                    markHabitTriggered(habit.id)
+                    // 前台时不标记习惯触发状态，由 Flutter 层全权处理
+                    // 避免原生层"消耗"触发但 Flutter 层因 ±1 分钟窗口错过而无法播放语音
+                    if (!isForeground) {
+                        markHabitTriggered(habit.id)
+                    }
                     val needsRecord = habit.id != "habit_clock_in" && habit.id != "habit_clock_out"
                     val currentCount = if (needsRecord) queryHabitTodayCount(db, habit.id) else 0
 

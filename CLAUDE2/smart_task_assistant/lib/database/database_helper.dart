@@ -152,6 +152,8 @@ class DatabaseHelper {
         'CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_status_due_time ON tasks(status, due_time)');
 
     // 插入默认标签
     await _insertDefaultTags(db);
@@ -449,6 +451,17 @@ class DatabaseHelper {
       }
 
       debugPrint('自定义语音路径字段添加成功');
+    }
+
+    // 确保性能索引存在（不升级 schema version）
+    try {
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_tasks_status_due_time ON tasks(status, due_time)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_date ON habit_logs(habit_id, completed_at)');
+      debugPrint('性能索引已创建/确认');
+    } catch (e) {
+      debugPrint('创建性能索引失败: $e');
     }
   }
 
@@ -892,6 +905,47 @@ class DatabaseHelper {
       ),
     );
     return result ?? 0;
+  }
+
+  /// 批量获取习惯今日完成数量（单次 SQL 查询）
+  Future<Map<String, int>> getHabitTodayCountsBatch(List<String> habitIds) async {
+    if (habitIds.isEmpty) return {};
+    final db = await database;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    final placeholders = List.filled(habitIds.length, '?').join(',');
+    final results = await db.rawQuery(
+      'SELECT habit_id, SUM(count) as total FROM habit_logs '
+      'WHERE habit_id IN ($placeholders) AND completed_at >= ? AND completed_at < ? AND status = 0 '
+      'GROUP BY habit_id',
+      [...habitIds, todayStart.toIso8601String(), todayEnd.toIso8601String()],
+    );
+
+    final Map<String, int> counts = {};
+    for (final row in results) {
+      counts[row['habit_id'] as String] = (row['total'] as int?) ?? 0;
+    }
+    // 确保所有 habitId 都有值
+    for (final id in habitIds) {
+      counts.putIfAbsent(id, () => 0);
+    }
+    return counts;
+  }
+
+  /// 清除习惯今日日志（达标后重置）
+  Future<void> clearHabitTodayLogs(String habitId) async {
+    final db = await database;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    await db.delete(
+      'habit_logs',
+      where: 'habit_id = ? AND completed_at >= ? AND completed_at < ?',
+      whereArgs: [habitId, todayStart.toIso8601String(), todayEnd.toIso8601String()],
+    );
   }
 
   /// 删除习惯的所有日志

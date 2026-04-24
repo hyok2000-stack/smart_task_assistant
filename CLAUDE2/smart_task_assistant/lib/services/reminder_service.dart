@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/services.dart' show MethodChannel;
 import '../models/task.dart';
 import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
@@ -40,8 +41,8 @@ class ReminderService {
   // 语音提醒状态追踪（避免重复播放）
   final Map<String, DateTime> _lastVoiceReminderTime = {};
 
-  // 重复提醒间隔（毫秒）
-  static const int _voiceReminderIntervalMs = 60000; // 1分钟
+  // 重复提醒间隔（毫秒）- 与持续提醒间隔对齐，确保每次提醒都播语音
+  static const int _voiceReminderIntervalMs = 30000; // 30秒
 
   // 上次提醒时间（用于控制提醒间隔，避免过于频繁）
   final Map<String, DateTime> _lastReminderTime = {};
@@ -58,8 +59,8 @@ class ReminderService {
   // 持续提醒间隔（秒）- 提醒后隔多少秒再次提醒
   static const int _continualReminderIntervalSeconds = 30;
 
-  // 逾期任务持续提醒间隔（分钟）- 逾期任务每隔多少分钟再次提醒
-  static const int _overdueReminderIntervalMinutes = 5;
+  // 逾期任务持续提醒间隔（秒）- 逾期任务每隔多少秒再次提醒
+  static const int _overdueReminderIntervalSeconds = 180; // 3分钟
 
   // 当前显示的提醒（避免重复弹出）
   String? _currentShowingReminderId;
@@ -189,9 +190,19 @@ class ReminderService {
 
   /// 检查需要提醒的任务和习惯
   void _checkReminders() {
-    // 注意：Flutter 层始终执行提醒检查
-    // 当 App 在后台时，native 层也会检查并通过 FullScreenActivity 显示提醒
-    // 两层都检查可以确保提醒不会遗漏
+    // APP 在后台时，Flutter 层跳过提醒检查，由原生服务全权处理
+    // 原因：flutter_tts 在 Activity 暂停时无法发声，
+    // 且 Flutter 层更新状态会导致提醒被"吞掉"而原生层不再触发
+    if (!isAppForeground) {
+      return;
+    }
+
+    // 屏幕关闭时跳过 Flutter 层检查，由原生层全权处理
+    // Flutter TTS 引擎在屏幕关闭时暂停，无法播放语音
+    _updateScreenState();
+    if (!_isScreenOn) {
+      return;
+    }
 
     if (_taskProvider == null) {
       debugPrint('⚠️ _checkReminders: _taskProvider 为空');
@@ -244,76 +255,29 @@ class ReminderService {
     int checkedCount = 0;
     int needRemindCount = 0;
 
-    debugPrint('');
-    debugPrint('===== 任务提醒详细检查 =====');
-
-    // 先列出所有有提醒设置且未完成的任务
-    debugPrint('所有有提醒设置且未完成的任务:');
-    for (final task in _taskProvider!.tasks) {
-      if (!task.isCompleted &&
-          task.status != TaskStatus.cancelled &&
-          task.dueTime != null &&
-          task.reminderMinutes != null &&
-          !task.reminderDismissed) {
-        final reminderTime = task.dueTime!.subtract(Duration(minutes: task.reminderMinutes!));
-        final isPast = now.isAfter(reminderTime);
-        debugPrint('  - ${task.title}: 截止=${task.dueTime?.toIso8601String()}, 提醒${task.reminderMinutes}分钟, 提醒时间=${reminderTime.toIso8601String()}, 已过=$isPast');
-      }
-    }
-    debugPrint('============================');
-
     for (final task in _taskProvider!.tasks) {
       checkedCount++;
 
       // 跳过已完成或已取消的任务
-      if (task.isCompleted) {
-        debugPrint('  [任务] ${task.title} 已完成，跳过');
-        continue;
-      }
-
-      if (task.status == TaskStatus.cancelled) {
-        debugPrint('  [任务] ${task.title} 已取消，跳过');
-        continue;
-      }
-
-      // 跳过没有截止时间的任务
-      if (task.dueTime == null) {
-        debugPrint('  [任务] ${task.title} 无截止时间，跳过');
-        continue;
-      }
-
-      // 跳过已永久关闭提醒的任务
-      if (task.reminderDismissed) {
-        debugPrint('  [任务] ${task.title} 已永久关闭提醒，跳过');
-        continue;
-      }
-
-      // 跳过没有设置提醒时间的任务
-      if (task.reminderMinutes == null) {
-        debugPrint('  [任务] ${task.title} 未设置提醒时间，跳过');
-        continue;
-      }
+      if (task.isCompleted) continue;
+      if (task.status == TaskStatus.cancelled) continue;
+      if (task.dueTime == null) continue;
+      if (task.reminderDismissed) continue;
+      if (task.reminderMinutes == null) continue;
 
       // 检查是否需要提醒
       final shouldRemind = _shouldShowReminder(task, now);
 
       if (shouldRemind) {
         needRemindCount++;
-        debugPrint('✅ [任务] ${task.title} 需要提醒！');
-        debugPrint('   - 截止时间: ${task.dueTime?.toIso8601String()}');
-        debugPrint('   - 提醒分钟: ${task.reminderMinutes}');
-        debugPrint('   - 当前时间: ${now.toIso8601String()}');
+        debugPrint('[任务提醒] "${task.title}" 需要提醒 (截止: ${task.dueTime?.toIso8601String()}, 提前${task.reminderMinutes}分钟)');
         _showTaskReminder(task);
-      } else {
-        debugPrint('  [任务] ${task.title} 不需要提醒');
-        final reminderTime = task.dueTime!.subtract(Duration(minutes: task.reminderMinutes!));
-        final diff = now.difference(reminderTime);
-        debugPrint('   - 提醒时间: ${reminderTime.toIso8601String()}');
-        debugPrint('   - 时间差: ${diff.inSeconds}秒');
       }
     }
 
-    debugPrint('===== 任务检查完成: 已检查 $checkedCount 个任务，需要提醒 $needRemindCount 个 =====');
+    if (checkedCount > 0) {
+      debugPrint('[任务检查] 已检查 $checkedCount 个，需要提醒 $needRemindCount 个');
+    }
   }
 
   /// 检查习惯提醒
@@ -323,129 +287,74 @@ class ReminderService {
     int checkedCount = 0;
     int needRemindCount = 0;
 
-    debugPrint('');
-    debugPrint('===== 习惯提醒状态概览 =====');
-    for (final habit in _habitProvider!.habits) {
-      if (habit.isEnabled) {
-        debugPrint('  ${habit.title}: triggerType=${habit.triggerType}, interval=${habit.intervalMinutes}, fixed=${habit.fixedTime}');
-      }
-    }
-    debugPrint('============================');
-
     for (final habit in _habitProvider!.habits) {
       checkedCount++;
 
       // 跳过未启用的习惯
-      if (!habit.isEnabled) {
-        debugPrint('  [习惯] ${habit.title} 未启用，跳过');
-        continue;
-      }
+      if (!habit.isEnabled) continue;
 
       // 检查是否应该触发提醒
       final shouldRemind = _habitService.shouldTriggerReminder(habit, now);
 
       if (shouldRemind) {
         needRemindCount++;
-        debugPrint('✅ [习惯] ${habit.title} 需要提醒！');
-        debugPrint('   - 触发类型: ${habit.triggerType}');
-        debugPrint('   - 间隔时间: ${habit.intervalMinutes}');
-        debugPrint('   - 固定时间: ${habit.fixedTime}');
-        debugPrint('   - 当前时间: ${now.toIso8601String()}');
+        debugPrint('[习惯提醒] "${habit.title}" 需要提醒 (类型: ${habit.triggerType}, 间隔: ${habit.intervalMinutes}分钟)');
         _showHabitReminder(habit);
-      } else {
-        debugPrint('  [习惯] ${habit.title} 不需要提醒');
       }
     }
 
-    debugPrint('===== 习惯检查完成: 已检查 $checkedCount 个习惯，需要提醒 $needRemindCount 个 =====');
+    if (checkedCount > 0) {
+      debugPrint('[习惯检查] 已检查 $checkedCount 个，需要提醒 $needRemindCount 个');
+    }
   }
 
   /// 判断是否应该显示提醒
   bool _shouldShowReminder(Task task, DateTime now) {
-    debugPrint('  [检查任务] ${task.title}');
-    debugPrint('    - 截止时间: ${task.dueTime}');
-    debugPrint('    - 提醒分钟: ${task.reminderMinutes}');
-    debugPrint('    - 已永久关闭提醒: ${task.reminderDismissed}');
-    debugPrint('    - 是否已完成: ${task.isCompleted}');
-    debugPrint('    - 是否逾期: ${task.isOverdue}');
-    debugPrint('    - 是否已发送首次提醒: ${_firstReminderSent.contains(task.id)}');
-
     // 1. 检查是否有稍后提醒设置
     if (_snoozedTasks.containsKey(task.id)) {
       final snoozeTime = _snoozedTasks[task.id]!;
-      final diff = now.difference(snoozeTime);
-      debugPrint('    - 有稍后提醒设置，时间: $snoozeTime');
-      debugPrint('    - 距离稍后提醒时间: ${diff.inSeconds}秒');
-      // 如果稍后提醒时间已到
       if (now.isAfter(snoozeTime)) {
-        debugPrint('    → 稍后提醒时间已到，需要提醒');
+        debugPrint('[提醒判断] "${task.title}" 稍后提醒时间已到');
         return true;
       }
-      debugPrint('    → 稍后提醒时间未到，跳过');
       return false;
     }
 
     // 2. 检查正常的提醒时间（首次提醒）
     if (!_firstReminderSent.contains(task.id)) {
-      // 首次提醒检查
-      if (task.reminderMinutes == null) {
-        debugPrint('    → 未设置提醒时间，跳过');
+      if (task.reminderMinutes == null || task.dueTime == null) {
         return false;
       }
 
-      if (task.dueTime == null) {
-        debugPrint('    → 无截止时间，跳过');
-        return false;
-      }
-
-      final reminderMinutes = task.reminderMinutes!;
       final reminderTime =
-          task.dueTime!.subtract(Duration(minutes: reminderMinutes));
+          task.dueTime!.subtract(Duration(minutes: task.reminderMinutes!));
 
-      debugPrint('    - 提醒时间: $reminderTime');
-      final diff = now.difference(reminderTime);
-      debugPrint('    - 距离提醒时间: ${diff.inSeconds}秒');
-
-      // 已超过提醒时间，需要首次提醒
       if (now.isAfter(reminderTime)) {
-        debugPrint('    → 已超过提醒时间，需要首次提醒');
         return true;
       }
-
-      debugPrint('    → 还未到提醒时间，跳过');
       return false;
     }
 
     // 3. 已发送首次提醒，检查是否需要持续提醒
     if (_lastReminderTime.containsKey(task.id)) {
       final lastTime = _lastReminderTime[task.id]!;
-      // 逾期任务使用较长的提醒间隔，正常任务使用短间隔
       final interval = task.isOverdue
-          ? Duration(minutes: _overdueReminderIntervalMinutes)
+          ? Duration(seconds: _overdueReminderIntervalSeconds)
           : const Duration(seconds: _continualReminderIntervalSeconds);
       final nextReminderTime = lastTime.add(interval);
-      final diff = now.difference(nextReminderTime);
-      debugPrint('    - 上次提醒时间: $lastTime');
-      debugPrint('    - 下次提醒时间: $nextReminderTime');
-      debugPrint('    - 距离下次提醒: ${diff.inSeconds}秒');
-      debugPrint('    - 提醒间隔: ${task.isOverdue ? "$_overdueReminderIntervalMinutes 分钟" : "$_continualReminderIntervalSeconds 秒"}');
-      // 检查是否到了下次提醒的时间
+
       if (now.isAfter(nextReminderTime)) {
-        debugPrint('    → 持续提醒时间已到');
         return true;
       }
-      debugPrint('    → 持续提醒时间未到，跳过');
       return false;
     }
 
     // 4. 逾期任务兜底：任务已逾期且有提醒设置，但状态丢失时（如 app 重启后
     //    _lastReminderTime 和 _snoozedTasks 为空），继续提醒直到用户关闭
     if (task.isOverdue && task.reminderMinutes != null) {
-      debugPrint('    → 逾期任务兜底提醒（状态丢失恢复），间隔 $_overdueReminderIntervalMinutes 分钟');
       return true;
     }
 
-    debugPrint('    → 无需提醒');
     return false;
   }
 
@@ -619,20 +528,35 @@ class ReminderService {
 
             debugPrint('任务 "${task.title}" 已设置为不再提醒');
           } else if (reminderMinutes != null) {
-            // 用户选择修改提醒时间 - 更新任务的提醒时间
-            final updatedTask = task.copyWith(reminderMinutes: reminderMinutes);
+            // 用户选择修改提醒时间 - 更新任务的提醒时间，并清除"不再提醒"状态
+            final updatedTask = task.copyWith(
+              reminderMinutes: reminderMinutes,
+              reminderDismissed: false,
+            );
             await _taskProvider!.updateTask(updatedTask);
 
-            // 清除提醒状态，等待新的提醒时间
+            // 清除提醒状态
             _lastReminderTime.remove(task.id);
             _snoozedTasks.remove(task.id);
-            _firstReminderSent.remove(task.id); // 重置首次提醒标记
+            _firstReminderSent.remove(task.id);
 
-            debugPrint('任务 "${task.title}" 的提醒时间已修改为 $reminderMinutes 分钟前');
+            // 如果同时传了 snoozeMinutes，设置稍后提醒
+            if (snoozeMinutes != null) {
+              _snoozedTasks[task.id] =
+                  DateTime.now().add(Duration(minutes: snoozeMinutes));
+              debugPrint('任务 "${task.title}" 提醒时间已修改为 $reminderMinutes 分钟前，$snoozeMinutes 分钟后再次提醒');
+            } else {
+              debugPrint('任务 "${task.title}" 的提醒时间已修改为 $reminderMinutes 分钟前');
+            }
           } else if (snoozeMinutes != null) {
             // 用户选择稍后提醒 - 设置稍后提醒时间（不修改任务）
             _snoozedTasks[task.id] =
                 DateTime.now().add(Duration(minutes: snoozeMinutes));
+            // 如果任务之前被标记为不再提醒，恢复提醒
+            if (task.reminderDismissed) {
+              final updatedTask = task.copyWith(reminderDismissed: false);
+              await _taskProvider!.updateTask(updatedTask);
+            }
             _lastReminderTime.remove(task.id); // 允许稍后再次提醒
 
             debugPrint('任务 "${task.title}" 将在 $snoozeMinutes 分钟后再次提醒');
@@ -739,6 +663,12 @@ class ReminderService {
   /// App 是否在前台（前台时由 Flutter 层处理提醒，后台时由 Kotlin 层处理）
   bool isAppForeground = true;
 
+  // 屏幕状态缓存（由原生层 isScreenOn 查询更新）
+  static const _reminderChannel =
+      MethodChannel('com.smarttask.smart_task_assistant/reminder');
+  bool _isScreenOn = true;
+  DateTime _lastScreenCheck = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// 标记提醒已由原生层显示（避免 Flutter 层重复弹窗）
   void markShown(String id) {
     _lastReminderTime[id] = DateTime.now();
@@ -750,5 +680,16 @@ class ReminderService {
   void setSnooze(String id, int minutes) {
     _snoozedTasks[id] = DateTime.now().add(Duration(minutes: minutes));
     debugPrint('Reminder snoozed from native layer: $id for $minutes minutes');
+  }
+
+  /// 从原生层查询屏幕状态（每 5 秒最多查一次，避免频繁调用）
+  void _updateScreenState() {
+    if (!Platform.isAndroid) return;
+    final now = DateTime.now();
+    if (now.difference(_lastScreenCheck).inSeconds < 5) return;
+    _lastScreenCheck = now;
+    _reminderChannel.invokeMethod<bool>('isScreenOn').then((on) {
+      if (on != null) _isScreenOn = on;
+    }).catchError((_) {});
   }
 }

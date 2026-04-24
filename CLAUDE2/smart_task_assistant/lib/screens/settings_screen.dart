@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 import '../widgets/tag_management_dialog.dart';
 import '../services/ai_service.dart';
+import '../services/tts_service.dart';
 import '../database/storage_service.dart';
 
 // 条件导入：文件操作（Web和移动端）
@@ -251,6 +252,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildDivider(),
                 _buildReminderServiceSettings(context),
               ],
+              _buildDivider(),
+              // 语音音量滑块
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.volume_up_outlined, color: AppTheme.textSecondaryColor),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '语音音量',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textPrimaryColor,
+                            ),
+                          ),
+                          Slider(
+                            value: settings.ttsVolume,
+                            min: 0.0,
+                            max: 1.0,
+                            divisions: 10,
+                            activeColor: AppTheme.primaryColor,
+                            label: '${(settings.ttsVolume * 100).round()}%',
+                            onChanged: (value) {
+                              settings.setTtsVolume(value);
+                              TTSService().volume = value;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        '${(settings.ttsVolume * 100).round()}%',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondaryColor,
+                        ),
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         );

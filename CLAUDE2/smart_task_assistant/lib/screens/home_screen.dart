@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/task.dart';
@@ -35,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // 时间和天气相关
   Timer? _timeTimer;
-  String _currentTime = '';
+  final ValueNotifier<String> _currentTimeNotifier = ValueNotifier('');
   static final WeatherService _weatherService = WeatherService();
   WeatherInfo? _weatherInfo;
   bool _isLoadingWeather = false;
@@ -61,16 +60,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _fabAnimationController.dispose();
     _timeTimer?.cancel();
+    _currentTimeNotifier.dispose();
     super.dispose();
   }
 
   /// 更新时间
   void _updateTime() {
     final now = DateTime.now();
-    setState(() {
-      _currentTime =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    });
+    _currentTimeNotifier.value =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
   }
 
   /// 加载天气信息
@@ -197,38 +195,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 color: AppTheme.textPrimaryColor,
                               ),
                             ),
-                            if (_currentTime.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                            ValueListenableBuilder<String>(
+                              valueListenable: _currentTimeNotifier,
+                              builder: (context, time, _) {
+                                if (time.isEmpty) return const SizedBox.shrink();
+                                return Column(
                                   children: [
-                                    Icon(
-                                      Icons.access_time_rounded,
-                                      size: 14,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _currentTime,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.primaryColor,
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.access_time_rounded,
+                                            size: 14,
+                                            color: AppTheme.primaryColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            time,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
-                                ),
-                              ),
-                            ],
+                                );
+                              },
+                            ),
                           ],
                         ),
                         Row(
@@ -260,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             // AI 建议卡片
-            if (provider.todayTasks.where((t) => !t.isCompleted).isNotEmpty)
+            if (provider.todayTasks.any((t) => !t.isCompleted))
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -394,10 +400,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: SizedBox(height: 12),
             ),
             // 待处理任务列表 - 只显示未完成的任务
-            provider.todayTasks.where((t) => !t.isCompleted).isEmpty
+            provider.todayTasks.every((t) => t.isCompleted)
                 ? SliverToBoxAdapter(
                     child:
-                        provider.todayTasks.where((t) => t.isCompleted).isEmpty
+                        provider.todayTasks.isEmpty
                             ? _buildEmptyState()
                             : const SizedBox.shrink(), // 如果只有已完成任务，不显示空状态
                   )
@@ -409,6 +415,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           final uncompletedTasks = provider.todayTasks
                               .where((t) => !t.isCompleted)
                               .toList();
+                          // Note: todayTasks uncompleted filter is specific to today view,
+                          // not replaceable by cached activeTasks (which is all tasks)
                           final task = uncompletedTasks[index];
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -437,12 +445,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         },
                         childCount: provider.todayTasks
                             .where((t) => !t.isCompleted)
-                            .length,
+                            .length, // todayTasks-specific, not cacheable
                       ),
                     ),
                   ),
             // 已完成任务分组（从全部任务中获取已完成任务，不受 todayTasks 过滤限制）
-            if (provider.tasks.where((t) => t.isCompleted).isNotEmpty)
+            if (provider.completedTasks.isNotEmpty)
               SliverToBoxAdapter(
                 child: _buildCompletedSection(provider),
               ),
@@ -482,20 +490,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(
+                      Container(
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withOpacity(0.9),
-                                  Colors.white.withOpacity(0.7),
-                                ],
-                              ),
+                              color: Colors.white.withOpacity(0.85),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: Colors.white.withOpacity(0.3),
@@ -556,8 +553,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ],
                             ),
                           ),
-                        ),
-                      ),
                       const SizedBox(height: 16),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -1119,7 +1114,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final overdueTasks = provider.overdueTasks;
 
     // 已完成计数从全部任务获取，确保与已完成卡片一致
-    final completedCount = allTasks.where((t) => t.isCompleted).length;
+    final completedCount = provider.completedTasks.length;
     final inProgressTasks = allTasks
         .where((t) =>
             t.status == TaskStatus.inProgress && !t.isCompleted && !t.isOverdue)
@@ -2405,8 +2400,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildCompletedSection(TaskProvider provider) {
     final l = context.l;
     // 从全部任务中获取已完成任务，确保数量与实际一致
-    final completedTasks =
-        provider.tasks.where((t) => t.isCompleted).toList();
+    final completedTasks = provider.completedTasks;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

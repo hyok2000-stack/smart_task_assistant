@@ -30,7 +30,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
   // 可编辑的任务属性
   TaskPriority _selectedPriority = TaskPriority.medium;
   DateTime? _selectedDueTime;
-  int? _selectedReminderMinutes; // 提前提醒时间（分钟）
+  int? _selectedReminderMinutes = 10; // 提前提醒时间（默认10分钟）
+  bool _reminderVoiceEnabled = true; // 默认启用语音提醒
   List<String> _selectedTags = [];
   bool _isCreating = false;
 
@@ -149,9 +150,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       30,
       60,
       1440,
-      2880,
-      4320
-    ]; // 预设的提醒时间选项（分钟）：10分钟、15分钟、30分钟、1小时、1天、2天、3天
+    ]; // 预设的提醒时间选项（分钟）：10分钟、15分钟、30分钟、1小时、1天
     return presetOptions.contains(minutes);
   }
 
@@ -236,6 +235,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
         isRecurring: _isRecurring,
         recurringRule: _isRecurring ? _recurringRule : null,
         reminderMinutes: _selectedReminderMinutes,
+        reminderVoiceEnabled: true, // 默认启用语音提醒
+        reminderVoiceType: 'female',
+        reminderVoiceStyle: 'lively',
+        reminderVoiceSpeed: 'normal',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -451,7 +454,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
                         Row(
                           children: [
                             // 优先级选择
-                            Expanded(
+                            SizedBox(
+                              width: 120,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 8),
@@ -582,6 +586,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
                         // 提醒时间选择
                         const SizedBox(height: 16),
                         _buildReminderSelector(),
+                        // 语音提醒开关（仅在选择了提醒时间时显示）
+                        if (_selectedReminderMinutes != null) ...[
+                          const SizedBox(height: 16),
+                          _buildVoiceReminderToggle(),
+                        ],
                         // 标签选择区域
                         const SizedBox(height: 16),
                         _buildTagSelector(),
@@ -799,6 +808,79 @@ class _QuickAddModalState extends State<QuickAddModal> {
     );
   }
 
+  /// 构建语音提醒开关
+  Widget _buildVoiceReminderToggle() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _reminderVoiceEnabled
+            ? AppTheme.primaryColor.withOpacity(0.08)
+            : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _reminderVoiceEnabled
+              ? AppTheme.primaryColor.withOpacity(0.3)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _reminderVoiceEnabled
+                  ? AppTheme.primaryColor.withOpacity(0.15)
+                  : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              _reminderVoiceEnabled ? Icons.record_voice_over : Icons.voice_over_off,
+              size: 18,
+              color: _reminderVoiceEnabled
+                  ? AppTheme.primaryColor
+                  : Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '语音提醒',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _reminderVoiceEnabled
+                        ? AppTheme.textPrimaryColor
+                        : AppTheme.textHintColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _reminderVoiceEnabled ? '提醒时播放语音播报' : '未启用',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _reminderVoiceEnabled
+                        ? AppTheme.primaryColor
+                        : AppTheme.textHintColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _reminderVoiceEnabled,
+            onChanged: (value) {
+              setState(() => _reminderVoiceEnabled = value);
+            },
+            activeColor: AppTheme.primaryColor,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 构建提醒时间选择器
   Widget _buildReminderSelector() {
     return Container(
@@ -834,8 +916,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
               _buildReminderChip('提前30分钟', 30),
               _buildReminderChip('提前1小时', 60),
               _buildReminderChip('提前1天', 1440),
-              _buildReminderChip('提前2天', 2880),
-              _buildReminderChip('提前3天', 4320),
               _buildReminderChip('自定义', -1),
             ],
           ),

@@ -51,13 +51,24 @@
         </service>
 
         <!-- 全屏提醒页面（锁屏弹出） -->
-        <!-- 开机自启 BroadcastReceiver -->
+        <!-- 提醒闹钟接收器：AlarmManager 唤醒后启动提醒服务 -->
+        <receiver
+            android:name=".ReminderAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+        </receiver>
+
+        <!-- 开机/解锁/升级自启 BroadcastReceiver -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

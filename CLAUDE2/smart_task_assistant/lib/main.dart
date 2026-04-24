@@ -193,9 +193,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _startNativeReminderService() async {
     if (!Platform.isAndroid) return;
     try {
-      await _reminderMethodChannel.invokeMethod('startService');
+      // 先通知前台，防止 startService 触发时 isAppForeground=false 导致误报
       await _reminderMethodChannel.invokeMethod('notifyAppForeground');
+      await _reminderMethodChannel.invokeMethod('startService');
       debugPrint('Native reminder service started');
+
+      // 取消之前的订阅，防止重复
+      await _reminderEventSubscription?.cancel();
 
       // Listen for native reminder events
       _reminderEventSubscription =
@@ -233,6 +237,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _clearNativeReminderState(String id) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderMethodChannel.invokeMethod('clearContinualState', {'id': id});
+    } catch (e) {
+      debugPrint('Failed to clear native reminder state: $e');
+    }
+  }
+
   void _handleReminderEvent(Map<String, dynamic> event) {
     final id = event['id'] as String? ?? '';
     final type = event['type'] as String? ?? 'task';
@@ -261,6 +274,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (type == 'habit') {
           // Log habit completion via provider
           widget.habitProvider.logCompletion(id);
+          // 清除原生层提醒状态，停止持续提醒
+          _clearNativeReminderState(id);
         }
         break;
     }
@@ -323,6 +338,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 预初始化 TTS 引擎（避免首次播报时延迟）
       await TTSService().init();
+      TTSService().volume = widget.settingsProvider.ttsVolume;
       debugPrint('===== TTSService 预初始化完成 =====');
 
       // 数据加载完成后初始化提醒服务
@@ -394,6 +410,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 预初始化 TTS 引擎（避免首次播报时延迟）
       await TTSService().init();
+      TTSService().volume = widget.settingsProvider.ttsVolume;
       debugPrint('===== TTSService 预初始化完成 =====');
 
       // 数据加载完成后初始化提醒服务

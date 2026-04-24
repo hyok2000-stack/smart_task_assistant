@@ -23,10 +23,12 @@ class ReminderForegroundService : Service() {
         const val ACTION_APP_FOREGROUND = "com.smarttask.smart_task_assistant.ACTION_APP_FOREGROUND"
         const val ACTION_APP_BACKGROUND = "com.smarttask.smart_task_assistant.ACTION_APP_BACKGROUND"
         const val ACTION_CLEAR_STATE = "com.smarttask.smart_task_assistant.ACTION_CLEAR_STATE"
+        const val ACTION_CLEAR_CONTINUAL = "com.smarttask.smart_task_assistant.ACTION_CLEAR_CONTINUAL"
         const val ACTION_REFRESH_DATA = "com.smarttask.smart_task_assistant.ACTION_REFRESH_DATA"
         const val ACTION_CHECK = "com.smarttask.smart_task_assistant.ACTION_CHECK"
 
         private const val CHECK_REQUEST_CODE = 1001
+        private const val RESTART_REQUEST_CODE = 2001
 
         @Volatile
         var isRunning = false
@@ -34,6 +36,11 @@ class ReminderForegroundService : Service() {
 
         @Volatile
         var isReminderShowing = false
+
+        @Volatile
+        private var isReminderShowingSince = 0L
+
+        private const val REMINDER_SHOWING_TIMEOUT = 120_000L // 2min timeout
 
         fun start(context: Context) {
             val intent = Intent(context, ReminderForegroundService::class.java)
@@ -55,14 +62,21 @@ class ReminderForegroundService : Service() {
     private var ttsHelper: ReminderTtsHelper? = null
     private var handlerThread: HandlerThread? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var checkHandler: Handler? = null
 
     @Volatile
     private var isAppForeground = false
+
+    // 标记 onCreate 的首次检查是否待执行，防止 onStartCommand(else) 重复触发
+    @Volatile
+    private var onCreateCheckPending = false
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "ReminderForegroundService created")
         isRunning = true
+        isAppForeground = false // 默认后台
+        onCreateCheckPending = true
 
         checker = ReminderChecker(this)
         audioHelper = ReminderAudioHelper(this)
@@ -71,16 +85,20 @@ class ReminderForegroundService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
-        // HandlerThread for delayed TTS playback in triggerReminder
         handlerThread = HandlerThread("ReminderCheckThread").apply { start() }
+        checkHandler = Handler(handlerThread!!.looper)
 
-        // Acquire partial WakeLock
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ReminderService::Check")
         wakeLock?.setReferenceCounted(false)
 
-        // Schedule the first check via AlarmManager (works in Doze mode)
-        scheduleNextCheck()
+        // 立即执行首次检查（不等 30s），确保重启后不遗漏提醒
+        checkHandler?.post {
+            onCreateCheckPending = false
+            Log.d(TAG, "Immediate first check after service create")
+            onHandleCheck()
+            scheduleNextCheck()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,9 +112,11 @@ class ReminderForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_CHECK -> {
-                // AlarmManager woke us up — run check and schedule next
-                onHandleCheck()
-                scheduleNextCheck()
+                // AlarmManager woke us up — run check on HandlerThread (避免主线程阻塞)
+                checkHandler?.post {
+                    onHandleCheck()
+                    scheduleNextCheck()
+                }
             }
             ACTION_APP_FOREGROUND -> {
                 isAppForeground = true
@@ -105,11 +125,24 @@ class ReminderForegroundService : Service() {
             ACTION_APP_BACKGROUND -> {
                 isAppForeground = false
                 Log.d(TAG, "App is background, enabling FullScreenActivity")
+                // 在后台线程同步状态 + 检查（避免主线程 DB 查询导致 ANR）
+                checkHandler?.post {
+                    checker?.syncAllHabitsState()
+                    checker?.syncAllTasksState()
+                    onHandleCheck()
+                    scheduleNextCheck()
+                }
             }
             ACTION_CLEAR_STATE -> {
                 val id = intent.getStringExtra("id")
                 if (id != null) {
                     checker?.clearTaskState(id)
+                }
+            }
+            ACTION_CLEAR_CONTINUAL -> {
+                val id = intent.getStringExtra("id")
+                if (id != null) {
+                    checker?.clearContinualState(id)
                 }
             }
             ACTION_REFRESH_DATA -> {
@@ -118,8 +151,17 @@ class ReminderForegroundService : Service() {
                 checker?.refreshData(type, id)
             }
             else -> {
-                // Initial start or restart — schedule first check
-                scheduleNextCheck()
+                // Initial start or restart — immediate check + schedule
+                if (onCreateCheckPending) {
+                    // onCreate 的首次检查尚未执行，跳过避免重复触发
+                    Log.d(TAG, "onCreate check pending, skip to avoid double trigger")
+                } else {
+                    Log.d(TAG, "Service (re)started, running immediate check")
+                    checkHandler?.post {
+                        onHandleCheck()
+                        scheduleNextCheck()
+                    }
+                }
             }
         }
 
@@ -129,45 +171,38 @@ class ReminderForegroundService : Service() {
     // ==================== AlarmManager scheduling ====================
 
     /**
-     * 使用 AlarmManager.setExactAndAllowWhileIdle 安排下一次检查。
-     * 即使在 Doze 模式下也能唤醒 CPU。
+     * 调度下次检查闹钟
+     * 使用 setAlarmClock（闹钟级别），不受 Doze 模式限流。
+     * setExactAndAllowWhileIdle 在 Doze 下被限流为约 9 分钟一次，
+     * 导致持续提醒被延迟累积。
      */
     private fun scheduleNextCheck() {
-        val intent = Intent(this, ReminderForegroundService::class.java).apply {
-            action = ACTION_CHECK
+        val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+            action = ReminderAlarmReceiver.ACTION_CHECK
         }
-        val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PendingIntent.getForegroundService(
-                this, CHECK_REQUEST_CODE, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        } else {
-            PendingIntent.getService(
-                this, CHECK_REQUEST_CODE, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, CHECK_REQUEST_CODE, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerAt = SystemClock.elapsedRealtime() + CHECK_INTERVAL
 
         try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-            Log.d(TAG, "Next check scheduled in ${CHECK_INTERVAL}ms (exact+idle)")
+            // 闹钟级别：不受 Doze 限制，到点必定触发
+            val alarmInfo = AlarmManager.AlarmClockInfo(triggerAt, null)
+            alarmManager.setAlarmClock(alarmInfo, pendingIntent)
+            Log.d(TAG, "Next check scheduled in ${CHECK_INTERVAL}ms via AlarmClock")
         } catch (e: Exception) {
-            Log.e(TAG, "setExactAndAllowWhileIdle failed, falling back", e)
+            Log.e(TAG, "setAlarmClock failed, falling back to setExactAndAllowWhileIdle", e)
             try {
-                alarmManager.setAndAllowWhileIdle(
+                alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     triggerAt,
                     pendingIntent
                 )
             } catch (e2: Exception) {
-                Log.e(TAG, "setAndAllowWhileIdle also failed", e2)
+                Log.e(TAG, "setExactAndAllowWhileIdle also failed", e2)
                 alarmManager.set(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     triggerAt,
@@ -177,24 +212,14 @@ class ReminderForegroundService : Service() {
         }
     }
 
-    /**
-     * 取消已安排的检查
-     */
     private fun cancelScheduledCheck() {
-        val intent = Intent(this, ReminderForegroundService::class.java).apply {
-            action = ACTION_CHECK
+        val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+            action = ReminderAlarmReceiver.ACTION_CHECK
         }
-        val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PendingIntent.getForegroundService(
-                this, CHECK_REQUEST_CODE, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        } else {
-            PendingIntent.getService(
-                this, CHECK_REQUEST_CODE, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, CHECK_REQUEST_CODE, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(pendingIntent)
         Log.d(TAG, "Scheduled check cancelled")
@@ -202,17 +227,46 @@ class ReminderForegroundService : Service() {
 
     // ==================== Check logic ====================
 
+    /**
+     * 检测屏幕是否亮着。屏幕关闭时（休眠），即使 isAppForeground 为 true，
+     * Flutter 也无法播放语音（引擎暂停），应由原生层接管提醒。
+     */
+    private fun isScreenOn(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isInteractive
+    }
+
     private fun onHandleCheck() {
+        // 超时自动重置 isReminderShowing（防止 Activity 未成功启动导致永远无法弹窗）
+        if (isReminderShowing && System.currentTimeMillis() - isReminderShowingSince > REMINDER_SHOWING_TIMEOUT) {
+            isReminderShowing = false
+            Log.d(TAG, "isReminderShowing timed out, resetting")
+        }
+
+        // Flutter 处理前台+亮屏的所有提醒，原生层完全跳过
+        val effectiveForeground = isAppForeground && isScreenOn()
+        if (effectiveForeground) {
+            Log.d(TAG, "App foreground + screen on, skipping native check (Flutter handles it)")
+            ReminderAlarmReceiver.releaseWakeLock()
+            return
+        }
+
+        // 从深度休眠唤醒时，延迟 2 秒等待系统服务（TTS/音频）恢复
+        if (!isScreenOn()) {
+            try { Thread.sleep(2000L) } catch (_: InterruptedException) {}
+        }
+
         val needsVoiceHold = try {
-            wakeLock?.acquire(15_000L) // max 15s safety net
-            val items = checker?.checkAll() ?: emptyList()
+            wakeLock?.acquire(30_000L)
+            val items = checker?.checkAll(isForeground = false) ?: emptyList()
+
+            Log.d(TAG, "Check found ${items.size} items to trigger")
 
             for (item in items) {
                 Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
                 triggerReminder(item)
             }
 
-            // Check if any item needs voice playback (1.5s internal delay + TTS init + playback)
             items.any {
                 it.voiceEnabled && (!it.voiceText.isNullOrBlank() || !it.customVoicePath.isNullOrBlank() || !it.title.isNullOrBlank())
             }
@@ -221,29 +275,31 @@ class ReminderForegroundService : Service() {
             false
         }
 
-        // Delay WakeLock release to cover 1.5s sleep + TTS initialization + playback
         if (needsVoiceHold) {
-            handlerThread?.looper?.let { looper ->
-                Handler(looper).postDelayed({
-                    try { wakeLock?.release() } catch (_: Exception) {}
-                    Log.d(TAG, "WakeLock released (voice hold)")
-                }, 8_000L)
-            }
+            // 语音播放需要额外时间（2.5s 延迟 + TTS 重试 + 播放），延迟释放锁
+            checkHandler?.postDelayed({
+                try { wakeLock?.release() } catch (_: Exception) {}
+                Log.d(TAG, "WakeLock released (voice hold)")
+                ReminderAlarmReceiver.releaseWakeLock()
+            }, 30_000L)
         } else {
             try { wakeLock?.release() } catch (_: Exception) {}
+            ReminderAlarmReceiver.releaseWakeLock()
         }
     }
 
     private fun triggerReminder(item: ReminderChecker.ReminderItem) {
+        // 到达此方法时 effectiveForeground 必为 false（onHandleCheck 已跳过前台场景）
+        // 由原生层全权处理：声音、语音、弹窗
+
         // Play sound + vibration
         audioHelper?.playSequence(item.soundEnabled, item.vibrationEnabled)
 
         // Play voice with delay (TTS or custom voice file)
-        // For tasks: voiceText is null, but title is always available
-        // For habits: voiceText or title is available
         val hasVoiceContent = item.voiceEnabled &&
             (!item.voiceText.isNullOrBlank() || !item.customVoicePath.isNullOrBlank() || !item.title.isNullOrBlank())
-        Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent")
+        Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent, voiceText=${item.voiceText}, customPath=${item.customVoicePath}")
+
         if (hasVoiceContent) {
             val speakText = when {
                 !item.voiceText.isNullOrBlank() -> item.voiceText
@@ -253,7 +309,8 @@ class ReminderForegroundService : Service() {
                         0 -> "温和提醒，"
                         else -> "任务提醒，"
                     }
-                    "$prefix${item.title}"
+                    val timeContext = buildTimeContext(item.dueTime)
+                    "$prefix$timeContext${item.title}"
                 }
                 else -> item.title
             }
@@ -272,21 +329,15 @@ class ReminderForegroundService : Service() {
         ReminderBridge.getInstance().sendEvent(eventJson)
 
         // Show FullScreenActivity if app is in background
-        if (!isAppForeground && !isReminderShowing) {
+        if (!isReminderShowing) {
             showFullScreenReminder(item)
         }
     }
 
     private fun showFullScreenReminder(item: ReminderChecker.ReminderItem) {
         try {
-            isReminderShowing = true
-
-            // === 主方法：通过 Notification + setFullScreenIntent 启动全屏界面 ===
-            // Android 10+ 后台直接 startActivity() 会被静默阻止，
-            // 必须通过高优先级通知的 setFullScreenIntent() 才能可靠弹出
             postFullScreenNotification(item)
 
-            // === 辅助：也尝试直接 startActivity（某些设备/旧版本可能仍然有效）===
             try {
                 val directIntent = Intent(this, FullScreenReminderActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -306,8 +357,14 @@ class ReminderForegroundService : Service() {
                     putExtra("vibrationEnabled", item.vibrationEnabled)
                 }
                 startActivity(directIntent)
+                isReminderShowing = true
+                isReminderShowingSince = System.currentTimeMillis()
             } catch (e: Exception) {
-                Log.d(TAG, "Direct startActivity blocked (expected on Android 10+)", e)
+                Log.d(TAG, "Direct startActivity blocked (expected on Android 10+), using notification fullScreenIntent")
+                // Android 10+ 可能阻止后台 startActivity，但通知的 fullScreenIntent 仍会触发
+                // 设置标记避免重复弹窗，配合 REMINDER_SHOWING_TIMEOUT 自动恢复
+                isReminderShowing = true
+                isReminderShowingSince = System.currentTimeMillis()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show full-screen reminder", e)
@@ -315,14 +372,9 @@ class ReminderForegroundService : Service() {
         }
     }
 
-    /**
-     * 通过高优先级通知 + setFullScreenIntent 弹出全屏提醒
-     * 这是 Android 10+ 后台弹出全屏界面的唯一可靠方式
-     */
     private fun postFullScreenNotification(item: ReminderChecker.ReminderItem) {
         val nm = getSystemService(NotificationManager::class.java)
 
-        // 创建高重要性通知渠道
         val channelId = "reminder_fullscreen_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -333,13 +385,12 @@ class ReminderForegroundService : Service() {
                 description = "任务和习惯全屏提醒"
                 enableLights(true)
                 enableVibration(true)
-                setSound(null, null) // 我们自己播放声音，不需要系统通知音
+                setSound(null, null)
                 setShowBadge(false)
             }
             nm.createNotificationChannel(channel)
         }
 
-        // 构建全屏 Intent（包含所有提醒数据）
         val fullScreenIntent = Intent(this, FullScreenReminderActivity::class.java).apply {
             putExtra("id", item.id)
             putExtra("type", item.type)
@@ -362,7 +413,6 @@ class ReminderForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 构建高优先级通知（触发全屏 Intent）
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(item.title)
@@ -370,7 +420,7 @@ class ReminderForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setTimeoutAfter(60_000L) // 1分钟后自动取消
+            .setTimeoutAfter(60_000L)
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .build()
 
@@ -380,6 +430,19 @@ class ReminderForegroundService : Service() {
 
     private fun buildEventJson(id: String, type: String, action: String): String {
         return """{"id":"$id","type":"$type","action":"$action"}"""
+    }
+
+    private fun buildTimeContext(dueTime: String?): String {
+        if (dueTime.isNullOrBlank()) return ""
+        val due = checker?.parseDueTimeMillisPublic(dueTime) ?: return ""
+        val diff = due - System.currentTimeMillis()
+        return when {
+            diff <= 0 -> "任务到期了，"
+            diff < 60_000 -> "任务即将到期，"
+            diff < 3_600_000 -> "${(diff / 60_000).toInt()}分钟后需要完成，"
+            diff < 7_200_000 -> "1小时后需要完成，"
+            else -> "${(diff / 3_600_000).toInt()}小时后需要完成，"
+        }
     }
 
     fun setAppForeground(foreground: Boolean) {
@@ -424,7 +487,11 @@ class ReminderForegroundService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Log.d(TAG, "onTaskRemoved — app swiped from recents")
-        // AlarmManager periodic checks will automatically restart the service
+        isAppForeground = false
+
+        // 重要：先安排重启，再做任何清理
+        // onDestroy 中 cancelScheduledCheck 只取消周期检查 alarm，不影响重启 alarm
+        scheduleRestart(3_000L)
     }
 
     override fun onDestroy() {
@@ -434,7 +501,9 @@ class ReminderForegroundService : Service() {
         isAppForeground = false
         isReminderShowing = false
 
+        // 只取消周期检查 alarm，不取消重启 alarm
         cancelScheduledCheck()
+
         handlerThread?.quitSafely()
         try { wakeLock?.release() } catch (_: Exception) {}
         ttsHelper?.release()
@@ -444,8 +513,9 @@ class ReminderForegroundService : Service() {
         checker = null
         audioHelper = null
         ttsHelper = null
+        checkHandler = null
 
-        // Schedule restart unless user explicitly stopped the service
+        // 非用户主动停止时，安排重启
         if (!userRequestedStop) {
             Log.d(TAG, "Service destroyed unexpectedly, scheduling restart")
             scheduleRestart(5_000L)
@@ -456,18 +526,13 @@ class ReminderForegroundService : Service() {
 
     private fun scheduleRestart(delayMs: Long) {
         try {
-            val restartIntent = Intent(this, ReminderForegroundService::class.java)
-            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                PendingIntent.getForegroundService(
-                    this, 1, restartIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            } else {
-                PendingIntent.getService(
-                    this, 1, restartIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
+            val restartIntent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+                action = ReminderAlarmReceiver.ACTION_RESTART
             }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, RESTART_REQUEST_CODE, restartIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             alarmManager.setExactAndAllowWhileIdle(
@@ -475,7 +540,7 @@ class ReminderForegroundService : Service() {
                 SystemClock.elapsedRealtime() + delayMs,
                 pendingIntent
             )
-            Log.d(TAG, "Restart scheduled in ${delayMs}ms")
+            Log.d(TAG, "Restart scheduled in ${delayMs}ms via Receiver")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule restart", e)
         }

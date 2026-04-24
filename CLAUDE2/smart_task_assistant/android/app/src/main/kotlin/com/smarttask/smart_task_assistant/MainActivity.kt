@@ -165,6 +165,22 @@ class MainActivity : FlutterActivity() {
                         result.error("SERVICE_ERROR", "Failed to clear state: ${e.message}", null)
                     }
                 }
+                "clearContinualState" -> {
+                    try {
+                        val id = call.argument<String>("id") ?: run {
+                            result.error("INVALID_ARG", "id is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val intent = Intent(this, ReminderForegroundService::class.java).apply {
+                            action = ReminderForegroundService.ACTION_CLEAR_CONTINUAL
+                            putExtra("id", id)
+                        }
+                        startService(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SERVICE_ERROR", "Failed to clear continual state: ${e.message}", null)
+                    }
+                }
                 "requestFullScreenPermission" -> {
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -187,6 +203,14 @@ class MainActivity : FlutterActivity() {
                 }
                 "isServiceRunning" -> {
                     result.success(ReminderForegroundService.isRunning)
+                }
+                "isScreenOn" -> {
+                    try {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(pm.isInteractive)
+                    } catch (e: Exception) {
+                        result.success(true)
+                    }
                 }
                 "hasFullScreenPermission" -> {
                     try {

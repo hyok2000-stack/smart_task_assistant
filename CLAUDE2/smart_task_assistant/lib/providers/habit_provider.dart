@@ -108,16 +108,19 @@ class HabitProvider extends ChangeNotifier {
     await _updateTodayProgress();
   }
 
-  /// 更新今日进度
+  /// 更新今日进度（使用批量查询）
   Future<void> _updateTodayProgress() async {
     _todayProgress.clear();
 
-    for (final habit in _habits) {
-      if (habit.hasTarget && habit.needsRecord) {
-        final count = await _dbHelper.getHabitTodayCount(habit.id);
-        _todayProgress[habit.id] = count;
-      }
-    }
+    final habitIds = _habits
+        .where((h) => h.hasTarget && h.needsRecord)
+        .map((h) => h.id)
+        .toList();
+
+    if (habitIds.isEmpty) return;
+
+    final counts = await _dbHelper.getHabitTodayCountsBatch(habitIds);
+    _todayProgress.addAll(counts);
   }
 
   /// 记录完成
@@ -187,18 +190,9 @@ class HabitProvider extends ChangeNotifier {
   /// 更新习惯
   Future<void> updateHabit(Habit habit) async {
     try {
-      // 从数据库获取旧习惯
-      Habit oldHabit = habit;
-      try {
-        final allHabits = await _dbHelper.getAllHabits();
-        final foundHabit = allHabits.firstWhere(
-          (h) => h.id == habit.id,
-          orElse: () => habit,
-        );
-        oldHabit = foundHabit;
-      } catch (e) {
-        debugPrint('获取旧习惯失败: $e');
-      }
+      // 从内存列表获取旧习惯（避免全表数据库查询）
+      final habitIndex = _habits.indexWhere((h) => h.id == habit.id);
+      Habit oldHabit = habitIndex >= 0 ? _habits[habitIndex] : habit;
 
       // 检查提醒相关字段是否改变
       final reminderFieldsChanged = oldHabit.isEnabled != habit.isEnabled ||
@@ -229,9 +223,10 @@ class HabitProvider extends ChangeNotifier {
 
       await _dbHelper.updateHabit(habit);
 
-      // 从数据库重新加载习惯列表，确保获取最新数据
-      _habits = await _dbHelper.getAllHabits();
-      debugPrint('从数据库重新加载习惯列表，习惯数: ${_habits.length}');
+      // 内存中直接替换，避免全表 reload
+      if (habitIndex >= 0) {
+        _habits[habitIndex] = habit;
+      }
 
       // 更新 HabitService 的习惯列表缓存
       _habitService.updateHabits(_habits);
@@ -313,15 +308,9 @@ class HabitProvider extends ChangeNotifier {
     );
   }
 
-  /// 启动提醒时间更新定时器
+  /// 启动提醒时间更新定时器（已优化：移除无条件 notifyListeners Timer）
   void _startReminderUpdateTimer() {
-    // 取消之前的定时器
-    _reminderUpdateTimer?.cancel();
-
-    // 每30秒更新一次提醒时间
-    _reminderUpdateTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      notifyListeners();
-    });
+    // 无条件定时器已移除，仅在数据变更时通知
   }
 
   /// 释放资源

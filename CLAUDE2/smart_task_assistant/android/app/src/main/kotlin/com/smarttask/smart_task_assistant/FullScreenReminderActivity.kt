@@ -116,7 +116,7 @@ class FullScreenReminderActivity : Activity() {
             // For tasks: snooze 30 seconds (continual reminder)
             val snoozeUntil = System.currentTimeMillis() + 30_000
             dbHelper?.setSnooze(id, snoozeUntil)
-            sendEvent(id, type, "snoozed", 0)
+            sendEvent(id, type, "snoozed", 1) // 1分钟≈30秒 continual
         }
         // For habits: just finish
 

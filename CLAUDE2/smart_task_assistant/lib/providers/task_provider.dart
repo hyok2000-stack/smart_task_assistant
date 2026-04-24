@@ -37,6 +37,10 @@ class TaskProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // 缓存的筛选列表
+  List<Task> _cachedCompletedTasks = [];
+  List<Task> _cachedActiveTasks = [];
+
   // 筛选条件
   TaskStatus? _filterStatus;
   TaskPriority? _filterPriority;
@@ -47,6 +51,8 @@ class TaskProvider extends ChangeNotifier {
   List<Task> get tasks => _tasks;
   List<Task> get todayTasks => _todayTasks;
   List<Task> get overdueTasks => _overdueTasks;
+  List<Task> get completedTasks => _cachedCompletedTasks;
+  List<Task> get activeTasks => _cachedActiveTasks;
   List<Tag> get tags => _tags;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -163,6 +169,13 @@ class TaskProvider extends ChangeNotifier {
       // 今日任务：使用统一的计算方法
       _recalculateTodayTasks();
 
+      // 初始化缓存列表
+      _cachedCompletedTasks =
+          _tasks.where((t) => t.isCompleted).toList();
+      _cachedActiveTasks = _tasks
+          .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
+          .toList();
+
       debugPrint('待处理任务: ${_todayTasks.length}');
       debugPrint('内存中的任务列表长度: ${_tasks.length}');
 
@@ -257,18 +270,9 @@ class TaskProvider extends ChangeNotifier {
   /// 更新任务
   Future<void> updateTask(Task task) async {
     try {
-      // 从存储获取旧任务（确保获取到最新的旧数据）
-      Task oldTask = task; // 默认使用新任务
-      try {
-        final allTasks = await _storage.getAllTasks();
-        final foundTask = allTasks.firstWhere(
-          (t) => t.id == task.id,
-          orElse: () => task,
-        );
-        oldTask = foundTask;
-      } catch (e) {
-        debugPrint('获取旧任务失败，使用新任务进行比较: $e');
-      }
+      // 从内存列表获取旧任务（避免全表数据库查询）
+      final taskIndex = _tasks.indexWhere((t) => t.id == task.id);
+      final oldTask = taskIndex >= 0 ? _tasks[taskIndex] : task;
 
       // 检查是否是周期任务被标记为已完成
       final wasJustCompleted = oldTask.status != TaskStatus.completed &&
@@ -280,32 +284,16 @@ class TaskProvider extends ChangeNotifier {
           oldTask.reminderMinutes != task.reminderMinutes ||
           oldTask.reminderDismissed != task.reminderDismissed;
 
-      debugPrint('===== updateTask =====');
-      debugPrint('任务: ${task.title}');
-      debugPrint('提醒字段是否改变: $reminderFieldsChanged');
-      if (reminderFieldsChanged) {
-        debugPrint('  - 截止时间: ${oldTask.dueTime} -> ${task.dueTime}');
-        debugPrint('  - 提醒分钟: ${oldTask.reminderMinutes} -> ${task.reminderMinutes}');
-        debugPrint('  - 提醒关闭: ${oldTask.reminderDismissed} -> ${task.reminderDismissed}');
-      }
-
+      // 写入数据库
       await _storage.updateTask(task);
 
-      // 从存储重新加载任务列表，确保获取最新数据
-      final allTasks = await _storage.getAllTasks();
-      _tasks = allTasks;
-      debugPrint('从存储重新加载任务列表，任务数: ${_tasks.length}');
-
-      // 打印更新后的任务
-      for (final t in _tasks) {
-        if (t.id == task.id) {
-          debugPrint('存储中的任务: ${t.title}, dueTime=${t.dueTime}, reminderMinutes=${t.reminderMinutes}');
-        }
+      // 内存中直接替换，避免全表 reload
+      if (taskIndex >= 0) {
+        _tasks[taskIndex] = task;
       }
 
       // 如果提醒字段改变了，通知提醒服务重置状态
       if (reminderFieldsChanged && onReminderReset != null) {
-        debugPrint('通知提醒服务重置任务状态: ${task.id}');
         onReminderReset!(task.id);
       }
 
@@ -458,7 +446,7 @@ class TaskProvider extends ChangeNotifier {
     }).toList();
   }
 
-  /// 统一刷新任务列表（今日任务和逾期任务）
+  /// 统一刷新任务列表（今日任务、逾期任务、缓存筛选列表）
   void _refreshTaskLists() {
     _recalculateTodayTasks();
     _overdueTasks = _tasks
@@ -468,6 +456,11 @@ class TaskProvider extends ChangeNotifier {
               t.status != TaskStatus.cancelled &&
               t.isOverdue,
         )
+        .toList();
+    _cachedCompletedTasks =
+        _tasks.where((t) => t.isCompleted).toList();
+    _cachedActiveTasks = _tasks
+        .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
         .toList();
   }
 
@@ -710,6 +703,8 @@ class TaskProvider extends ChangeNotifier {
       _tasks = [];
       _todayTasks = [];
       _overdueTasks = [];
+      _cachedCompletedTasks = [];
+      _cachedActiveTasks = [];
       _tags = [];
 
       // 如果是Web平台，清除自动备份数据

@@ -26,11 +26,20 @@ class TTSService {
   Completer<void>? _playbackCompleter;
   bool _isPlaying = false;
 
+  // 语音锁：防止 stop→speak 竞态条件
+  bool _isSpeaking = false;
+
   /// 当前是否正在播放语音
   bool get isPlaying => _isPlaying;
 
   // AudioPlayer 完成监听器（避免重复注册）
   StreamSubscription? _audioPlayerCompleteSubscription;
+
+  // 外部音量配置（由 SettingsProvider 设置）
+  double _volume = 0.9;
+
+  /// 设置 TTS 音量 (0.0-1.0)
+  set volume(double v) => _volume = v.clamp(0.0, 1.0);
 
   /// 播放语音并等待完成
   Future<void> speakAndWait({
@@ -87,7 +96,7 @@ class TTSService {
       // 设置默认参数
       await _flutterTts?.setLanguage('zh-CN');
       await _flutterTts?.setSpeechRate(0.5); // 调整为更慢的语速，确保中文清晰
-      await _flutterTts?.setVolume(1.0);
+      await _flutterTts?.setVolume(_volume);
       await _flutterTts?.setPitch(1.0);
 
       // 获取可用语音列表
@@ -190,7 +199,7 @@ class TTSService {
       await _flutterTts?.setSharedInstance(true);
       await _flutterTts?.setLanguage('zh-CN');
       await _flutterTts?.setSpeechRate(0.7);
-      await _flutterTts?.setVolume(1.0);
+      await _flutterTts?.setVolume(_volume);
       await _flutterTts?.setPitch(1.0);
       _isInitialized = true;
     } catch (e) {
@@ -217,131 +226,142 @@ class TTSService {
     debugPrint('自定义语音路径: $customVoicePath');
     debugPrint('当前播放模式: $_currentPlaybackMode');
 
-    // 确定本次播放模式
-    final isCustomVoice = voiceType == 'custom' &&
-        customVoicePath != null &&
-        customVoicePath.isNotEmpty;
-    final newMode = isCustomVoice ? 'custom' : 'tts';
-
-    // 如果语音类型是 custom 但没有自定义文件，回退到 TTS 播放
-    if (voiceType == 'custom' && (customVoicePath == null || customVoicePath.isEmpty)) {
-      debugPrint('⚠️ 语音类型为自定义，但未提供自定义语音文件路径，回退到 TTS 播放');
-      // 不 return，继续走 TTS 播放逻辑
-    }
-
-    // 始终先停止当前播放，确保新提醒能立即接管
-    if (_isPlaying || _currentPlaybackMode != null) {
-      debugPrint('停止当前播放，开始新播放 (模式: $_currentPlaybackMode -> $newMode)');
+    // 防止并发 speak 调用：等待上一次 speak 操作完成
+    if (_isSpeaking) {
+      debugPrint('⚠️ 上一次 speak 尚未完成，先停止');
       await stopSpeaking();
+      // 等待引擎稳定
+      await Future.delayed(const Duration(milliseconds: 200));
     }
-
-    // 使用自定义语音文件
-    if (isCustomVoice) {
-      _currentPlaybackMode = 'custom';
-      _currentCustomPath = customVoicePath;
-      debugPrint('使用自定义语音文件');
-      await _playCustomVoice(customVoicePath);
-      return;
-    }
-
-    // 使用 TTS 语音
-    _currentPlaybackMode = 'tts';
-    _currentCustomPath = null;
-    debugPrint('使用 TTS 语音');
-
-    await init();
-
-    if (_flutterTts == null) {
-      debugPrint('TTS 未初始化，无法播报');
-      return;
-    }
+    _isSpeaking = true;
 
     try {
-      // 停止当前播放
-      await _flutterTts!.stop();
+      // 确定本次播放模式
+      final isCustomVoice = voiceType == 'custom' &&
+          customVoicePath != null &&
+          customVoicePath.isNotEmpty;
 
-      // 确保使用中文语音
-      await _flutterTts!.setLanguage('zh-CN');
-
-      // 选择语音
-      Map<String, String>? selectedVoice;
-      final requestedVoiceType = voiceType ?? 'neutral';
-
-      debugPrint('===== TTS 语音设置开始 =====');
-      debugPrint('请求的语音类型: $requestedVoiceType');
-      debugPrint('可用的男声: ${_maleVoice?['name']}');
-      debugPrint('可用的女声: ${_femaleVoice?['name']}');
-      debugPrint('可用的中性: ${_neutralVoice?['name']}');
-
-      switch (requestedVoiceType) {
-        case 'custom':
-          // 自定义语音，不应该到这里（已经在上面处理了）
-          debugPrint('⚠️ 不应该执行到这里：custom 类型');
-          break;
-        case 'male':
-          selectedVoice = _maleVoice ?? _neutralVoice;
-          debugPrint('选择的男声: ${selectedVoice?['name'] ?? "未找到"}');
-          break;
-        case 'female':
-          selectedVoice = _femaleVoice ?? _neutralVoice;
-          debugPrint('选择的女声: ${selectedVoice?['name'] ?? "未找到"}');
-          break;
-        case 'neutral':
-        default:
-          selectedVoice = _neutralVoice;
-          debugPrint('选择的中性语音: ${selectedVoice?['name'] ?? "未找到"}');
-          break;
+      // 如果语音类型是 custom 但没有自定义文件，回退到 TTS 播放
+      if (voiceType == 'custom' &&
+          (customVoicePath == null || customVoicePath.isEmpty)) {
+        debugPrint('⚠️ 语音类型为自定义，但未提供自定义语音文件路径，回退到 TTS 播放');
       }
 
-      if (selectedVoice != null) {
-        debugPrint('尝试设置语音: $selectedVoice');
+      // 始终先停止当前播放，确保新提醒能立即接管
+      if (_isPlaying || _currentPlaybackMode != null) {
+        debugPrint('停止当前播放，开始新播放');
+        await stopSpeaking();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      // 使用自定义语音文件
+      if (isCustomVoice) {
+        _currentPlaybackMode = 'custom';
+        _currentCustomPath = customVoicePath;
+        debugPrint('使用自定义语音文件');
+        await _playCustomVoice(customVoicePath);
+        return;
+      }
+
+      // 使用 TTS 语音
+      _currentPlaybackMode = 'tts';
+      _currentCustomPath = null;
+
+      await init();
+
+      if (_flutterTts == null) {
+        debugPrint('TTS 未初始化，无法播报');
+        return;
+      }
+
+      // 尝试播报（最多重试 2 次）
+      for (int attempt = 0; attempt < 2; attempt++) {
         try {
-          await _flutterTts!.setVoice(selectedVoice);
-          debugPrint('✓ 语音设置成功');
+          await _flutterTts!.stop();
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          await _flutterTts!.setLanguage('zh-CN');
+          await _flutterTts!.setVolume(_volume);
+
+          // 选择语音
+          Map<String, String>? selectedVoice;
+          final requestedVoiceType = voiceType ?? 'neutral';
+
+          switch (requestedVoiceType) {
+            case 'male':
+              selectedVoice = _maleVoice ?? _neutralVoice;
+              break;
+            case 'female':
+              selectedVoice = _femaleVoice ?? _neutralVoice;
+              break;
+            case 'neutral':
+            default:
+              selectedVoice = _neutralVoice;
+              break;
+          }
+
+          if (selectedVoice != null) {
+            try {
+              await _flutterTts!.setVoice(selectedVoice);
+            } catch (_) {
+              selectedVoice = null;
+            }
+          }
+
+          double speechRate = _getSpeechRate(speed ?? 'normal');
+          await _flutterTts!.setSpeechRate(speechRate);
+
+          double pitch = _getPitch(requestedVoiceType, voiceStyle ?? 'standard');
+          await _flutterTts!.setPitch(pitch);
+
+          debugPrint('TTS 播报: "$text" (attempt=${attempt + 1}, pitch=$pitch, rate=$speechRate)');
+
+          // 设置完成回调
+          _flutterTts!.setCompletionHandler(() {
+            debugPrint('TTS 播放完成');
+            _isPlaying = false;
+            _isSpeaking = false;
+            _playbackCompleter?.complete();
+          });
+
+          _flutterTts!.setErrorHandler((msg) {
+            debugPrint('TTS 播放错误: $msg');
+            _isPlaying = false;
+            _isSpeaking = false;
+            _playbackCompleter?.completeError(Exception(msg));
+          });
+
+          var result = await _flutterTts!.speak(text);
+          debugPrint('TTS speak 返回: $result (attempt=${attempt + 1})');
+
+          if (result == 1) {
+            // speak 成功提交
+            return;
+          }
+
+          // speak 返回错误，重试
+          debugPrint('TTS speak 返回错误，准备重试 (attempt=${attempt + 1})');
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // 重试前重新初始化 TTS 引擎
+          if (attempt == 0) {
+            debugPrint('重新初始化 TTS 引擎');
+            _isInitialized = false;
+            _flutterTts = null;
+            await init();
+          }
         } catch (e) {
-          debugPrint('✗ 语音设置失败（设备可能不支持语音切换）: $e');
-          debugPrint('将使用音调来模拟语音类型差异');
-          selectedVoice = null;
+          debugPrint('TTS 播报异常 (attempt=${attempt + 1}): $e');
+          if (attempt == 0) {
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
         }
       }
 
-      // 计算语速
-      double speechRate = _getSpeechRate(speed ?? 'normal');
-      await _flutterTts!.setSpeechRate(speechRate);
-
-      // 计算音调（用于微调）
-      double pitch = _getPitch(requestedVoiceType, voiceStyle ?? 'standard');
-      await _flutterTts!.setPitch(pitch);
-
-      debugPrint('TTS 播报参数:');
-      debugPrint('  - 文本: "$text"');
-      debugPrint('  - 语音: $selectedVoice');
-      debugPrint('  - 语言: zh-CN');
-      debugPrint('  - 语速: $speechRate');
-      debugPrint('  - 音调: $pitch');
-      debugPrint('===== TTS 语音设置完成 =====');
-
-      // 设置完成回调（必须在 speak 之前设置，避免竞态条件）
-      _flutterTts!.setCompletionHandler(() {
-        debugPrint('TTS 播放完成');
-        _isPlaying = false;
-        _playbackCompleter?.complete();
-      });
-
-      // 设置错误回调
-      _flutterTts!.setErrorHandler((msg) {
-        debugPrint('TTS 播放错误: $msg');
-        _isPlaying = false;
-        _playbackCompleter?.completeError(Exception(msg));
-      });
-
-      // 播报
-      var result = await _flutterTts!.speak(text);
-      debugPrint('TTS speak 返回结果: $result');
-    } catch (e) {
-      debugPrint('TTS 播报失败: $e');
+      debugPrint('TTS 播报最终失败');
       _isPlaying = false;
-      _playbackCompleter?.completeError(e);
+    } finally {
+      _isSpeaking = false;
     }
   }
 
@@ -530,7 +550,6 @@ class TTSService {
     if (_flutterTts != null) {
       try {
         await _flutterTts!.stop();
-        debugPrint('TTS 已停止');
       } catch (e) {
         debugPrint('TTS 停止失败: $e');
       }
@@ -538,12 +557,12 @@ class TTSService {
     // 同时停止音频播放器
     try {
       await _audioPlayer.stop();
-      debugPrint('音频播放器已停止');
     } catch (e) {
       debugPrint('音频播放器停止失败: $e');
     }
     // 重置播放状态
     _isPlaying = false;
+    _isSpeaking = false;
     _currentPlaybackMode = null;
     _currentCustomPath = null;
     // 完成 Completer，解除 speakAndWait 的等待
