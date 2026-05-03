@@ -1,0 +1,218 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2026年工作目标看板首页</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+body{margin:0;font-family:"Microsoft YaHei",Arial,sans-serif;background:linear-gradient(180deg,#eaf1fb,#f7f9fc);color:#172033}
+main{width:min(1120px,calc(100vw - 32px));margin:0 auto;padding:40px 0}
+h1{font-size:34px;margin:0 0 8px}p{color:#68758b}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+a.card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid #dbe4f0;border-radius:8px;padding:22px;box-shadow:0 18px 44px rgba(31,48,83,.11)}
+h2{margin:0 0 16px;font-size:22px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpis div{background:#f7f9fc;border:1px solid #dbe4f0;border-radius:6px;padding:10px}
+.kpis span{display:block;color:#68758b;font-size:12px}.kpis b{font-size:24px}
+.top-bar{display:flex;justify-content:space-between;align-items:center}
+.btns{display:flex;gap:8px}
+.btn{height:38px;border:1px solid #dbe4f0;background:#fff;border-radius:6px;padding:0 16px;font-weight:700;font-size:14px;cursor:pointer;color:#172033;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:#f0f4fa}.btn.active{background:#2158d0;color:#fff;border-color:#2158d0}
+.btn.primary{background:#2158d0;color:#fff;border-color:#2158d0}.btn.primary:hover{background:#1a4bb8}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);backdrop-filter:blur(2px);z-index:30;padding:22px}
+.modal.open{display:flex}
+.cfg{width:min(560px,94vw);background:#fff;border-radius:12px;border:1px solid #dbe4f0;box-shadow:0 28px 70px rgba(20,33,58,.28);overflow:hidden}
+.cfg-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #dbe4f0;background:linear-gradient(180deg,#f9fbff,#fff)}
+.cfg-head h2{margin:0;font-size:20px}
+.close{width:34px;height:34px;border:1px solid #dbe4f0;border-radius:6px;background:#fff;font-size:22px;cursor:pointer}
+.cfg-body{padding:22px}
+.fg{margin-bottom:16px}
+.fg label{display:block;font-weight:700;font-size:14px;margin-bottom:6px}
+.fg input{width:100%;height:38px;border:1px solid #dbe4f0;border-radius:6px;padding:0 12px;font-size:14px;box-sizing:border-box}
+.fg small{display:block;color:#68758b;font-size:12px;margin-top:4px}
+.fg .hint{background:#f7f9fc;border:1px solid #e3eaf4;border-radius:6px;padding:10px 12px;font-size:12px;color:#68758b;margin-top:8px;line-height:1.6}
+.fg .hint b{color:#172033}
+.save-btn{width:100%;height:42px;background:#2158d0;color:#fff;border:none;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+.save-btn:hover{background:#1a4bb8}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-left:12px}
+.status.ok{color:#18a058}.status.no{color:#d99a00}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:8px;font-size:14px;font-weight:700;z-index:100;animation:fadein .3s;pointer-events:none}
+.toast.err{background:#d92d20;color:#fff}.toast.ok{background:#18a058;color:#fff}
+@keyframes fadein{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.loading-mask{position:fixed;inset:0;background:rgba(255,255,255,.8);display:none;align-items:center;justify-content:center;z-index:50;flex-direction:column;gap:12px}
+.loading-mask.open{display:flex}
+.spinner{width:40px;height:40px;border:4px solid #dbe4f0;border-top-color:#2158d0;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:760px){.cards{grid-template-columns:1fr}}
+</style></head>
+<body><main>
+<div class="top-bar"><div><h1>2026年工作目标看板</h1><p>由"2026年工作目标o.xlsx"自动解析生成</p></div>
+<div class="btns">
+<button class="btn primary" id="uploadBtn">&#128194; 重新读取文件</button>
+<button class="btn" id="cfgBtn">&#9881; AI 模型配置</button>
+</div></div>
+<input type="file" id="fileInput" accept=".xlsx" style="display:none">
+<section class="cards">
+<a class="card" href="business_goal_dashboard.html"><h2>业务目标看板</h2><div class="kpis"><div><span>任务</span><b>125</b></div><div><span>正常</span><b>0</b></div><div><span>风险</span><b>125</b></div><div><span>异常</span><b>0</b></div></div></a>
+<a class="card" href="support_center_goal_dashboard.html"><h2>支撑中心目标看板</h2><div class="kpis"><div><span>任务</span><b>12</b></div><div><span>正常</span><b>0</b></div><div><span>风险</span><b>12</b></div><div><span>异常</span><b>0</b></div></div></a>
+</section></main>
+<div class="loading-mask" id="loadMask"><div class="spinner"></div><p>正在解析文件...</p></div>
+<div class="modal" id="cfgModal">
+<div class="cfg"><div class="cfg-head"><h2>AI 模型配置</h2><button class="close" id="cfgClose">&times;</button></div>
+<div class="cfg-body">
+  <div class="fg"><label>API 地址（Base URL）</label><input id="apiUrl" placeholder="https://api.openai.com"><small>不含 /v1/chat/completions，系统自动拼接</small></div>
+  <div class="fg"><label>API Key</label><input id="apiKey" type="password" placeholder="sk-..."></div>
+  <div class="fg"><label>模型名称</label><input id="modelName" placeholder="gpt-4o-mini"></div>
+  <div class="fg"><div class="hint"><b>常见服务商 API 地址：</b><br>OpenAI: https://api.openai.com<br>通义千问: https://dashscope.aliyuncs.com/compatible-mode/v1<br>智谱AI: https://open.bigmodel.cn/api/paas/v4<br>DeepSeek: https://api.deepseek.com<br>Kimi: https://api.moonshot.cn/v1<br><br><b>注意：</b>通义千问/智谱只需填到 .../v1 即可，系统会自动拼接 /chat/completions</div></div>
+  <button class="save-btn" id="saveBtn">保存配置</button>
+</div></div></div>
+<script>
+(function(){
+  const K='ai_config',MONTHS=12;
+  function load(){const d=localStorage.getItem(K);if(d)try{return JSON.parse(d)}catch(e){}return null}
+  function save(){const c={apiUrl:document.getElementById('apiUrl').value.trim(),apiKey:document.getElementById('apiKey').value.trim(),model:document.getElementById('modelName').value.trim()};if(!c.apiUrl||!c.apiKey||!c.model){alert('请填写完整配置');return}localStorage.setItem(K,JSON.stringify(c));alert('配置已保存');document.getElementById('cfgModal').classList.remove('open')}
+  function openCfg(){const c=load();if(c){document.getElementById('apiUrl').value=c.apiUrl||'';document.getElementById('apiKey').value=c.apiKey||'';document.getElementById('modelName').value=c.model||''}document.getElementById('cfgModal').classList.add('open')}
+  document.getElementById('cfgBtn').addEventListener('click',openCfg);
+  document.getElementById('saveBtn').addEventListener('click',save);
+  document.getElementById('cfgClose').addEventListener('click',()=>document.getElementById('cfgModal').classList.remove('open'));
+  document.getElementById('cfgModal').addEventListener('click',e=>{if(e.target.id==='cfgModal')document.getElementById('cfgModal').classList.remove('open')});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('cfgModal').classList.remove('open')});
+
+  function toast(msg,type){
+    const d=document.createElement('div');d.className='toast '+(type||'err');d.textContent=msg;
+    document.body.appendChild(d);setTimeout(()=>d.remove(),3500);
+  }
+
+  const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const REL_NS='http://schemas.openxmlformats.org/package/2006/relationships';
+  function colIdx(ref){
+    const m=ref.match(/^([A-Z]+)/);if(!m)return 0;let v=0;for(const c of m[1])v=v*26+c.charCodeAt(0)-64;return v-1;
+  }
+  function getText(el,ns){
+    const ts=el.getElementsByTagNameNS(ns,'t');let s='';for(let i=0;i<ts.length;i++)s+=ts[i].textContent||'';return s.trim();
+  }
+  function cellVal(cell,ss,ns){
+    const t=cell.getAttribute('t');
+    if(t==='s'){const v=cell.getElementsByTagNameNS(ns,'v')[0];if(!v||!v.textContent)return '';return ss[parseInt(v.textContent)]||'';}
+    if(t==='inlineStr')return getText(cell,ns);
+    const v=cell.getElementsByTagNameNS(ns,'v')[0];
+    return v&&v.textContent?v.textContent:'';
+  }
+  async function readSharedStrings(zip){
+    const f=zip.file('xl/sharedStrings.xml');if(!f)return [];
+    const doc=new DOMParser().parseFromString(await f.async('text'),'text/xml');
+    const sis=doc.getElementsByTagNameNS(NS,'si');
+    const arr=[];for(let i=0;i<sis.length;i++)arr.push(getText(sis[i],NS));
+    return arr;
+  }
+  async function readSheetRows(zip,path,ss){
+    const f=zip.file(path);if(!f)return [];
+    const doc=new DOMParser().parseFromString(await f.async('text'),'text/xml');
+    const rows=doc.getElementsByTagNameNS(NS,'row');
+    const result=[];
+    for(let r=0;r<rows.length;r++){
+      const cells=rows[r].getElementsByTagNameNS(NS,'c');
+      const vals=[];
+      for(let c=0;c<cells.length;c++){
+        const idx=colIdx(cells[c].getAttribute('r'));
+        while(vals.length<=idx)vals.push('');
+        vals[idx]=cellVal(cells[c],ss,NS).replace(/[\r\n]+/g,' ').replace(/[ \t]+/g,' ').trim();
+      }
+      result.push(vals);
+    }
+    return result;
+  }
+  async function sheetPaths(zip){
+    const wbDoc=new DOMParser().parseFromString(await zip.file('xl/workbook.xml').async('text'),'text/xml');
+    const relsDoc=new DOMParser().parseFromString(await zip.file('xl/_rels/workbook.xml.rels').async('text'),'text/xml');
+    const rmap={};const rels=relsDoc.getElementsByTagNameNS(REL_NS,'Relationship');
+    for(let i=0;i<rels.length;i++)rmap[rels[i].getAttribute('Id')]=rels[i].getAttribute('Target');
+    const map={};const sheets=wbDoc.getElementsByTagNameNS(NS,'sheet');
+    for(let i=0;i<sheets.length;i++){
+      const name=sheets[i].getAttribute('name');
+      const rid=sheets[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+      let tgt=rmap[rid]||'';if(!tgt.startsWith('xl/'))tgt='xl/'+tgt;
+      map[name]=tgt;
+    }
+    return map;
+  }
+  function safeInt(v){const m=String(v||'').match(/-?\d+/);return m?parseInt(m[0]):null;}
+
+  async function parseSheet(zip,name,path,ss){
+    const rows=await readSheetRows(zip,path,ss);
+    let headerIdx=-1;
+    for(let i=0;i<rows.length;i++){
+      if(rows[i].length>6&&rows[i][0]==='序号'&&rows[i][3]&&rows[i][3].includes('项目')){headerIdx=i;break;}
+    }
+    if(headerIdx<0)return null;
+    const tasks=[];
+    for(let i=headerIdx+1;i<rows.length;i++){
+      const row=rows[i];
+      const seq=safeInt(row[0]||'');
+      const project=(row[3]||'').trim();
+      const center=(row[1]||'').trim();
+      if(seq===null||!project||!center)continue;
+      const monthly=[];
+      for(let m=1;m<=MONTHS;m++){
+        const base=10+(m-1)*4;
+        monthly.push({month:m,plan:row[base]||'',actual:row[base+1]||'',score:row[base+2]||'',note:row[base+3]||''});
+      }
+      tasks.push({
+        seq,sheet:name,center,keyTask:row[2]||'',project,target:row[4]||'',
+        stagePlan:row[5]||'',owner:row[6]||'',rawStatus:row[7]||'',
+        selfDeveloped:row[8]||'',assessor:row[9]||'',monthly
+      });
+    }
+    return tasks;
+  }
+
+  document.getElementById('uploadBtn').addEventListener('click',()=>document.getElementById('fileInput').click());
+  document.getElementById('fileInput').addEventListener('change',async function(e){
+    const file=e.target.files[0];if(!file)return;
+    this.value='';
+    if(!file.name.endsWith('.xlsx')){toast('请选择 .xlsx 格式的 Excel 文件','err');return;}
+    document.getElementById('loadMask').classList.add('open');
+    try{
+      const buf=await file.arrayBuffer();
+      const zip=await JSZip.loadAsync(buf);
+      const ss=await readSharedStrings(zip);
+      const sp=await sheetPaths(zip);
+
+      let bizName='',supName='';
+      for(const n in sp){if(n.startsWith('业务目标'))bizName=n;if(n==='支撑中心目标')supName=n;}
+      if(!bizName||!supName){
+        document.getElementById('loadMask').classList.remove('open');
+        toast('文件格式不对，请更换文件（缺少「业务目标」或「支撑中心目标」工作表）','err');
+        return;
+      }
+
+      const bizTasks=await parseSheet(zip,bizName,sp[bizName],ss);
+      const supTasks=await parseSheet(zip,supName,sp[supName],ss);
+      if(bizTasks===null||supTasks===null){
+        document.getElementById('loadMask').classList.remove('open');
+        toast('文件格式不对，请更换文件（未找到「序号」和「项目」表头行）','err');
+        return;
+      }
+      if(bizTasks.length===0&&supTasks.length===0){
+        document.getElementById('loadMask').classList.remove('open');
+        toast('文件格式不对，请更换文件（未读取到有效任务数据）','err');
+        return;
+      }
+
+      let maxMonth=1;
+      [bizTasks,supTasks].forEach(tasks=>tasks.forEach(t=>t.monthly.forEach(m=>{
+        if(m.plan||m.actual){
+          const found=Math.min(m.month,MONTHS);
+          if(found>maxMonth)maxMonth=found;
+        }
+      })));
+
+      localStorage.setItem('kanban_uploaded_business',JSON.stringify({tasks:bizTasks,currentMonth:maxMonth,sheet:'business'}));
+      localStorage.setItem('kanban_uploaded_support',JSON.stringify({tasks:supTasks,currentMonth:maxMonth,sheet:'support'}));
+
+      document.getElementById('loadMask').classList.remove('open');
+      toast('文件解析成功！业务 '+bizTasks.length+' 项，支撑 '+supTasks.length+' 项','ok');
+      setTimeout(()=>{window.location.href='business_goal_dashboard.html';},1200);
+    }catch(err){
+      document.getElementById('loadMask').classList.remove('open');
+      toast('文件读取失败：'+err.message,'err');
+    }
+  });
+})();
+</script></body></html>

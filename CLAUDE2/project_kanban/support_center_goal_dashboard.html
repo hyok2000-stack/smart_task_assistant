@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>支撑中心目标驾驶舱看板</title>
+  <style>
+    :root{--ink:#172033;--muted:#68758b;--line:#dbe4f0;--panel:#fff;--green:#18a058;--green-soft:#e9f8ef;--yellow:#d99a00;--yellow-soft:#fff6dd;--red:#d92d20;--red-soft:#fff0ee;--blue:#2158d0;--blue-soft:#eef4ff;--shadow:0 18px 44px rgba(31,48,83,.11);--radius:8px}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#eaf1fb 0,#f7f9fc 35%,#eef3f8 100%);font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;color:var(--ink)}
+    .page{width:min(1680px,calc(100vw - 32px));margin:0 auto;padding:14px 0 20px}
+    .top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:10px}
+    h1{margin:0;font-size:30px;line-height:1.15} .sub{margin:5px 0 0;color:var(--muted);font-size:14px}
+    .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+    .btn,.stamp{height:36px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;display:inline-flex;align-items:center;color:var(--ink);font-weight:700;cursor:pointer}
+    .stamp{cursor:default;font-weight:400;color:var(--muted)}
+    .mbar{display:flex;gap:6px;align-items:center;margin-bottom:10px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:8px 14px;box-shadow:0 8px 20px rgba(31,48,83,.06)}
+    .mbar label{font-weight:700;font-size:14px;margin-right:6px;white-space:nowrap}
+    .mbtn{height:32px;min-width:52px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;cursor:pointer;font-weight:700;font-size:13px;color:var(--ink);transition:all .15s}
+    .mbtn:hover{background:var(--blue-soft);border-color:#a8bfea}
+    .mbtn.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .mbtn-go{height:32px;border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:6px;padding:0 16px;cursor:pointer;font-weight:700;font-size:13px;margin-left:8px}
+    .hero{border:1px solid #bfccdf;border-radius:var(--radius);box-shadow:var(--shadow);background:#fff;padding:10px;margin-bottom:10px}
+    .kpis{display:grid;grid-template-columns:1.3fr repeat(7,1fr);gap:8px}
+    .conclusion,.kpi{border-radius:var(--radius);min-height:94px;padding:11px 13px;cursor:pointer}
+    .conclusion{background:#17233d;color:#fff;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;position:relative}
+    .conclusion b{font-size:28px;line-height:1.05} .conclusion span,.conclusion p{position:relative;margin:0;color:rgba(255,255,255,.76);font-size:12px}
+    .kpi{border:1px solid var(--line);background:#fff;display:flex;flex-direction:column;justify-content:space-between}
+    .kpi.green{background:var(--green-soft);border-color:#bce8ce}.kpi.yellow{background:var(--yellow-soft);border-color:#f3d894}.kpi.red{background:var(--red-soft);border-color:#ffc8c2}
+    .kpi span{font-size:12px;color:var(--muted)}.kpi b{font-size:32px}.kpi small{font-size:12px;color:var(--muted)}
+    .bar{height:8px;background:#ecf1f7;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),#65c98f)}
+    .decision{display:grid;grid-template-columns:1.2fr repeat(5,1fr);gap:8px;margin-bottom:10px}
+    .decision article{background:#fff;border:1px solid var(--line);border-radius:var(--radius);min-height:64px;padding:10px 14px;box-shadow:0 10px 28px rgba(31,48,83,.07)}
+    .decision article:first-child{background:linear-gradient(90deg,var(--red-soft),#fff);border-color:#ffc8c2;box-shadow:inset 5px 0 0 var(--red),0 10px 28px rgba(31,48,83,.07);display:flex;justify-content:space-between;align-items:center}
+    .decision b{font-size:22px}.decision strong{font-size:34px;color:var(--red)}.decision span{display:block;color:var(--muted);font-size:12px;margin-bottom:3px}
+    .grid{display:grid;grid-template-columns:1.02fr .98fr;gap:10px;margin-bottom:10px}
+    .lower{display:grid;grid-template-columns:1.15fr .85fr;gap:10px}
+    .panel{background:#fff;border:1px solid rgba(210,220,233,.94);border-radius:var(--radius);box-shadow:0 12px 34px rgba(31,48,83,.08);overflow:hidden}
+    .head{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#f7f9fc)}
+    .head b{font-size:16px}.head span{color:var(--muted);font-size:12px;margin-left:8px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:10px 12px;border-bottom:1px solid #edf1f6;text-align:left;font-size:12px;vertical-align:middle}th{color:var(--muted);background:#fbfcfe}tr[data-d]{cursor:pointer}tr[data-d]:hover,.icard:hover,.ms:hover,.kpi:hover{filter:brightness(.985);box-shadow:0 12px 26px rgba(31,48,83,.12)}
+    .st,.tag{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:24px;border-radius:999px;color:#fff;font-size:12px;font-weight:800;padding:0 8px;white-space:nowrap}
+    .green{background:var(--green)}.yellow{background:var(--yellow)}.red{background:var(--red)}
+    .iwrap{display:grid;grid-template-columns:1fr 1fr;min-height:100%}.iwrap section+section{border-left:1px solid var(--line)}
+    .btitle{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-weight:800;border-bottom:1px solid var(--line)}.btitle.red{color:var(--red);background:var(--red-soft)}.btitle.yellow{color:#9a6500;background:var(--yellow-soft)}
+    .icard{margin:8px;padding:10px;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;background:#fff}.icard.red{border-color:#ffc8c2;box-shadow:inset 4px 0 0 var(--red)}.icard.yellow{border-color:#f3d894;box-shadow:inset 4px 0 0 var(--yellow)}
+    .ititle{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}.ititle b{font-size:14px}
+    dl{display:grid;grid-template-columns:56px 1fr;margin:0;gap:3px 8px;font-size:12px}dt{color:var(--muted)}dd{margin:0;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mswrap{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 12px 12px}.ms{border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:var(--radius);padding:9px;min-height:126px;cursor:pointer;display:flex;flex-direction:column;gap:5px}.ms.green{background:var(--green-soft);border-color:#bce8ce;border-top-color:var(--green)}.ms.yellow{background:var(--yellow-soft);border-color:#f3d894;border-top-color:var(--yellow)}.ms.red{background:var(--red-soft);border-color:#ffc8c2;border-top-color:var(--red)}.ms b{font-size:13px}.ms span,.ms p{font-size:12px;color:var(--muted);margin:0}.ms strong{font-size:22px;margin-top:auto}.ms em{font-style:normal;font-weight:800;color:var(--ink)}
+    .empty{padding:20px;text-align:center;color:var(--muted);font-size:13px;margin:0}
+    .drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.34);backdrop-filter:blur(2px);display:none;z-index:20}.drawer-mask.open{display:block}.drawer{position:fixed;top:0;right:0;width:min(820px,95vw);height:100vh;background:#fff;z-index:21;box-shadow:-24px 0 52px rgba(20,33,58,.22);transform:translateX(104%);transition:.22s;display:flex;flex-direction:column}.drawer.open{transform:translateX(0)}.drawer-head{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}.drawer h2{margin:0;font-size:20px}.drawer p{margin:6px 0 0;color:var(--muted);font-size:13px}.close{width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:22px;cursor:pointer}.drawer-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:#f7f9fc}.drawer-summary div{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px}.drawer-summary span{display:block;font-size:12px;color:var(--muted)}.drawer-summary b{font-size:20px}.drawer-body{padding:12px 18px 18px;overflow:auto}
+    .tcard{border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:10px;background:#fff}.tcard.red{background:var(--red-soft);border-color:#ffc8c2}.tcard.yellow{background:var(--yellow-soft);border-color:#f3d894}.tcard.green{background:var(--green-soft);border-color:#bce8ce}.ttop{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.ttop b{font-size:15px}.tmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}.tmeta span,.desc span{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}.tmeta strong,.desc p{margin:0;color:var(--ink);font-size:13px;line-height:1.45}.desc{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);backdrop-filter:blur(2px);z-index:30;padding:22px}.modal.open{display:flex}.rule{width:min(720px,94vw);background:#fff;border-radius:var(--radius);border:1px solid var(--line);box-shadow:0 28px 70px rgba(20,33,58,.28);overflow:hidden}.rule-head{display:flex;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}.rule-head h2{margin:0;font-size:20px}.rule-body{display:grid;gap:10px;padding:16px 18px}.rule-item{display:grid;grid-template-columns:82px 1fr;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:12px}.rule-item.red{background:var(--red-soft);border-color:#ffc8c2}.rule-item.green{background:var(--green-soft);border-color:#bce8ce}.rule-item.yellow{background:var(--yellow-soft);border-color:#f3d894}.badge{height:28px;border-radius:999px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}.rule-item.red .badge{background:var(--red)}.rule-item.green .badge{background:var(--green)}.rule-item.yellow .badge{background:var(--yellow)}.rule-item b{display:block;margin-bottom:4px}.rule-item span{font-size:13px;line-height:1.55}
+    @media(max-width:1180px){.kpis,.grid,.lower,.decision,.mswrap{grid-template-columns:1fr 1fr}.conclusion{grid-column:1/-1}}@media(max-width:760px){.page{width:calc(100vw - 20px)}.top,.kpis,.grid,.lower,.decision,.mswrap,.iwrap,.drawer-summary,.tmeta,.desc{display:grid;grid-template-columns:1fr}.iwrap section+section{border-left:0;border-top:1px solid var(--line)}}
+    .ai-btn{height:36px;border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:6px;padding:0 14px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+    .ai-btn:hover{background:#1a4bb8}
+    .ai-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);backdrop-filter:blur(2px);z-index:30;padding:22px}.ai-modal.open{display:flex}
+    .ai-panel{width:min(780px,94vw);height:min(85vh,700px);background:#fff;border-radius:12px;border:1px solid var(--line);box-shadow:0 28px 70px rgba(20,33,58,.28);display:flex;flex-direction:column;overflow:hidden}
+    .ai-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}.ai-head h2{margin:0;font-size:18px}
+    .ai-presets{display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+    .ai-pbtn{height:30px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink)}.ai-pbtn:hover{background:var(--blue-soft);border-color:#a8bfea}
+    .ai-body{flex:1;overflow:auto;padding:16px 18px}
+    .ai-msg{margin-bottom:14px}.ai-msg.user{text-align:right}.ai-msg span{display:inline-block;max-width:85%;padding:10px 14px;border-radius:10px;font-size:14px;line-height:1.6;text-align:left}
+    .ai-msg.user span{background:var(--blue);color:#fff;border-bottom-right-radius:2px}
+    .ai-msg.assistant span{background:#f7f9fc;border:1px solid var(--line);border-bottom-left-radius:2px;white-space:pre-wrap}
+    .ai-msg.assistant span p{margin:0 0 8px}.ai-msg.assistant span p:last-child{margin-bottom:0}
+    .ai-loading{display:inline-flex;gap:4px;padding:10px 14px;background:#f7f9fc;border:1px solid var(--line);border-radius:10px;border-bottom-left-radius:2px}
+    .ai-loading i{width:6px;height:6px;background:var(--muted);border-radius:50%;animation:aiblink .8s infinite}.ai-loading i:nth-child(2){animation-delay:.15s}.ai-loading i:nth-child(3){animation-delay:.3s}
+    @keyframes aiblink{0%,80%{opacity:.3}40%{opacity:1}}
+    .ai-input{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#f7f9fc}
+    .ai-input input{flex:1;height:38px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font-size:14px}
+    .ai-input button{height:38px;background:var(--blue);color:#fff;border:none;border-radius:6px;padding:0 18px;font-weight:700;font-size:14px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <div><h1>支撑中心目标驾驶舱看板</h1><p class="sub">子表：支撑中心目标｜数据来源：2026年工作目标o (3).xlsx</p></div>
+      <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03</span></div>
+    </header>
+    <nav class="mbar"><label>分析月份：</label><button class="mbtn" data-m="1">1月</button><button class="mbtn" data-m="2">2月</button><button class="mbtn" data-m="3">3月</button><button class="mbtn" data-m="4">4月</button><button class="mbtn" data-m="5">5月</button><button class="mbtn-go" id="goBtn">确定</button></nav>
+    <div id="root"></div>
+  </main>
+  <div class="ai-modal" id="aiModal">
+    <div class="ai-panel">
+      <div class="ai-head"><h2>AI 智能分析</h2><button class="close" id="aiClose">&times;</button></div>
+      <div class="ai-presets">
+        <button class="ai-pbtn" data-p="summary">月度分析总结</button>
+        <button class="ai-pbtn" data-p="risk">异常任务识别</button>
+        <button class="ai-pbtn" data-p="reason">异常原因推测</button>
+      </div>
+      <div class="ai-body" id="aiBody"></div>
+      <div class="ai-input"><input id="aiInput" placeholder="输入问题，或点击上方预设分析..." /><button id="aiSend">发送</button></div>
+    </div>
+  </div>
+  <div class="drawer-mask" id="dmask"></div>
+  <aside class="drawer" id="drawer">
+    <header class="drawer-head"><div><h2 id="dtitle">任务明细</h2><p id="dsub"></p></div><button class="close" id="dclose">×</button></header>
+    <section class="drawer-summary"><div><span>合计</span><b id="sTotal">0</b></div><div><span>正常</span><b id="sGreen">0</b></div><div><span>风险</span><b id="sYellow">0</b></div><div><span>异常</span><b id="sRed">0</b></div></section>
+    <section class="drawer-body" id="dbody"></section>
+  </aside>
+  <section class="modal" id="ruleModal">
+    <div class="rule">
+      <header class="rule-head"><div><h2>重点任务扣分规则</h2><p class="sub">来源于目标台账表头</p></div><button class="close" id="ruleClose">×</button></header>
+      <div class="rule-body">
+        <article class="rule-item red"><div class="badge">D档</div><div><b>月度计划未完成</b><span>重点任务当月未完成月度计划，负责人当月考核直接为D。</span></div></article>
+        <article class="rule-item red"><div class="badge">年度D</div><div><b>年度计划未完成</b><span>重点任务当年未完成年度计划，负责人当年考核为D。</span></div></article>
+        <article class="rule-item green"><div class="badge">保底C</div><div><b>全部按时完成</b><span>重点任务全部按时完成，则任务负责人考核保底为C。</span></div></article>
+        <article class="rule-item yellow"><div class="badge">看板口径</div><div><b>红黄绿判定</b><span>红色：扣分/延期/未完成/质量问题；黄色：暂停/暂缓/待确认/有计划无实际；绿色：已完成或按计划推进。</span></div></article>
+      </div>
+    </div>
+  </section>
+  <script>
+  (function(){
+    let DD={"tasks": [{"seq": 1, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "统一技术底座建设", "target": "实现统一技术架构与基础能力底座，支撑产品化与组件复用（核心系统接入率 ≥80%，产品化率基础支撑）", "stagePlan": "1、5月-6月：完成技术架构统一与标准体系建设\n完成：三大平台统一技术架构设计、统一接口/权限/消息/日志规范、系统技术资产梳理\n验收标准：输出《统一技术架构规范V1.0》、核心系统接入统一架构 ≥80%、技术标准覆盖率 ≥70%\n7月-8月：完成基础能力组件建设\n完成：权限中心/消息中心/任务中心统一建设、基础组件库V1.0上线、核心模块组件化改造\n验收标准：≥3类公共组件上线运行、≥30%系统实现组件复用、组件库稳定运行\n9月-10月：完成核心系统产品化试点\n完成：1–2个核心系统产品化改造、产品版本管理机制建立、标准产品包形成\n验收标准：至少1个系统产品化运行、产品化率 ≥40%、系统可独立发版\n11月-12月：完成产品体系固化\n完成：产品体系V1.0发布、标准产品包沉淀、技术资产沉淀\n验收标准：产品化率 ≥50%、标准产品包 ≥1套、技术资产完整率 100%", "owner": "周全", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "1、5月-6月：完成技术架构统一与标准体系建设\n完成：三大平台统一技术架构设计、统一接口/权限/消息/日志规范、系统技术资产梳理\n验收标准：输出《统一技术架构规范V1.0》、核心系统接入统一架构 ≥80%、技术标准覆盖率 ≥70%\n7月-8月：完成基础能力组件建设\n完成：权限中心/消息中心/任务中心统一建设、基础组件库V1.0上线、核心模块组件化改造\n验收标准：≥3类公共组件上线运行、≥30%系统实现组件复用、组件库稳定运行\n9月-10月：完成核心系统产品化试点\n完成：1–2个核心系统产品化改造、产品版本管理机制建立、标准产品包形成\n验收标准：至少1个系统产品化运行、产品化率 ≥40%、系统可独立发版\n11月-12月：完成产品体系固化\n完成：产品体系V1.0发布、标准产品包沉淀、技术资产沉淀\n验收标准：产品化率 ≥50%、标准产品包 ≥1套、技术资产完整率 100%", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 2, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "AI研发体系建设", "target": "实现AI研发应用初步覆盖研发全流程（AI覆盖率 ≥30%）", "stagePlan": "5月-6月：完成AI研发治理体系与流程规范建设\n\n完成：AI研发规范体系建立、AI使用纳入研发流程（需求/设计/开发/测试）、AI使用行为统计机制建设\n验收标准：AI使用100%纳入研发流程规范、AI使用行为100%可统计、AI工具在研发全流程全面覆盖\n\n7月-8月：完成AI深度嵌入研发全流程\n\n完成：AI嵌入需求分析与设计评审、AI辅助代码评审机制上线、AI自动生成测试用例能力应用、AI参与研发过程评审\n验收标准：AI覆盖研发流程 ≥70%、代码评审AI参与率 ≥50%、测试用例AI生成率 ≥40%\n\n9月-10月：完成AI研发效率量化体系建设\n\n完成：AI研发效率评估模型建立、研发周期对比分析体系、AI贡献度量化机制（代码/测试/缺陷）\n验收标准：研发周期缩短 ≥10%、缺陷提前发现率 ≥20%、AI贡献度实现可量化统计\n\n11月-12月：完成AI研发体系标准化固化\n\n完成：AI研发体系V1.0固化、AI能力纳入研发标准流程、AI工具链统一化\n验收标准：AI覆盖研发流程 ≥80%、AI研发体系制度化运行、AI能力纳入标准研发体系", "owner": "张成礼", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成AI研发治理体系与流程规范建设\n\n完成：AI研发规范体系建立、AI使用纳入研发流程（需求/设计/开发/测试）、AI使用行为统计机制建设\n验收标准：AI使用100%纳入研发流程规范、AI使用行为100%可统计、AI工具在研发全流程全面覆盖\n\n7月-8月：完成AI深度嵌入研发全流程\n\n完成：AI嵌入需求分析与设计评审、AI辅助代码评审机制上线、AI自动生成测试用例能力应用、AI参与研发过程评审\n验收标准：AI覆盖研发流程 ≥70%、代码评审AI参与率 ≥50%、测试用例AI生成率 ≥40%\n\n9月-10月：完成AI研发效率量化体系建设\n\n完成：AI研发效率评估模型建立、研发周期对比分析体系、AI贡献度量化机制（代码/测试/缺陷）\n验收标准：研发周期缩短 ≥10%、缺陷提前发现率 ≥20%、AI贡献度实现可量化统计\n\n11月-12月：完成AI研发体系标准化固化\n\n完成：AI研发体系V1.0固化、AI能力纳入研发标准流程、AI工具链统一化\n验收标准：AI覆盖研发流程 ≥80%、AI研发体系制度化运行、AI能力纳入标准研发体系", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 3, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "运营监测平台建设（统一监测中枢）", "target": "", "stagePlan": "5月-6月：完成运营监测平台总体架构设计与现状整合\n\n完成：现有运维监测系统梳理（机电/网络/软件/收费）、统一监测架构设计、指标体系定义、数据接入标准制定\n验收标准：输出《运营监测平台总体设计方案V1.0》、完成≥80%现有监测系统梳理、统一指标体系100%定义\n\n7月-8月：完成监测平台核心能力建设与数据接入\n\n完成：统一监测平台原型开发、告警中心/指标中心/设备中心建设、核心系统数据接入（收费/机电/路网）\n验收标准：≥80%核心系统完成数据接入、告警分类体系100%上线、平台核心模块稳定运行\n\n9月-10月：完成告警闭环与智能派单能力建设\n\n完成：告警闭环流程上线、自动派单机制建设、与质控中心缺陷体系打通、问题处理闭环机制形成\n验收标准：告警闭环率 ≥60%、A类问题响应 ≤30分钟、告警-工单闭环100%可追溯\n\n11月-12月：完成智能化监测能力与运营分析体系\n\n完成：监测数据分析模型建设、异常识别能力上线、年度运营分析报告生成机制、AI辅助运维能力接入\n验收标准：系统监测覆盖率 ≥90%、异常自动识别率 ≥50%、年度运营分析报告100%自动生成", "owner": "龙炽", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成运营监测平台总体架构设计与现状整合\n\n完成：现有运维监测系统梳理（机电/网络/软件/收费）、统一监测架构设计、指标体系定义、数据接入标准制定\n验收标准：输出《运营监测平台总体设计方案V1.0》、完成≥80%现有监测系统梳理、统一指标体系100%定义\n\n7月-8月：完成监测平台核心能力建设与数据接入\n\n完成：统一监测平台原型开发、告警中心/指标中心/设备中心建设、核心系统数据接入（收费/机电/路网）\n验收标准：≥80%核心系统完成数据接入、告警分类体系100%上线、平台核心模块稳定运行\n\n9月-10月：完成告警闭环与智能派单能力建设\n\n完成：告警闭环流程上线、自动派单机制建设、与质控中心缺陷体系打通、问题处理闭环机制形成\n验收标准：告警闭环率 ≥60%、A类问题响应 ≤30分钟、告警-工单闭环100%可追溯\n\n11月-12月：完成智能化监测能力与运营分析体系\n\n完成：监测数据分析模型建设、异常识别能力上线、年度运营分析报告生成机制、AI辅助运维能力接入\n验收标准：系统监测覆盖率 ≥90%、异常自动识别率 ≥50%、年度运营分析报告100%自动生成", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 4, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "", "project": "研发流程与研发治理体系建设", "target": "明确需求评审、开发、测试、发布全流程及Git规范、Code Review等质量要求，所有项目已接入统一代码仓库并按新流程执行", "stagePlan": "5月-6月：完成研发流程与质量规范体系建设\n\n完成：统一研发流程（需求-设计-开发-测试-发布-运维）、质量规范体系制定、代码与测试准入准出标准统一\n验收标准：输出《研发流程与质量规范V1.0》、100%项目纳入统一流程管理、质量规范覆盖率100%\n\n7月-8月：完成统一需求与资源池建设（技术）\n\n完成：统一需求池建设、需求分类与分级机制、研发资源池（人力/组件/能力）统一管理机制建立\n验收标准：100%需求纳入统一需求池、≥80%需求结构化管理、资源调度透明可追踪\n\n9月-10月：完成研发效能看板体系建设\n\n完成：研发效能指标体系设计（交付周期/缺陷率/复用率/AI参与度）、效能看板开发、数据自动采集机制建设\n验收标准：研发效能看板上线运行、≥80%研发过程数据自动采集、研发效率指标可量化\n\n11月-12月：完成研发治理体系固化与运行\n\n完成：研发流程、质量规范、需求池、效能体系一体化整合、形成研发治理平台V1.0、制度化运行\n验收标准：研发流程执行率 ≥90%、需求池覆盖率 100%、研发效能指标月度可追踪并纳入考核体系", "owner": "陈勇", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成研发流程与质量规范体系建设\n\n完成：统一研发流程（需求-设计-开发-测试-发布-运维）、质量规范体系制定、代码与测试准入准出标准统一\n验收标准：输出《研发流程与质量规范V1.0》、100%项目纳入统一流程管理、质量规范覆盖率100%\n\n7月-8月：完成统一需求与资源池建设（技术）\n\n完成：统一需求池建设、需求分类与分级机制、研发资源池（人力/组件/能力）统一管理机制建立\n验收标准：100%需求纳入统一需求池、≥80%需求结构化管理、资源调度透明可追踪\n\n9月-10月：完成研发效能看板体系建设\n\n完成：研发效能指标体系设计（交付周期/缺陷率/复用率/AI参与度）、效能看板开发、数据自动采集机制建设\n验收标准：研发效能看板上线运行、≥80%研发过程数据自动采集、研发效率指标可量化\n\n11月-12月：完成研发治理体系固化与运行\n\n完成：研发流程、质量规范、需求池、效能体系一体化整合、形成研发治理平台V1.0、制度化运行\n验收标准：研发流程执行率 ≥90%、需求池覆盖率 100%、研发效能指标月度可追踪并纳入考核体系", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": false, "needsDecision": false}, {"seq": 5, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "研发与生产一体化质量保障体系建设", "target": "", "stagePlan": "5月-6月：完成质量流程与标准体系统一\n\n完成：统一质量管理流程（需求评审-开发-测试-上线）、缺陷分级标准体系、测试准入与准出规范统一\n验收标准：输出《质量管理规范V1.0》、100%项目纳入统一质量流程、缺陷分级标准100%统一执行\n\n7月-8月：完成缺陷闭环与质量管控机制建设\n\n完成：缺陷闭环流程上线、阻断类问题强制流转机制、缺陷责任归因机制建立、质量问题工单化管理\n验收标准：缺陷闭环率 ≥40%、阻断类问题100%强制闭环、质量问题100%工单化管理\n\n9月-10月：完成质量数据体系与风险分析能力建设\n\n完成：质量数据看板建设、缺陷趋势分析模型、重大问题复盘机制、质量风险分级体系\n验收标准：质量数据覆盖 ≥70%、重大缺陷下降 ≥20%、质量分析月度运行机制建立\n\n11月-12月：完成质量红线机制与体系固化\n\n完成：质量红线制度发布、质量问责机制上线、质量考核纳入绩效体系、质量体系平台化运行\n验收标准：闭环率 ≥60%、红色问题100%纳管、重复缺陷率下降 ≥30%、质量考核100%纳入绩效", "owner": "郭胜美", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成质量流程与标准体系统一\n\n完成：统一质量管理流程（需求评审-开发-测试-上线）、缺陷分级标准体系、测试准入与准出规范统一\n验收标准：输出《质量管理规范V1.0》、100%项目纳入统一质量流程、缺陷分级标准100%统一执行\n\n7月-8月：完成缺陷闭环与质量管控机制建设\n\n完成：缺陷闭环流程上线、阻断类问题强制流转机制、缺陷责任归因机制建立、质量问题工单化管理\n验收标准：缺陷闭环率 ≥40%、阻断类问题100%强制闭环、质量问题100%工单化管理\n\n9月-10月：完成质量数据体系与风险分析能力建设\n\n完成：质量数据看板建设、缺陷趋势分析模型、重大问题复盘机制、质量风险分级体系\n验收标准：质量数据覆盖 ≥70%、重大缺陷下降 ≥20%、质量分析月度运行机制建立\n\n11月-12月：完成质量红线机制与体系固化\n\n完成：质量红线制度发布、质量问责机制上线、质量考核纳入绩效体系、质量体系平台化运行\n验收标准：闭环率 ≥60%、红色问题100%纳管、重复缺陷率下降 ≥30%、质量考核100%纳入绩效", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 6, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "系统稳定性与运行保障能力建设", "target": "", "stagePlan": "5月-6月：完成系统稳定性监测体系建设(业务）\n\n完成：系统稳定性指标体系建立、故障分类标准统一、监控数据接入规范制定\n验收标准：稳定性指标体系100%覆盖核心系统、故障分类标准统一率100%\n\n7月-8月：完成运行风险识别与预警机制建设\n\n完成：运行风险识别规则建立、异常预警模型设计、关键系统健康度评估机制\n验收标准：关键系统监测覆盖率 ≥80%、异常预警覆盖率 ≥60%\n\n9月-10月：完成稳定性提升与问题治理机制\n\n完成：重大故障复盘机制、系统性能优化闭环机制、跨系统问题联动治理机制\n验收标准：系统稳定性提升 ≥10%、重大故障复盘覆盖率100%、问题闭环率 ≥60%\n\n11月-12月：完成稳定性体系固化与运营分析\n\n完成：稳定性分析模型固化、年度运行质量报告机制、系统健康度评估体系\n验收标准：系统稳定性提升 ≥15%、年度运行报告100%自动生成、健康度评估体系上线运行", "owner": "陶棋盛", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成系统稳定性监测体系建设(业务）\n\n完成：系统稳定性指标体系建立、故障分类标准统一、监控数据接入规范制定\n验收标准：稳定性指标体系100%覆盖核心系统、故障分类标准统一率100%\n\n7月-8月：完成运行风险识别与预警机制建设\n\n完成：运行风险识别规则建立、异常预警模型设计、关键系统健康度评估机制\n验收标准：关键系统监测覆盖率 ≥80%、异常预警覆盖率 ≥60%\n\n9月-10月：完成稳定性提升与问题治理机制\n\n完成：重大故障复盘机制、系统性能优化闭环机制、跨系统问题联动治理机制\n验收标准：系统稳定性提升 ≥10%、重大故障复盘覆盖率100%、问题闭环率 ≥60%\n\n11月-12月：完成稳定性体系固化与运营分析\n\n完成：稳定性分析模型固化、年度运行质量报告机制、系统健康度评估体系\n验收标准：系统稳定性提升 ≥15%、年度运行报告100%自动生成、健康度评估体系上线运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 7, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "项目：质量治理平台与可视化体系建设", "target": "", "stagePlan": "5月-6月：完成质量数据体系设计\n\n完成：质量指标体系设计、数据采集标准统一、质量数据模型建立\n验收标准：质量指标体系覆盖100%核心系统、数据采集标准统一\n\n7月-8月：完成质量可视化看板建设\n\n完成：质量驾驶舱设计、缺陷趋势分析看板、项目质量评分体系\n验收标准：质量看板上线运行、≥80%数据自动采集、质量评分体系可用\n\n9月-10月：完成质量分析与决策支持能力建设\n\n完成：质量决策分析模型、问题预测机制、质量预警体系\n验收标准：质量问题预测准确率 ≥60%、质量预警机制上线运行\n\n11月-12月：完成质量治理体系平台化\n\n完成：质量管理平台V1.0固化、质量流程系统化运行、与研发/运维体系打通\n验收标准：质量治理平台上线运行、质量流程系统覆盖率 ≥90%、跨系统数据打通100%", "owner": "郭胜美", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成质量数据体系设计\n\n完成：质量指标体系设计、数据采集标准统一、质量数据模型建立\n验收标准：质量指标体系覆盖100%核心系统、数据采集标准统一\n\n7月-8月：完成质量可视化看板建设\n\n完成：质量驾驶舱设计、缺陷趋势分析看板、项目质量评分体系\n验收标准：质量看板上线运行、≥80%数据自动采集、质量评分体系可用\n\n9月-10月：完成质量分析与决策支持能力建设\n\n完成：质量决策分析模型、问题预测机制、质量预警体系\n验收标准：质量问题预测准确率 ≥60%、质量预警机制上线运行\n\n11月-12月：完成质量治理体系平台化\n\n完成：质量管理平台V1.0固化、质量流程系统化运行、与研发/运维体系打通\n验收标准：质量治理平台上线运行、质量流程系统覆盖率 ≥90%、跨系统数据打通100%", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 8, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "项目全过程管理体系建设", "target": "实现项目从立项到交付全过程可控（进度偏差 ≤10%）", "stagePlan": "5月-6月：完成项目管理制度与标准体系建设\n\n完成：项目分级分类管理规则制定、项目立项与审批流程统一、项目里程碑管理机制设计\n验收标准：输出《项目管理制度V1.0》、100%项目纳入统一管理台账、项目分级分类规则100%统一执行\n\n7月-8月：完成项目过程管控机制建设\n\n完成：项目进度跟踪机制上线、项目风险预警机制建立、资源调度与冲突协调机制建立\n验收标准：项目进度透明率 100%、项目延期风险预警覆盖率 ≥80%、关键资源调度记录100%可追溯\n\n9月-10月：完成项目交付与质量联动机制建设\n\n完成：项目阶段验收机制上线、交付与质量体系打通、问题闭环与责任归因机制建立\n验收标准：阶段验收覆盖率 ≥90%、项目问题闭环率 ≥60%、交付质量问题100%可追溯责任\n\n11月-12月：完成项目管理平台化与运行固化\n\n完成：项目管理看板上线、项目绩效评估机制建立、与研发/质控/运维数据打通\n验收标准：项目全过程可视化覆盖率 100%、项目进度偏差率 ≤10%、项目管理数据月度自动输出", "owner": "陶棋盛", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成项目管理制度与标准体系建设\n\n完成：项目分级分类管理规则制定、项目立项与审批流程统一、项目里程碑管理机制设计\n验收标准：输出《项目管理制度V1.0》、100%项目纳入统一管理台账、项目分级分类规则100%统一执行\n\n7月-8月：完成项目过程管控机制建设\n\n完成：项目进度跟踪机制上线、项目风险预警机制建立、资源调度与冲突协调机制建立\n验收标准：项目进度透明率 100%、项目延期风险预警覆盖率 ≥80%、关键资源调度记录100%可追溯\n\n9月-10月：完成项目交付与质量联动机制建设\n\n完成：项目阶段验收机制上线、交付与质量体系打通、问题闭环与责任归因机制建立\n验收标准：阶段验收覆盖率 ≥90%、项目问题闭环率 ≥60%、交付质量问题100%可追溯责任\n\n11月-12月：完成项目管理平台化与运行固化\n\n完成：项目管理看板上线、项目绩效评估机制建立、与研发/质控/运维数据打通\n验收标准：项目全过程可视化覆盖率 100%、项目进度偏差率 ≤10%、项目管理数据月度自动输出", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 9, "sheet": "支撑中心目标", "center": "行业解决方案与业务拓展中心", "keyTask": "重点任务", "project": "需求治理与解决方案产品化体系建设", "target": "", "stagePlan": "5月-6月：完成统一需求入口与需求治理体系建设（需求管理）\n\n完成：统一需求池建设、需求标准模板制定、需求分级分类机制建立、需求受理与分发流程统一\n验收标准：100%需求纳入统一需求池、≥80%需求结构化录入、需求入口唯一化实现\n\n7月-8月：完成解决方案标准化与产品化定义\n\n完成：典型业务场景拆解（收费/运营/建管/运维）、标准解决方案模板体系建立、解决方案组件化拆分\n验收标准：形成≥2套标准解决方案包、≥60%需求可映射至标准方案、方案复用机制初步建立\n\n9月-10月：完成方案驱动交付机制建设\n\n完成：方案评审机制上线、项目实施方案绑定机制建立、方案驱动研发与交付联动机制建立\n验收标准：≥40%项目通过标准方案驱动交付、方案评审覆盖率 ≥90%、交付周期下降 ≥15%\n\n11月-12月：完成解决方案体系产品化固化\n\n完成：解决方案体系V1.0发布、跨项目复用机制建立、标准方案库建设与版本管理机制\n验收标准：方案复用率 ≥60%、≥50%项目方案驱动交付、标准方案库稳定运行", "owner": "刘佶豪", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成统一需求入口与需求治理体系建设（需求管理）\n\n完成：统一需求池建设、需求标准模板制定、需求分级分类机制建立、需求受理与分发流程统一\n验收标准：100%需求纳入统一需求池、≥80%需求结构化录入、需求入口唯一化实现\n\n7月-8月：完成解决方案标准化与产品化定义\n\n完成：典型业务场景拆解（收费/运营/建管/运维）、标准解决方案模板体系建立、解决方案组件化拆分\n验收标准：形成≥2套标准解决方案包、≥60%需求可映射至标准方案、方案复用机制初步建立\n\n9月-10月：完成方案驱动交付机制建设\n\n完成：方案评审机制上线、项目实施方案绑定机制建立、方案驱动研发与交付联动机制建立\n验收标准：≥40%项目通过标准方案驱动交付、方案评审覆盖率 ≥90%、交付周期下降 ≥15%\n\n11月-12月：完成解决方案体系产品化固化\n\n完成：解决方案体系V1.0发布、跨项目复用机制建立、标准方案库建设与版本管理机制\n验收标准：方案复用率 ≥60%、≥50%项目方案驱动交付、标准方案库稳定运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "行业解决方案与业务拓展中心", "keyTask": "重点任务", "project": "市场支撑与产品化输出能力建设", "target": "", "stagePlan": "5月-6月：完成售前能力与行业方案体系建设\n\n完成：行业解决方案框架统一、售前支撑材料标准化、典型案例梳理（收费/路网/建管）\n验收标准：形成标准售前方案包≥1套、行业方案覆盖核心业务100%、售前响应机制建立\n\n7月-8月：完成项目售前-交付协同机制建设\n\n完成：售前需求评估机制、技术可行性评审机制、方案与研发联动机制建立\n验收标准：售前评审覆盖率 ≥80%、需求一次通过率提升 ≥20%、方案偏差率下降\n\n9月-10月：完成解决方案市场转化能力建设\n\n完成：标准方案推广机制建立、跨区域复制模式设计、外部项目适配机制建设\n验收标准：至少形成1个可复制推广方案模型、方案外部适配能力建立\n\n11月-12月：完成解决方案产品化体系固化\n\n完成：解决方案体系V1.0固化、方案库平台化管理、标准交付体系打通研发/质控\n验收标准：方案复用率 ≥60%、方案库100%线上化管理、跨中心协同机制稳定运行", "owner": "刘佶豪", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成售前能力与行业方案体系建设\n\n完成：行业解决方案框架统一、售前支撑材料标准化、典型案例梳理（收费/路网/建管）\n验收标准：形成标准售前方案包≥1套、行业方案覆盖核心业务100%、售前响应机制建立\n\n7月-8月：完成项目售前-交付协同机制建设\n\n完成：售前需求评估机制、技术可行性评审机制、方案与研发联动机制建立\n验收标准：售前评审覆盖率 ≥80%、需求一次通过率提升 ≥20%、方案偏差率下降\n\n9月-10月：完成解决方案市场转化能力建设\n\n完成：标准方案推广机制建立、跨区域复制模式设计、外部项目适配机制建设\n验收标准：至少形成1个可复制推广方案模型、方案外部适配能力建立\n\n11月-12月：完成解决方案产品化体系固化\n\n完成：解决方案体系V1.0固化、方案库平台化管理、标准交付体系打通研发/质控\n验收标准：方案复用率 ≥60%、方案库100%线上化管理、跨中心协同机制稳定运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "商务中心", "keyTask": "重点任务", "project": "商务流程与体系建设", "target": "", "stagePlan": "5月-6月：完成商务拓展流程规范体系建设\n\n完成：\n商务拓展全流程梳理（线索获取—商机登记—评估分型—方案协同—立项/投标）、\n商机台账与统一入口机制建立、\n商务与解决方案中心/业务中心职责边界明确\n\n验收标准：\n输出《商务拓展流程规范V1.0》、\n商机100%纳入统一台账管理、\n流程执行机制建立并开始运行\n\n7月-8月：完成商机评估与分型机制建设\n\n完成：\n商机分类标准建立（产品类/产品改造类/定制开发类）、\n商机评估模型建立（需求清晰度、可复制性、投入产出）、\n商务+方案联合评审机制建立\n\n验收标准：\n商机分类覆盖率 ≥80%、\n商机评审执行率 ≥90%、\n形成标准评估模板并在实际项目中应用\n\n9月-10月：完成商务流程运行与优化\n\n完成：\n商务流程在实际商机中全面运行、\n商机流转与评审效率优化、\n非标准需求进入研发的管控机制强化\n\n验收标准：\n流程执行率 ≥90%、\n商机流转周期明显缩短（有数据支撑）、\n非标需求占比下降\n11月-12月：完成商务体系固化与标准化输出\n完成：\n商务拓展制度体系固化、\n标准流程与模板沉淀、\n形成可复制的商务运行模式\n验收标准：\n输出《商务拓展体系V1.0》、\n流程制度100%固化、\n商务运行机制稳定执行", "owner": "何穹雕", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成商务拓展流程规范体系建设\n\n完成：\n商务拓展全流程梳理（线索获取—商机登记—评估分型—方案协同—立项/投标）、\n商机台账与统一入口机制建立、\n商务与解决方案中心/业务中心职责边界明确\n\n验收标准：\n输出《商务拓展流程规范V1.0》、\n商机100%纳入统一台账管理、\n流程执行机制建立并开始运行\n\n7月-8月：完成商机评估与分型机制建设\n\n完成：\n商机分类标准建立（产品类/产品改造类/定制开发类）、\n商机评估模型建立（需求清晰度、可复制性、投入产出）、\n商务+方案联合评审机制建立\n\n验收标准：\n商机分类覆盖率 ≥80%、\n商机评审执行率 ≥90%、\n形成标准评估模板并在实际项目中应用\n\n9月-10月：完成商务流程运行与优化\n\n完成：\n商务流程在实际商机中全面运行、\n商机流转与评审效率优化、\n非标准需求进入研发的管控机制强化\n\n验收标准：\n流程执行率 ≥90%、\n商机流转周期明显缩短（有数据支撑）、\n非标需求占比下降\n11月-12月：完成商务体系固化与标准化输出\n完成：\n商务拓展制度体系固化、\n标准流程与模板沉淀、\n形成可复制的商务运行模式\n验收标准：\n输出《商务拓展体系V1.0》、\n流程制度100%固化、\n商务运行机制稳定执行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "商务中心", "keyTask": "重点任务", "project": "市场拓展能力建设", "target": "", "stagePlan": "5月-6月：完成市场与客户体系基础建设\n\n完成：\n目标市场梳理（省内/省外高速集团）、\n客户信息库建设与分级（重点/潜在/一般）、\n重点客户清单明确\n\n验收标准：\n形成客户清单 ≥10家、\n客户信息完整率 ≥90%、\n重点客户名单明确\n\n7月-8月：完成重点客户对接与商机获取\n\n完成：\n重点客户走访与对接、\n客户需求收集与初步分析、\n商机池建立并纳入台账\n\n验收标准：\n完成重点客户对接 ≥5家、\n形成有效商机 ≥5个、\n商机100%纳入统一台账\n\n9月-10月：完成商机转化与方案协同推进\n\n完成：\n重点商机推进进入方案阶段、\n组织解决方案中心参与需求分析、\n形成初步解决方案或合作路径\n\n验收标准：\n进入方案阶段商机 ≥3个、\n形成初步方案 ≥2个、\n商机转化路径清晰可跟踪\n\n11月-12月：完成市场拓展成果输出与路径沉淀\n\n完成：\n推动重点商机形成实质合作（项目/合作意向）、\n年度市场拓展总结分析、\n可复制拓展路径沉淀\n\n验收标准：\n形成实质性合作成果（项目或合作意向）、\n输出《市场拓展年度报告》、\n形成标准拓展路径1套", "owner": "何穹雕", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成市场与客户体系基础建设\n\n完成：\n目标市场梳理（省内/省外高速集团）、\n客户信息库建设与分级（重点/潜在/一般）、\n重点客户清单明确\n\n验收标准：\n形成客户清单 ≥10家、\n客户信息完整率 ≥90%、\n重点客户名单明确\n\n7月-8月：完成重点客户对接与商机获取\n\n完成：\n重点客户走访与对接、\n客户需求收集与初步分析、\n商机池建立并纳入台账\n\n验收标准：\n完成重点客户对接 ≥5家、\n形成有效商机 ≥5个、\n商机100%纳入统一台账\n\n9月-10月：完成商机转化与方案协同推进\n\n完成：\n重点商机推进进入方案阶段、\n组织解决方案中心参与需求分析、\n形成初步解决方案或合作路径\n\n验收标准：\n进入方案阶段商机 ≥3个、\n形成初步方案 ≥2个、\n商机转化路径清晰可跟踪\n\n11月-12月：完成市场拓展成果输出与路径沉淀\n\n完成：\n推动重点商机形成实质合作（项目/合作意向）、\n年度市场拓展总结分析、\n可复制拓展路径沉淀\n\n验收标准：\n形成实质性合作成果（项目或合作意向）、\n输出《市场拓展年度报告》、\n形成标准拓展路径1套", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}], "currentMonth": 5};
+    const ulKey='kanban_uploaded_support';
+    const uploaded=localStorage.getItem(ulKey);
+    if(uploaded){
+      try{
+        const ud=JSON.parse(uploaded);
+        if(ud.tasks&&ud.tasks.length>0)DD=ud;
+        localStorage.removeItem(ulKey);
+      }catch(e){localStorage.removeItem(ulKey)}
+    }
+    const raw=DD.tasks, CM=DD.currentMonth;
+    let curM=CM;
+
+    const NEG=["扣分","未按要求","质量问题"],RISK=["暂缓","暂停","待确认","未开始","暂未启动","暂无进度","跟进","正在","待","风险"],DONE=["已完成","完成","已上线","已部署","已发起","已提交","已输出"],MN=["一","二","三","四","五","六","七","八","九","十","十一","十二"];
+    function has(t,ws){return ws.some(w=>t.includes(w))}
+    function esc(v){return String(v||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])).replace(/\n/g,"<br>")}
+    function cpt(s,n){s=String(s||"").replace(/\n/g,"；");return s.length>n?s.slice(0,n-1)+"…":s}
+
+    function classify(task,month){
+      const ml=task.monthly.slice(0,month), cur=ml[ml.length-1];
+      const ct=[cur.plan,cur.actual,cur.score,cur.note].join("\n");
+      const negSc=cur.score&&parseInt(cur.score)<0;
+      let st,rs;
+      if(negSc||has(ct,NEG)){st="red";rs="扣分/质量问题"}
+      else if(has(ct,["延期","延时","未完成"])){st="red";rs="当月延期或未完成"}
+      else if(cur.plan&&!cur.actual){st="yellow";rs="当月有计划但未填实际"}
+      else if(has(ct,RISK)){st="yellow";rs="暂停/待确认/外部依赖"}
+      else if(has(cur.actual,DONE)){st="green";rs="已完成或按计划推进"}
+      else{st="yellow";rs="进展待补充"}
+      const sp=task.stagePlan||"";
+      const re=new RegExp(month+"\\s*月|"+MN[month-1]+"月");
+      const hmp=!!cur.plan||re.test(sp);
+      const closed=st==="green"||has(cur.actual,DONE);
+      const isKey=(task.keyTask||"").includes("重点任务");
+      const nd=st==="red"||(ct.includes("协调")&&st!=="green");
+      return{status:st,statusText:{green:"正常",yellow:"风险",red:"异常"}[st],reason:rs,latestPlan:cur.plan||sp,latestActual:cur.actual,latestScore:cur.score,latestNote:cur.note,hasMonthPlan:hmp,closed,isKeyTask:isKey,needsDecision:nd};
+    }
+
+    function calcAll(month){
+      const items=raw.map(t=>({...t,...classify(t,month)}));
+      const sc={green:0,yellow:0,red:0};
+      items.forEach(t=>sc[t.status]++);
+      const cs={};
+      items.forEach(t=>{if(!cs[t.center])cs[t.center]={center:t.center,total:0,green:0,yellow:0,red:0,key:0};const c=cs[t.center];c.total++;c[t.status]++;if(t.isKeyTask)c.key++;});
+      const csl=Object.values(cs).sort((a,b)=>b.total-a.total);
+      const total=items.length;
+      const closed=items.filter(t=>t.closed).length;
+      const selfD=items.filter(t=>String(t.selfDeveloped).includes("是")).length;
+      const closedT=items.filter(t=>DONE.some(w=>(t.latestActual||"").includes(w))).length;
+      const pausedT=items.filter(t=>["暂停","暂缓"].some(w=>(t.latestActual||"").includes(w))).length;
+      return{total,green:sc.green,yellow:sc.yellow,red:sc.red,
+        keyTotal:items.filter(t=>t.isKeyTask).length,
+        monthTotal:items.filter(t=>t.hasMonthPlan).length,
+        decisionTotal:items.filter(t=>t.needsDecision).length,
+        closedRate:total?Math.round(closed/total*100):0,
+        ontimeRate:total?Math.round(sc.green/total*100):0,
+        selfDevTotal:selfD,closedTotal:closedT,pausedTotal:pausedT,
+        rawClosedTotal:items.filter(t=>(t.rawStatus||"")==="已完成").length,
+        rawPausedTotal:items.filter(t=>(t.rawStatus||"")==="暂停").length,
+        centers:csl,
+        reds:items.filter(t=>t.status==="red"),
+        yellows:items.filter(t=>t.status==="yellow"),
+        mTasks:items.filter(t=>t.hasMonthPlan),
+        items};
+    }
+
+    /* 合并所有月份：每个任务取各月最差状态 */
+    function calcMerged(){
+      const cm=DD.currentMonth||5;
+      const W={red:3,yellow:2,green:1};
+      /* 为每个任务计算合并状态，直接写入 item 属性，下钻过滤可匹配 */
+      const items=raw.map(t=>{
+        let ws="green",everGreen=false,everClosed=false,everDec=false;
+        let everDone=false,everPause=false;
+        const greenM=[],redM=[],doneM=[],pauseM=[];
+        for(let m=1;m<=cm;m++){
+          const cl=classify(t,m);
+          if(cl.status==="green"){everGreen=true;greenM.push(m);}
+          if(cl.closed)everClosed=true;
+          if(cl.status==="red"){redM.push(m);}
+          if(W[cl.status]>W[ws])ws=cl.status;
+          if(cl.needsDecision)everDec=true;
+          const act=t.monthly[Math.min(m,t.monthly.length)-1].actual||"";
+          if(DONE.some(w=>act.includes(w))){everDone=true;doneM.push(m);}
+          if(["暂停","暂缓"].some(w=>act.includes(w))){everPause=true;pauseM.push(m);}
+        }
+        const mst=ws==="red"?"red":everGreen?"green":"yellow";
+        const srcMonths=[];
+        if(mst==="green")greenM.forEach(m=>{if(!srcMonths.includes(m))srcMonths.push(m)});
+        if(mst==="red")redM.forEach(m=>{if(!srcMonths.includes(m))srcMonths.push(m)});
+        if(everDone)doneM.forEach(m=>{if(!srcMonths.includes(m))srcMonths.push(m)});
+        if(everPause)pauseM.forEach(m=>{if(!srcMonths.includes(m))srcMonths.push(m)});
+        return{...t,...classify(t,cm),
+          status:mst,statusText:ST[mst],
+          closed:everClosed,needsDecision:ws==="red"||everDec,
+          everDone,everPause,
+          greenM,redM,doneM,pauseM,
+          srcMonths:srcMonths.length?srcMonths:[cm]
+        };
+      });
+      const sc={green:0,yellow:0,red:0};
+      items.forEach(t=>sc[t.status]++);
+      const total=items.length;
+      const closed=items.filter(t=>t.closed).length;
+      return{total,green:sc.green,yellow:sc.yellow,red:sc.red,
+        decisionTotal:items.filter(t=>t.needsDecision).length,
+        closedRate:total?Math.round(closed/total*100):0,
+        ontimeRate:total?Math.round(sc.green/total*100):0,
+        rawClosedTotal:items.filter(t=>t.everDone).length,
+        rawPausedTotal:items.filter(t=>t.everPause).length,
+        items};
+    }
+
+    const ST={green:"正常",yellow:"风险",red:"异常"};
+
+    function render(month){
+      const s=calcAll(month), m=calcMerged(), ml=month+"月", t60=s.items.slice(0,60);
+      document.querySelectorAll(".mbtn").forEach(b=>{b.classList.toggle("on",Number(b.dataset.m)===month)});
+
+      document.getElementById("root").innerHTML=`
+      <section class="hero"><div class="kpis">
+        <article class="conclusion" data-d="all"><span>总体结论（各月合并）</span><b>${m.total}项任务，${m.red}项异常</b><p>重点盯办红榜、计划未闭环和需要协调事项。</p></article>
+        <article class="kpi" data-d="all"><span>任务总数</span><b>${m.total}<small>项</small></b><small>纳入本表统计</small></article>
+        <article class="kpi green" data-d="ms::green"><span>正常</span><b>${m.green}<small>项</small></b><small>已完成或推进中</small></article>
+        <article class="kpi yellow" data-d="ms::yellow"><span>风险</span><b>${m.yellow}<small>项</small></b><small>待确认/暂缓/临近</small></article>
+        <article class="kpi red" data-d="ms::red"><span>异常</span><b>${m.red}<small>项</small></b><small>扣分/延期/未完成</small></article>
+        <article class="kpi"><span>按期完成率</span><b>${m.ontimeRate}<small>%</small></b><div class="bar"><i style="width:${m.ontimeRate}%"></i></div></article>
+        <article class="kpi red" data-d="mdec"><span>需盯办</span><b>${m.decisionTotal}<small>项</small></b><small>红榜或需协调</small></article>
+        <article class="kpi green"><span>问题闭环率</span><b>${m.closedRate}<small>%</small></b><div class="bar"><i style="width:${m.closedRate}%"></i></div></article>
+        <article class="kpi green" data-d="rawClosed"><span>完成</span><b>${m.rawClosedTotal}<small>项</small></b><small>状态为已完成</small></article>
+        <article class="kpi yellow" data-d="rawPaused"><span>暂停</span><b>${m.rawPausedTotal}<small>项</small></b><small>状态为暂停</small></article>
+      </div></section>
+      <section class="decision">
+        <article data-d="dec"><div><span>${ml}需领导盯办</span><b>红榜及协调事项</b></div><strong>${s.decisionTotal}项</strong></article>
+        <article data-d="key"><span>重点任务</span><b>${s.keyTotal}项</b></article>
+        <article data-d="mp"><span>${ml}有计划</span><b>${s.monthTotal}项</b></article>
+        <article data-d="self"><span>自研任务</span><b>${s.selfDevTotal}项</b></article>
+        <article data-d="cl"><span>完成任务</span><b>${s.closedTotal}项</b></article>
+        <article data-d="paused"><span>暂停任务</span><b>${s.pausedTotal}项</b></article>
+      </section>
+      <section class="grid">
+        <article class="panel"><div class="head"><div><b>中心统计</b><span>点击数值查看对应明细</span></div></div>
+          <table><thead><tr><th style="width:58px">排名</th><th>归属中心</th><th>任务数</th><th>正常</th><th>风险</th><th>异常</th><th>重点</th></tr></thead><tbody>
+          ${s.centers.map((r,i)=>{
+            const c=esc(r.center);
+            return `<tr><td><b>${i+1}</b></td><td>${c}</td><td data-d="c::${c}" style="cursor:pointer">${r.total}</td><td data-d="cs::${c}::green" style="cursor:pointer"><span class="st green">${r.green}</span></td><td data-d="cs::${c}::yellow" style="cursor:pointer"><span class="st yellow">${r.yellow}</span></td><td data-d="cs::${c}::red" style="cursor:pointer"><span class="st red">${r.red}</span></td><td data-d="ck::${c}" style="cursor:pointer">${r.key}</td></tr>`;
+          }).join("")}
+          </tbody></table></article>
+        <article class="panel"><div class="head"><div><b>红黄榜</b><span>扣分、延期、暂停、待确认事项</span></div></div>
+          <div class="iwrap"><section><div class="btitle red">红榜重点 <span data-d="s::red" style="cursor:pointer">${s.red}项</span></div>${s.reds.slice(0,4).map(t=>`<article class="icard red" data-d="t::${t.seq}"><div class="ititle"><b>${esc(cpt(t.project,22))}</b><span class="tag red">${esc(t.reason)}</span></div><dl><dt>中心</dt><dd>${esc(t.center)}</dd><dt>负责人</dt><dd>${esc(t.owner||"未填")}</dd><dt>实际</dt><dd>${esc(cpt(t.latestActual||t.latestNote||"未填实际",56))}</dd></dl></article>`).join("")||'<p class="empty">暂无红榜任务</p>'}</section>
+          <section><div class="btitle yellow">黄榜预警 <span data-d="s::yellow" style="cursor:pointer">${s.yellow}项</span></div>${s.yellows.slice(0,4).map(t=>`<article class="icard yellow" data-d="t::${t.seq}"><div class="ititle"><b>${esc(cpt(t.project,22))}</b><span class="tag yellow">${esc(t.reason)}</span></div><dl><dt>中心</dt><dd>${esc(t.center)}</dd><dt>负责人</dt><dd>${esc(t.owner||"未填")}</dd><dt>实际</dt><dd>${esc(cpt(t.latestActual||t.latestNote||"未填实际",56))}</dd></dl></article>`).join("")||'<p class="empty">暂无黄榜任务</p>'}</section></div></article>
+      </section>
+      <section class="lower">
+        <article class="panel"><div class="head"><div><b>${ml}关键里程碑</b><span>有${ml}计划的节点</span></div></div>
+          <div class="mswrap">${s.mTasks.slice(0,5).map(t=>`<article class="ms ${t.status}" data-d="t::${t.seq}"><b>${esc(cpt(t.project,18))}</b><span>负责人：${esc(t.owner||"未填")}</span><p>${esc(cpt(t.latestPlan,54))}</p><strong>${ml}</strong><em>${ST[t.status]}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}</div></article>
+        <article class="panel"><div class="head"><div><b>任务明细列表</b><span>展示前60项，点击可下钻</span></div></div>
+          <table><thead><tr><th style="width:56px">序号</th><th>中心</th><th>项目</th><th style="width:80px">负责人</th><th style="width:70px">状态</th><th>原因</th></tr></thead><tbody>
+          ${t60.map(t=>`<tr data-d="t::${t.seq}"><td>${t.seq}</td><td>${esc(t.center)}</td><td>${esc(cpt(t.project,28))}</td><td>${esc(t.owner||"未填")}</td><td><span class="st ${t.status}">${t.statusText}</span></td><td>${esc(cpt(t.reason,22))}</td></tr>`).join("")}
+          </tbody></table></article>
+      </section>`;
+      bindDrill();
+    }
+
+    function pick(key,m){
+      const s=calcAll(m),items=s.items,ml=m+"月";
+      const mg=calcMerged(),mi=mg.items;
+      if(key==="all")return[mi,"全部任务（各月合并）",""];
+      if(key.startsWith("ms::")){const v=key.split("::")[1];return[mi.filter(t=>t.status===v),ST[v]+"任务（合并）",""]}
+      if(key==="mdec")return[mi.filter(t=>t.needsDecision),"需盯办任务（合并）",""];
+      if(key.startsWith("s::")){const v=key.split("::")[1];return[items.filter(t=>t.status===v),ST[v]+"任务（"+ml+"）",""]}
+      if(key.startsWith("c::")){const c=key.split("::")[1];return[items.filter(t=>t.center===c),c+" 全部任务",""]}
+      if(key.startsWith("cs::")){const p=key.split("::"),c=p[1],v=p[2];return[items.filter(t=>t.center===c&&t.status===v),c+" "+ST[v]+"任务",""]}
+      if(key.startsWith("ck::")){const c=key.split("::")[1];return[items.filter(t=>t.center===c&&t.isKeyTask),c+" 重点任务",""]}
+      if(key.startsWith("t::")){const id=+key.split("::")[1],t=items.find(x=>x.seq===id);return[[t].filter(Boolean),t?t.project:"",""]}
+      const M={mp:[items.filter(t=>t.hasMonthPlan),ml+"有计划任务",""],key:[items.filter(t=>t.isKeyTask),"重点任务",""],self:[items.filter(t=>String(t.selfDeveloped).includes("是")),"自研任务",""],dec:[items.filter(t=>t.needsDecision),"需领导盯办任务",""],cl:[items.filter(t=>DONE.some(w=>(t.latestActual||"").includes(w))),"完成任务",""],paused:[items.filter(t=>["暂停","暂缓"].some(w=>(t.latestActual||"").includes(w))),"暂停任务",""],rawClosed:[mi.filter(t=>t.everDone),"已完成任务",""],rawPaused:[mi.filter(t=>t.everPause),"暂停任务",""]};
+      return M[key]||M.all;
+    }
+
+    function openDrill(key){
+      const[list,title]=pick(key,curM);
+      const isMerged=key==="all"||key.startsWith("ms::")||key==="mdec"||key==="rawClosed"||key==="rawPaused";
+      document.getElementById("dtitle").textContent=title;
+      document.getElementById("dsub").textContent="共"+list.length+"项";
+      document.getElementById("sTotal").textContent=list.length;
+      document.getElementById("sGreen").textContent=list.filter(t=>t.status==="green").length;
+      document.getElementById("sYellow").textContent=list.filter(t=>t.status==="yellow").length;
+      document.getElementById("sRed").textContent=list.filter(t=>t.status==="red").length;
+      const MN=["","1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+      document.getElementById("dbody").innerHTML=list.map(t=>{
+        const src=isMerged&&t.srcMonths?"（数据来源："+t.srcMonths.map(m=>MN[m]).join("、")+"）":"";
+        const tags=[];
+        if(t.greenM&&t.greenM.length)tags.push('<span class="st green" style="margin-right:4px">正常:'+t.greenM.map(m=>MN[m]).join(",")+'</span>');
+        if(t.redM&&t.redM.length)tags.push('<span class="st red" style="margin-right:4px">异常:'+t.redM.map(m=>MN[m]).join(",")+'</span>');
+        if(t.doneM&&t.doneM.length)tags.push('<span class="st green" style="margin-right:4px">完成:'+t.doneM.map(m=>MN[m]).join(",")+'</span>');
+        if(t.pauseM&&t.pauseM.length)tags.push('<span class="st yellow" style="margin-right:4px">暂停:'+t.pauseM.map(m=>MN[m]).join(",")+'</span>');
+        const tagHtml=tags.length?'<div style="margin:6px 0 0;font-size:12px">'+tags.join("")+'</div>':"";
+        return `<article class="tcard ${t.status}"><div class="ttop"><b>${t.seq}. ${esc(t.project)}</b><span class="st ${t.status}">${t.statusText}</span></div><div class="tmeta"><div><span>归属中心</span><strong>${esc(t.center)}</strong></div><div><span>负责人</span><strong>${esc(t.owner||"未填")}</strong></div><div><span>是否自研</span><strong>${esc(t.selfDeveloped||"未填")}</strong></div><div><span>判定原因</span><strong>${esc(t.reason)}${src}</strong></div></div>${tagHtml}<div class="desc"><div><span>阶段计划 / 当月计划</span><p>${esc(t.stagePlan||t.latestPlan||"未填")}</p></div><div><span>实际进展 / 备注</span><p>${esc(t.latestActual||t.latestNote||"未填")}</p></div></div></article>`;
+      }).join("")||'<p class="empty">暂无明细。</p>';
+      document.getElementById("dmask").classList.add("open");
+      document.getElementById("drawer").classList.add("open");
+    }
+
+    function bindDrill(){document.querySelectorAll("[data-d]").forEach(el=>el.addEventListener("click",()=>openDrill(el.dataset.d)))}
+
+    function closeD(){document.getElementById("dmask").classList.remove("open");document.getElementById("drawer").classList.remove("open")}
+    document.getElementById("dclose").addEventListener("click",closeD);
+    document.getElementById("dmask").addEventListener("click",closeD);
+    document.getElementById("ruleBtn").addEventListener("click",()=>document.getElementById("ruleModal").classList.add("open"));
+    document.getElementById("ruleClose").addEventListener("click",()=>document.getElementById("ruleModal").classList.remove("open"));
+    document.getElementById("ruleModal").addEventListener("click",e=>{if(e.target.id==="ruleModal")document.getElementById("ruleModal").classList.remove("open")});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeD();document.getElementById("ruleModal").classList.remove("open")}});
+
+    document.querySelectorAll(".mbtn").forEach(b=>b.addEventListener("click",()=>{
+      document.querySelectorAll(".mbtn").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+    }));
+    document.getElementById("goBtn").addEventListener("click",()=>{
+      const sel=document.querySelector(".mbtn.on");
+      if(!sel)return;
+      curM=Number(sel.dataset.m);
+      render(curM);
+    });
+
+    const PRESETS={
+      summary:"请对当前月份数据进行月度分析总结，包括：\n1. 整体态势评估（稳/需关注/失控）\n2. 各中心任务完成情况对比\n3. 风险趋势（与前期相比的变化）\n4. 重点关注建议（需领导盯办的事项）",
+      risk:"请分析以下数据，智能识别可能存在风险但尚未被标记的任务：\n1. 有计划但长期未更新实际进展的任务\n2. 多次出现'暂缓'、'待确认'的任务\n3. 负责人空缺或未填写的任务\n4. 进展描述模糊不清的任务\n请列出具体任务序号和名称，说明判断依据。",
+      reason:"请对以下异常/风险任务进行原因推测和建议：\n1. 分析每个异常任务可能的风险原因\n2. 给出具体的解决建议和措施\n3. 建议是否需要领导协调或介入\n4. 按紧急程度排序"
+    };
+    let aiHistory=[];
+
+    function buildContext(){
+      const MN=["","1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+      const maxM=DD.currentMonth;
+      let ctx=`以下是全部月份（1-${maxM}月）的工作目标数据：\n\n`;
+      for(let m=1;m<=maxM;m++){
+        const s=calcAll(m);
+        ctx+=`=== ${MN[m]} ===\n任务总数：${s.total}，正常：${s.green}，风险：${s.yellow}，异常：${s.red}\n按期完成率：${s.ontimeRate}%，问题闭环率：${s.closedRate}%\n`;
+        s.centers.forEach((c,i)=>ctx+=`  中心${i+1}.${c.center}：总数${c.total}，正常${c.green}，风险${c.yellow}，异常${c.red}，重点${c.key}\n`);
+        const reds=s.items.filter(t=>t.status==="red");
+        if(reds.length){ctx+=`  异常任务：`;reds.forEach(t=>ctx+=`[${t.seq}]${t.project}(${t.reason}) `);ctx+="\n"}
+        const noplan=s.items.filter(t=>t.hasMonthPlan&&!t.latestActual);
+        if(noplan.length){ctx+=`  有计划未填实际（${noplan.length}项）：`;noplan.slice(0,10).forEach(t=>ctx+=`[${t.seq}]${t.project} `);ctx+="\n"}
+        ctx+=`  任务明细：\n`;
+        s.items.slice(0,40).forEach(t=>ctx+=`  [${t.seq}] ${t.project} | ${t.center} | ${t.owner||"未填"} | ${t.statusText} | ${t.reason} | 计划：${(t.latestPlan||"").slice(0,50)} | 实际：${(t.latestActual||"").slice(0,50)}\n`);
+        ctx+="\n";
+      }
+      ctx+=`当前选中的分析月份是：${MN[curM]}\n`;
+      return ctx;
+    }
+
+    async function callAI(userMsg){
+      const cfg=localStorage.getItem('ai_config');
+      if(!cfg){addMsg('assistant','请先在看板首页配置 AI 模型（API 地址、Key、模型名称）。');return}
+      let c;try{c=JSON.parse(cfg)}catch(e){addMsg('assistant','AI 配置格式错误，请重新配置。');return}
+      if(!c.apiUrl||!c.apiKey||!c.model){addMsg('assistant','AI 配置不完整，请检查 API 地址、Key 和模型名称。');return}
+      const sysPrompt="你是项目管理分析助手。根据提供的项目数据回答问题。回答使用中文，结构清晰，用编号和要点组织内容。";
+      const ctx=buildContext();
+      const messages=[{role:"system",content:sysPrompt+"\n\n"+ctx},...aiHistory,{role:"user",content:userMsg}];
+      addMsg('assistant','');
+      const lastMsg=document.querySelector('.ai-msg.assistant:last-child span');
+      lastMsg.innerHTML='<div class="ai-loading"><i></i><i></i><i></i></div>';
+      let url=c.apiUrl.replace(/\/$/,'');
+      if(!url.endsWith('/chat/completions'))url+=(url.endsWith('/v1')||url.endsWith('/v4')?'':'/v1')+'/chat/completions';
+      try{
+        const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey},body:JSON.stringify({model:c.model,messages,stream:true})});
+        if(!resp.ok){const err=await resp.text();throw new Error('API错误('+resp.status+'): '+err)}
+        const reader=resp.body.getReader();const decoder=new TextDecoder();let result='';let buffer='';
+        while(true){
+          const{done,value}=await reader.read();if(done)break;
+          buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';
+          for(const line of lines){
+            const trimmed=line.trim();if(!trimmed.startsWith('data: '))continue;
+            const data=trimmed.slice(6);if(data==='[DONE]')continue;
+            try{const json=JSON.parse(data);const delta=json.choices?.[0]?.delta?.content;if(delta){result+=delta;lastMsg.textContent=result}}catch(e){}
+          }
+        }
+        aiHistory.push({role:"user",content:userMsg},{role:"assistant",content:result});
+        if(aiHistory.length>10)aiHistory=aiHistory.slice(-8);
+      }catch(e){lastMsg.textContent='调用失败：'+e.message}
+    }
+
+    function addMsg(role,text){
+      const d=document.createElement('div');d.className='ai-msg '+role;
+      d.innerHTML='<span>'+esc(text)+'</span>';document.getElementById('aiBody').appendChild(d);
+      document.getElementById('aiBody').scrollTop=999999;
+    }
+
+    document.getElementById("aiBtn").addEventListener("click",()=>{
+      document.getElementById("aiBody").innerHTML='';aiHistory=[];
+      document.getElementById("aiModal").classList.add("open");
+    });
+    document.getElementById("aiClose").addEventListener("click",()=>document.getElementById("aiModal").classList.remove("open"));
+    document.getElementById("aiModal").addEventListener("click",e=>{if(e.target.id==="aiModal")document.getElementById("aiModal").classList.remove("open")});
+    document.querySelectorAll(".ai-pbtn").forEach(b=>b.addEventListener("click",()=>callAI(PRESETS[b.dataset.p])));
+    document.getElementById("aiSend").addEventListener("click",()=>{
+      const v=document.getElementById("aiInput").value.trim();if(!v)return;
+      addMsg('user',v);document.getElementById("aiInput").value='';callAI(v);
+    });
+    document.getElementById("aiInput").addEventListener("keydown",e=>{if(e.key==='Enter')document.getElementById("aiSend").click()});
+
+    render(CM);
+  })();
+  </script>
+</body>
+</html>
