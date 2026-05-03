@@ -5,6 +5,7 @@ import json
 import re
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -274,7 +275,7 @@ def compact(text: str, length: int = 90) -> str:
     return text if len(text) <= length else text[: length - 1] + "…"
 
 
-def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: Path, source_name: str, sheet_indicator: str = "") -> None:
+def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: Path, source_name: str, sheet_indicator: str = "", update_time: str = "") -> None:
     summary = summarize(tasks)
     data_json = json.dumps({"tasks": tasks, "currentMonth": CURRENT_MONTH}, ensure_ascii=False)
 
@@ -372,7 +373,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
   <main class="page">
     <header class="top">
       <div><h1>{html.escape(title)}</h1><p class="sub">{html.escape(subtitle)}｜数据来源：{html.escape(source_name)}</p></div>
-      <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03</span></div>
+      <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：{update_time}</span></div>
     </header>
     <nav class="mbar"><label>分析月份：</label><span id="monthBtns"></span><button class="mbtn-go" id="goBtn">确定</button></nav>
     <div id="root"></div>
@@ -427,6 +428,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
     let CM=Math.max(defaultCM, DD.currentMonth||1);
     raw.forEach(t=>(t.monthly||[]).forEach(m=>{{if((m.plan||m.actual)&&m.month>CM)CM=m.month}}));
     DD.currentMonth=CM;
+    if(DD.updateTime)document.querySelector('.stamp').textContent='更新：'+DD.updateTime;
     let curM=CM;
     /* 动态生成月份按钮 */
     (function(){{
@@ -1060,8 +1062,8 @@ h2{{margin:0 0 16px;font-size:22px}}
         }}
       }})));
 
-      localStorage.setItem('kanban_uploaded_business',JSON.stringify({{tasks:bizTasks,currentMonth:maxMonth,sheet:'business'}}));
-      localStorage.setItem('kanban_uploaded_support',JSON.stringify({{tasks:supTasks,currentMonth:maxMonth,sheet:'support'}}));
+      const uploadTime=new Date().toLocaleString('zh-CN');localStorage.setItem('kanban_uploaded_business',JSON.stringify({{tasks:bizTasks,currentMonth:maxMonth,sheet:'business',updateTime:uploadTime}}));
+      localStorage.setItem('kanban_uploaded_support',JSON.stringify({{tasks:supTasks,currentMonth:maxMonth,sheet:'support',updateTime:uploadTime}}));
 
       document.getElementById('loadMask').classList.remove('open');
       toast('文件解析成功！业务 '+bizTasks.length+' 项，支撑 '+supTasks.length+' 项','ok');
@@ -1089,6 +1091,7 @@ def main() -> None:
         business_tasks = parse_sheet(zip_file, business_name, sheets[business_name])
         support_tasks = parse_sheet(zip_file, support_name, sheets[support_name])
 
+    update_time = datetime.fromtimestamp(workbook_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     business_summary = summarize(business_tasks)
     support_summary = summarize(support_tasks)
 
@@ -1099,6 +1102,7 @@ def main() -> None:
         Path("business_goal_dashboard.html"),
         workbook_path.name,
         sheet_indicator="business",
+        update_time=update_time,
     )
     build_dashboard(
         "支撑中心目标驾驶舱看板",
@@ -1107,6 +1111,7 @@ def main() -> None:
         Path("support_center_goal_dashboard.html"),
         workbook_path.name,
         sheet_indicator="support",
+        update_time=update_time,
     )
     build_index(business_summary, support_summary)
 

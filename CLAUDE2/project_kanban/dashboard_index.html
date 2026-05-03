@@ -203,8 +203,8 @@ h2{margin:0 0 16px;font-size:22px}
         }
       })));
 
-      localStorage.setItem('kanban_uploaded_business',JSON.stringify({tasks:bizTasks,currentMonth:maxMonth,sheet:'business'}));
-      localStorage.setItem('kanban_uploaded_support',JSON.stringify({tasks:supTasks,currentMonth:maxMonth,sheet:'support'}));
+      const uploadTime=new Date().toLocaleString('zh-CN');localStorage.setItem('kanban_uploaded_business',JSON.stringify({tasks:bizTasks,currentMonth:maxMonth,sheet:'business',updateTime:uploadTime}));
+      localStorage.setItem('kanban_uploaded_support',JSON.stringify({tasks:supTasks,currentMonth:maxMonth,sheet:'support',updateTime:uploadTime}));
 
       document.getElementById('loadMask').classList.remove('open');
       toast('文件解析成功！业务 '+bizTasks.length+' 项，支撑 '+supTasks.length+' 项','ok');

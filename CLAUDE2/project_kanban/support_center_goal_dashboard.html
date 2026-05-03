@@ -87,7 +87,7 @@
   <main class="page">
     <header class="top">
       <div><h1>支撑中心目标驾驶舱看板</h1><p class="sub">子表：支撑中心目标｜数据来源：2026年工作目标o (3).xlsx</p></div>
-      <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03</span></div>
+      <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03 23:32</span></div>
     </header>
     <nav class="mbar"><label>分析月份：</label><span id="monthBtns"></span><button class="mbtn-go" id="goBtn">确定</button></nav>
     <div id="root"></div>
@@ -142,6 +142,7 @@
     let CM=Math.max(defaultCM, DD.currentMonth||1);
     raw.forEach(t=>(t.monthly||[]).forEach(m=>{if((m.plan||m.actual)&&m.month>CM)CM=m.month}));
     DD.currentMonth=CM;
+    if(DD.updateTime)document.querySelector('.stamp').textContent='更新：'+DD.updateTime;
     let curM=CM;
     /* 动态生成月份按钮 */
     (function(){
