@@ -50,7 +50,7 @@
     .empty{padding:20px;text-align:center;color:var(--muted);font-size:13px;margin:0}
     .drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.34);backdrop-filter:blur(2px);display:none;z-index:20}.drawer-mask.open{display:block}.drawer{position:fixed;top:0;right:0;width:min(820px,95vw);height:100vh;background:#fff;z-index:21;box-shadow:-24px 0 52px rgba(20,33,58,.22);transform:translateX(104%);transition:.22s;display:flex;flex-direction:column}.drawer.open{transform:translateX(0)}.drawer-head{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}.drawer h2{margin:0;font-size:20px}.drawer p{margin:6px 0 0;color:var(--muted);font-size:13px}.close{width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:22px;cursor:pointer}.drawer-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:#f7f9fc}.drawer-summary div{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px}.drawer-summary span{display:block;font-size:12px;color:var(--muted)}.drawer-summary b{font-size:20px}.drawer-body{padding:12px 18px 18px;overflow:auto}
     .tcard{border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:10px;background:#fff}.tcard.red{background:var(--red-soft);border-color:#ffc8c2}.tcard.yellow{background:var(--yellow-soft);border-color:#f3d894}.tcard.green{background:var(--green-soft);border-color:#bce8ce}.ttop{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.ttop b{font-size:15px}.tmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}.tmeta span,.desc span{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}.tmeta strong,.desc p{margin:0;color:var(--ink);font-size:13px;line-height:1.45}.desc{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}
-    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);backdrop-filter:blur(2px);z-index:30;padding:22px}.modal.open{display:flex}.rule{width:min(720px,94vw);background:#fff;border-radius:var(--radius);border:1px solid var(--line);box-shadow:0 28px 70px rgba(20,33,58,.28);overflow:hidden}.rule-head{display:flex;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}.rule-head h2{margin:0;font-size:20px}.rule-body{display:grid;gap:10px;padding:16px 18px}.rule-item{display:grid;grid-template-columns:82px 1fr;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:12px}.rule-item.red{background:var(--red-soft);border-color:#ffc8c2}.rule-item.green{background:var(--green-soft);border-color:#bce8ce}.rule-item.yellow{background:var(--yellow-soft);border-color:#f3d894}.badge{height:28px;border-radius:999px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}.rule-item.red .badge{background:var(--red)}.rule-item.green .badge{background:var(--green)}.rule-item.yellow .badge{background:var(--yellow)}.rule-item b{display:block;margin-bottom:4px}.rule-item span{font-size:13px;line-height:1.55}
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);backdrop-filter:blur(2px);z-index:30;padding:22px}.modal.open{display:flex}.rule{width:min(720px,94vw);background:#fff;border-radius:var(--radius);border:1px solid var(--line);box-shadow:0 28px 70px rgba(20,33,58,.28);overflow:hidden}.rule-head{display:flex;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}.rule-head h2{margin:0;font-size:20px}.rule-body{display:grid;gap:10px;padding:16px 18px;max-height:calc(90vh - 80px);overflow-y:auto}.rule-item{display:grid;grid-template-columns:82px 1fr;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:12px}.rule-item.red{background:var(--red-soft);border-color:#ffc8c2}.rule-item.green{background:var(--green-soft);border-color:#bce8ce}.rule-item.yellow{background:var(--yellow-soft);border-color:#f3d894}.badge{height:28px;border-radius:999px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}.rule-item.red .badge{background:var(--red)}.rule-item.green .badge{background:var(--green)}.rule-item.yellow .badge{background:var(--yellow)}.badge.blue{background:var(--blue)}.rule-item b{display:block;margin-bottom:4px}.rule-item span{font-size:13px;line-height:1.55}
     @media(max-width:1180px){.kpis,.grid,.lower,.decision,.mswrap{grid-template-columns:1fr 1fr}.conclusion{grid-column:1/-1}}@media(max-width:760px){.page{width:calc(100vw - 20px)}.top,.kpis,.grid,.lower,.decision,.mswrap,.iwrap,.drawer-summary,.tmeta,.desc{display:grid;grid-template-columns:1fr}.iwrap section+section{border-left:0;border-top:1px solid var(--line)}}
     .ai-btn{height:36px;border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:6px;padding:0 14px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
     .ai-btn:hover{background:#1a4bb8}
@@ -107,6 +107,9 @@
         <article class="rule-item red"><div class="badge">年度D</div><div><b>年度计划未完成</b><span>重点任务当年未完成年度计划，负责人当年考核为D。</span></div></article>
         <article class="rule-item green"><div class="badge">保底C</div><div><b>全部按时完成</b><span>重点任务全部按时完成，则任务负责人考核保底为C。</span></div></article>
         <article class="rule-item yellow"><div class="badge">看板口径</div><div><b>红黄绿判定</b><span>红色：扣分/延期/未完成/质量问题；黄色：暂停/暂缓/待确认/有计划无实际；绿色：已完成或按计划推进。</span></div></article>
+        <article class="rule-item"><div class="badge blue">统计①</div><div><b>总体结论栏（各月合并）</b><span>以下统计基于全部月份合并分析，不随月份切换变化：</span><br><span>• 任务总数：工作表中所有有效任务的数量</span><br><span>• 正常：任一月份曾判定为绿色（实际进展含"已完成/完成/已上线/已部署/已发起/已提交/已输出"等关键词）</span><br><span>• 风险：从未判定为红色，也从未判定为绿色的任务</span><br><span>• 异常：任一月份曾判定为红色（扣分/延期/未完成/质量问题）</span><br><span>• 按期完成率 = 曾为绿色的任务数 ÷ 任务总数 × 100%</span><br><span>• 问题闭环率 = 任一月份曾闭环的任务数 ÷ 任务总数 × 100%（闭环 = 状态绿色 或 实际含完成关键词）</span><br><span>• 需盯办：任一月份曾为红色 或 需要协调的事项</span><br><span>• 完成：任一月份的实际进展中包含"已完成/完成/已上线/已部署/已发起/已提交/已输出"等关键词的任务数</span><br><span>• 暂停：任一月份的实际进展中包含"暂停/暂缓"关键词的任务数</span></div></article>
+        <article class="rule-item"><div class="badge blue">统计②</div><div><b>决策区（按选中月份）</b><span>以下统计随月份切换动态变化：</span><br><span>• 需领导盯办：选中月份判定为红色 或 含"协调"关键词且非绿色的任务</span><br><span>• 重点任务：keyTask 列包含"重点任务"的任务</span><br><span>• N月有计划：选中月份计划列有内容，或阶段性成果计划中提到该月份</span><br><span>• 自研任务：是否自研列包含"是"的任务</span><br><span>• 完成任务：选中月份的实际进展中包含完成关键词的任务</span><br><span>• 暂停任务：选中月份的实际进展中包含"暂停/暂缓"的任务</span></div></article>
+        <article class="rule-item"><div class="badge blue">统计③</div><div><b>分类判定规则</b><span>按选中月份的数据逐一判定，优先级从高到低：</span><br><span>① 红色：得分 &lt; 0 或 含"扣分/未按要求/质量问题" → 扣分/质量问题</span><br><span>② 红色：含"延期/延时/未完成" → 当月延期或未完成</span><br><span>③ 黄色：有计划但未填实际 → 当月有计划但未填实际</span><br><span>④ 黄色：含"暂缓/暂停/待确认/未开始/暂未启动/暂无进度/跟进/正在/待/风险" → 暂停/待确认/外部依赖</span><br><span>⑤ 绿色：实际含"已完成/完成/已上线/已部署/已发起/已提交/已输出" → 已完成或按计划推进</span><br><span>⑥ 黄色：以上均不匹配 → 进展待补充</span></div></article>
       </div>
     </div>
   </section>
@@ -228,7 +231,7 @@
     const ST={green:"正常",yellow:"风险",red:"异常"};
 
     function render(month){
-      const s=calcAll(month), m=calcMerged(), ml=month+"月", t60=s.items.slice(0,60);
+      const s=calcAll(month), m=calcMerged(), ml=month+"月";
       document.querySelectorAll(".mbtn").forEach(b=>{b.classList.toggle("on",Number(b.dataset.m)===month)});
 
       document.getElementById("root").innerHTML=`
@@ -267,9 +270,18 @@
       <section class="lower">
         <article class="panel"><div class="head"><div><b>${ml}关键里程碑</b><span>有${ml}计划的节点</span></div></div>
           <div class="mswrap">${s.mTasks.slice(0,5).map(t=>`<article class="ms ${t.status}" data-d="t::${t.seq}"><b>${esc(cpt(t.project,18))}</b><span>负责人：${esc(t.owner||"未填")}</span><p>${esc(cpt(t.latestPlan,54))}</p><strong>${ml}</strong><em>${ST[t.status]}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}</div></article>
-        <article class="panel"><div class="head"><div><b>任务明细列表</b><span>展示前60项，点击可下钻</span></div></div>
-          <table><thead><tr><th style="width:56px">序号</th><th>中心</th><th>项目</th><th style="width:80px">负责人</th><th style="width:70px">状态</th><th>原因</th></tr></thead><tbody>
-          ${t60.map(t=>`<tr data-d="t::${t.seq}"><td>${t.seq}</td><td>${esc(t.center)}</td><td>${esc(cpt(t.project,28))}</td><td>${esc(t.owner||"未填")}</td><td><span class="st ${t.status}">${t.statusText}</span></td><td>${esc(cpt(t.reason,22))}</td></tr>`).join("")}
+        <article class="panel"><div class="head"><div><b>负责人问题统计</b><span>按负责人汇总异常/风险任务数量，点击行可下钻</span></div></div>
+          <table><thead><tr><th>负责人</th><th>任务数</th><th>异常</th><th>风险</th><th>正常</th><th style="max-width:260px">异常/风险项目</th></tr></thead><tbody>
+          ${(() => {
+            const om={};
+            s.items.forEach(t=>{
+              const o=t.owner||"未填";
+              if(!om[o])om[o]={name:o,total:0,green:0,yellow:0,red:0,issues:[]};
+              om[o].total++;om[o][t.status]++;
+              if(t.status==="red"||t.status==="yellow")om[o].issues.push(t.seq+"."+t.project);
+            });
+            return Object.values(om).sort((a,b)=>(b.red*3+b.yellow)-(a.red*3+a.yellow)).map(o=>`<tr style="cursor:pointer"><td><b>${esc(o.name)}</b></td><td data-d="o::${esc(o.name)}" style="cursor:pointer">${o.total}</td><td data-d="os::${esc(o.name)}::red" style="cursor:pointer">${o.red?`<span class="st red">${o.red}</span>`:0}</td><td data-d="os::${esc(o.name)}::yellow" style="cursor:pointer">${o.yellow?`<span class="st yellow">${o.yellow}</span>`:0}</td><td data-d="os::${esc(o.name)}::green" style="cursor:pointer">${o.green?`<span class="st green">${o.green}</span>`:0}</td><td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.issues.slice(0,3).join("；"))}</td></tr>`).join("");
+          })()}
           </tbody></table></article>
       </section>`;
       bindDrill();
@@ -282,6 +294,8 @@
       if(key.startsWith("ms::")){const v=key.split("::")[1];return[mi.filter(t=>t.status===v),ST[v]+"任务（合并）",""]}
       if(key==="mdec")return[mi.filter(t=>t.needsDecision),"需盯办任务（合并）",""];
       if(key.startsWith("s::")){const v=key.split("::")[1];return[items.filter(t=>t.status===v),ST[v]+"任务（"+ml+"）",""]}
+      if(key.startsWith("o::")){const o=key.split("::")[1];return[items.filter(t=>(t.owner||"未填")===o),o+" 负责的全部任务",""]}
+      if(key.startsWith("os::")){const p=key.split("::"),o=p[1],v=p[2];return[items.filter(t=>(t.owner||"未填")===o&&t.status===v),o+" "+ST[v]+"任务",""]}
       if(key.startsWith("c::")){const c=key.split("::")[1];return[items.filter(t=>t.center===c),c+" 全部任务",""]}
       if(key.startsWith("cs::")){const p=key.split("::"),c=p[1],v=p[2];return[items.filter(t=>t.center===c&&t.status===v),c+" "+ST[v]+"任务",""]}
       if(key.startsWith("ck::")){const c=key.split("::")[1];return[items.filter(t=>t.center===c&&t.isKeyTask),c+" 重点任务",""]}
