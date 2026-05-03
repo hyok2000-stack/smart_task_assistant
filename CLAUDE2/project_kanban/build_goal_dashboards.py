@@ -320,6 +320,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
     .decision b{{font-size:22px}}.decision strong{{font-size:34px;color:var(--red)}}.decision span{{display:block;color:var(--muted);font-size:12px;margin-bottom:3px}}
     .grid{{display:grid;grid-template-columns:1.02fr .98fr;gap:10px;margin-bottom:10px}}
     .lower{{display:grid;grid-template-columns:1.15fr .85fr;gap:10px}}
+    .lower-left{{display:flex;flex-direction:column;gap:10px}}
     .panel{{background:#fff;border:1px solid rgba(210,220,233,.94);border-radius:var(--radius);box-shadow:0 12px 34px rgba(31,48,83,.08);overflow:hidden}}
     .head{{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#f7f9fc)}}
     .head b{{font-size:16px}}.head span{{color:var(--muted);font-size:12px;margin-left:8px}}
@@ -331,7 +332,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
     .icard{{margin:8px;padding:10px;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;background:#fff}}.icard.red{{border-color:#ffc8c2;box-shadow:inset 4px 0 0 var(--red)}}.icard.yellow{{border-color:#f3d894;box-shadow:inset 4px 0 0 var(--yellow)}}
     .ititle{{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}}.ititle b{{font-size:14px}}
     dl{{display:grid;grid-template-columns:56px 1fr;margin:0;gap:3px 8px;font-size:12px}}dt{{color:var(--muted)}}dd{{margin:0;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-    .mswrap{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 12px 12px}}.ms{{border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:var(--radius);padding:9px;min-height:126px;cursor:pointer;display:flex;flex-direction:column;gap:5px}}.ms.green{{background:var(--green-soft);border-color:#bce8ce;border-top-color:var(--green)}}.ms.yellow{{background:var(--yellow-soft);border-color:#f3d894;border-top-color:var(--yellow)}}.ms.red{{background:var(--red-soft);border-color:#ffc8c2;border-top-color:var(--red)}}.ms b{{font-size:13px}}.ms span,.ms p{{font-size:12px;color:var(--muted);margin:0}}.ms strong{{font-size:22px;margin-top:auto}}.ms em{{font-style:normal;font-weight:800;color:var(--ink)}}
+    .mswrap{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 12px 12px;overflow-y:auto}}.ms{{border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:var(--radius);padding:9px;min-height:126px;cursor:pointer;display:flex;flex-direction:column;gap:5px}}.ms.green{{background:var(--green-soft);border-color:#bce8ce;border-top-color:var(--green)}}.ms.yellow{{background:var(--yellow-soft);border-color:#f3d894;border-top-color:var(--yellow)}}.ms.red{{background:var(--red-soft);border-color:#ffc8c2;border-top-color:var(--red)}}.ms b{{font-size:13px}}.ms span,.ms p{{font-size:12px;color:var(--muted);margin:0}}.ms strong{{font-size:22px;margin-top:auto}}.ms em{{font-style:normal;font-weight:800;color:var(--ink)}}
     .empty{{padding:20px;text-align:center;color:var(--muted);font-size:13px;margin:0}}
     .drawer-mask{{position:fixed;inset:0;background:rgba(15,23,42,.34);backdrop-filter:blur(2px);display:none;z-index:20}}.drawer-mask.open{{display:block}}.drawer{{position:fixed;top:0;right:0;width:min(820px,95vw);height:100vh;background:#fff;z-index:21;box-shadow:-24px 0 52px rgba(20,33,58,.22);transform:translateX(104%);transition:.22s;display:flex;flex-direction:column}}.drawer.open{{transform:translateX(0)}}.drawer-head{{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}}.drawer h2{{margin:0;font-size:20px}}.drawer p{{margin:6px 0 0;color:var(--muted);font-size:13px}}.close{{width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:22px;cursor:pointer}}.drawer-summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:#f7f9fc}}.drawer-summary div{{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px}}.drawer-summary span{{display:block;font-size:12px;color:var(--muted)}}.drawer-summary b{{font-size:20px}}.drawer-body{{padding:12px 18px 18px;overflow:auto}}
     .tcard{{border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:10px;background:#fff}}.tcard.red{{background:var(--red-soft);border-color:#ffc8c2}}.tcard.yellow{{background:var(--yellow-soft);border-color:#f3d894}}.tcard.green{{background:var(--green-soft);border-color:#bce8ce}}.ttop{{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}}.ttop b{{font-size:15px}}.tmeta{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}}.tmeta span,.desc span{{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}}.tmeta strong,.desc p{{margin:0;color:var(--ink);font-size:13px;line-height:1.45}}.desc{{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}}
@@ -355,6 +356,16 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
     .ai-input{{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#f7f9fc}}
     .ai-input input{{flex:1;height:38px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font-size:14px}}
     .ai-input button{{height:38px;background:var(--blue);color:#fff;border:none;border-radius:6px;padding:0 18px;font-weight:700;font-size:14px;cursor:pointer}}
+    .rectify-tabs{{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);background:#f7f9fc}}
+    .rtab{{height:30px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)}}.rtab:hover{{background:var(--blue-soft)}}.rtab.on{{background:var(--blue);color:#fff;border-color:var(--blue)}}
+    .rectify-cards{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;overflow-y:auto}}
+    .rcard{{border:1px solid var(--line);border-radius:var(--radius);padding:12px;border-left:4px solid var(--yellow);background:#fff}}.rcard.adopted{{border-left-color:var(--blue)}}.rcard.resolved{{border-left-color:var(--green);opacity:.7}}
+    .rcard-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}}.rcard-head b{{font-size:14px}}
+    .rcard-body{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}}.rcard-body span{{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}}.rcard-body p{{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}}
+    .rcard-meta{{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:8px}}
+    .rcard-actions{{display:flex;gap:8px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}}
+    .rbtn{{height:28px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer}}.rbtn:hover{{background:var(--blue-soft)}}.rbtn.adopt{{border-color:var(--blue);color:var(--blue)}}.rbtn.ignore{{border-color:var(--red);color:var(--red)}}.rbtn.resolve{{border-color:var(--green);color:var(--green)}}
+    @media(max-width:760px){{.rectify-cards,.rcard-body{{grid-template-columns:1fr}}}}
   </style>
 </head>
 <body>
@@ -363,7 +374,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
       <div><h1>{html.escape(title)}</h1><p class="sub">{html.escape(subtitle)}｜数据来源：{html.escape(source_name)}</p></div>
       <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03</span></div>
     </header>
-    <nav class="mbar"><label>分析月份：</label>{month_buttons}<button class="mbtn-go" id="goBtn">确定</button></nav>
+    <nav class="mbar"><label>分析月份：</label><span id="monthBtns"></span><button class="mbtn-go" id="goBtn">确定</button></nav>
     <div id="root"></div>
   </main>
   <div class="ai-modal" id="aiModal">
@@ -401,6 +412,7 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
   <script>
   (function(){{
     let DD={data_json};
+    const defaultCM=DD.currentMonth||1;
     const ulKey='kanban_uploaded_{sheet_indicator}';
     const uploaded=localStorage.getItem(ulKey);
     if(uploaded){{
@@ -410,8 +422,19 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
         localStorage.removeItem(ulKey);
       }}catch(e){{localStorage.removeItem(ulKey)}}
     }}
-    const raw=DD.tasks, CM=DD.currentMonth;
+    const raw=DD.tasks;
+    /* 月份=MAX(Python默认值, 上传值, 数据实际检测) */
+    let CM=Math.max(defaultCM, DD.currentMonth||1);
+    raw.forEach(t=>(t.monthly||[]).forEach(m=>{{if((m.plan||m.actual)&&m.month>CM)CM=m.month}}));
+    DD.currentMonth=CM;
     let curM=CM;
+    /* 动态生成月份按钮 */
+    (function(){{
+      const mb=document.getElementById('monthBtns');if(!mb)return;
+      let html='';
+      for(let m=1;m<=CM;m++)html+='<button class="mbtn" data-m="'+m+'">'+m+'月</button>';
+      mb.innerHTML=html;
+    }})();
 
     const NEG=["扣分","未按要求","质量问题"],RISK=["暂缓","暂停","待确认","未开始","暂未启动","暂无进度","跟进","正在","待","风险"],DONE=["已完成","完成","已上线","已部署","已发起","已提交","已输出"],MN=["一","二","三","四","五","六","七","八","九","十","十一","十二"];
     function has(t,ws){{return ws.some(w=>t.includes(w))}}
@@ -553,23 +576,36 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
           <section><div class="btitle yellow">黄榜预警 <span data-d="s::yellow" style="cursor:pointer">${{s.yellow}}项</span></div>${{s.yellows.slice(0,4).map(t=>`<article class="icard yellow" data-d="t::${{t.seq}}"><div class="ititle"><b>${{esc(cpt(t.project,22))}}</b><span class="tag yellow">${{esc(t.reason)}}</span></div><dl><dt>中心</dt><dd>${{esc(t.center)}}</dd><dt>负责人</dt><dd>${{esc(t.owner||"未填")}}</dd><dt>实际</dt><dd>${{esc(cpt(t.latestActual||t.latestNote||"未填实际",56))}}</dd></dl></article>`).join("")||'<p class="empty">暂无黄榜任务</p>'}}</section></div></article>
       </section>
       <section class="lower">
-        <article class="panel"><div class="head"><div><b>${{ml}}关键里程碑</b><span>有${{ml}}计划的节点</span></div></div>
-          <div class="mswrap">${{s.mTasks.slice(0,5).map(t=>`<article class="ms ${{t.status}}" data-d="t::${{t.seq}}"><b>${{esc(cpt(t.project,18))}}</b><span>负责人：${{esc(t.owner||"未填")}}</span><p>${{esc(cpt(t.latestPlan,54))}}</p><strong>${{ml}}</strong><em>${{ST[t.status]}}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}}</div></article>
+        <div class="lower-left">
+          <article class="panel"><div class="head"><div><b>${{ml}}关键里程碑</b><span>有${{ml}}计划的节点</span></div></div>
+          <div class="mswrap">${{s.mTasks.slice(0,10).map(t=>`<article class="ms ${{t.status}}" data-d="t::${{t.seq}}"><b>${{esc(cpt(t.project,18))}}</b><span>负责人：${{esc(t.owner||"未填")}}</span><p>${{esc(cpt(t.latestPlan,54))}}</p><strong>${{ml}}</strong><em>${{ST[t.status]}}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}}</div></article>
+          <article class="panel">
+          <div class="head"><div><b>整改任务清单</b><span>AI分析生成整改措施，持续跟踪</span></div><button class="ai-btn" id="rectifyBtn">AI分析生成整改任务</button></div>
+          <div class="rectify-tabs">
+          <button class="rtab on" data-tab="pending">待选 (0)</button>
+          <button class="rtab" data-tab="adopted">整改中 (0)</button>
+          <button class="rtab" data-tab="resolved">已整改 (0)</button>
+          </div>
+          <div class="rectify-cards" id="rectifyCards"></div>
+          </article>
+        </div>
         <article class="panel"><div class="head"><div><b>负责人问题统计</b><span>按负责人汇总异常/风险任务数量，点击行可下钻</span></div></div>
-          <table><thead><tr><th>负责人</th><th>任务数</th><th>异常</th><th>风险</th><th>正常</th><th style="max-width:260px">异常/风险项目</th></tr></thead><tbody>
-          ${{(() => {{
-            const om={{}};
-            s.items.forEach(t=>{{
-              const o=t.owner||"未填";
-              if(!om[o])om[o]={{name:o,total:0,green:0,yellow:0,red:0,issues:[]}};
-              om[o].total++;om[o][t.status]++;
-              if(t.status==="red"||t.status==="yellow")om[o].issues.push(t.seq+"."+t.project);
-            }});
-            return Object.values(om).sort((a,b)=>(b.red*3+b.yellow)-(a.red*3+a.yellow)).map(o=>`<tr style="cursor:pointer"><td><b>${{esc(o.name)}}</b></td><td data-d="o::${{esc(o.name)}}" style="cursor:pointer">${{o.total}}</td><td data-d="os::${{esc(o.name)}}::red" style="cursor:pointer">${{o.red?`<span class="st red">${{o.red}}</span>`:0}}</td><td data-d="os::${{esc(o.name)}}::yellow" style="cursor:pointer">${{o.yellow?`<span class="st yellow">${{o.yellow}}</span>`:0}}</td><td data-d="os::${{esc(o.name)}}::green" style="cursor:pointer">${{o.green?`<span class="st green">${{o.green}}</span>`:0}}</td><td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(o.issues.slice(0,3).join("；"))}}</td></tr>`).join("");
-          }})()}}
-          </tbody></table></article>
+        <table><thead><tr><th>负责人</th><th>任务数</th><th>异常</th><th>风险</th><th>正常</th><th style="max-width:260px">异常/风险项目</th></tr></thead><tbody>
+        ${{(() => {{
+        const om={{}};
+        s.items.forEach(t=>{{
+        const o=t.owner||"未填";
+        if(!om[o])om[o]={{name:o,total:0,green:0,yellow:0,red:0,issues:[]}};
+        om[o].total++;om[o][t.status]++;
+        if(t.status==="red"||t.status==="yellow")om[o].issues.push(t.seq+"."+t.project);
+        }});
+        return Object.values(om).sort((a,b)=>(b.red*3+b.yellow)-(a.red*3+a.yellow)).map(o=>`<tr style="cursor:pointer"><td><b>${{esc(o.name)}}</b></td><td data-d="o::${{esc(o.name)}}" style="cursor:pointer">${{o.total}}</td><td data-d="os::${{esc(o.name)}}::red" style="cursor:pointer">${{o.red?`<span class="st red">${{o.red}}</span>`:0}}</td><td data-d="os::${{esc(o.name)}}::yellow" style="cursor:pointer">${{o.yellow?`<span class="st yellow">${{o.yellow}}</span>`:0}}</td><td data-d="os::${{esc(o.name)}}::green" style="cursor:pointer">${{o.green?`<span class="st green">${{o.green}}</span>`:0}}</td><td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${{esc(o.issues.slice(0,3).join("；"))}}</td></tr>`).join("");
+        }})()}}
+        </tbody></table></article>
       </section>`;
       bindDrill();
+      bindRectify();
+      renderRectify();
     }}
 
     function pick(key,m){{
@@ -710,6 +746,96 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
       addMsg('user',v);document.getElementById("aiInput").value='';callAI(v);
     }});
     document.getElementById("aiInput").addEventListener("keydown",e=>{{if(e.key==='Enter')document.getElementById("aiSend").click()}});
+
+    /* 整改任务清单 */
+    const RK='rectify_{sheet_indicator}';
+    let rectifyTab='pending';
+    function loadRectify(){{const d=localStorage.getItem(RK);if(d)try{{return JSON.parse(d)}}catch(e){{}}return[]}}
+    function saveRectify(list){{localStorage.setItem(RK,JSON.stringify(list))}}
+    function renderRectify(){{
+      const list=loadRectify();
+      const pn=list.filter(r=>r.status==='pending'),ad=list.filter(r=>r.status==='adopted'),rs=list.filter(r=>r.status==='resolved');
+      document.querySelectorAll('.rtab').forEach(b=>{{
+        const t=b.dataset.tab,n=t==='pending'?pn.length:t==='adopted'?ad.length:rs.length;
+        b.textContent=(t==='pending'?'待选':t==='adopted'?'整改中':'已整改')+' ('+n+')';
+        b.classList.toggle('on',t===rectifyTab);
+      }});
+      const fl=rectifyTab==='pending'?pn:rectifyTab==='adopted'?ad:rs;
+      const ct=document.getElementById('rectifyCards');
+      if(!ct)return;
+      if(!fl.length){{ct.innerHTML='<p class="empty">暂无整改任务</p>';return}}
+      ct.innerHTML=fl.map(r=>{{
+        let act='';
+        if(r.status==='pending')act='<button class="rbtn adopt" data-id="'+r.id+'">采纳</button><button class="rbtn ignore" data-id="'+r.id+'">忽略</button>';
+        else if(r.status==='adopted')act='<button class="rbtn resolve" data-id="'+r.id+'">标记已整改</button>';
+        return '<article class="rcard '+r.status+'"><div class="rcard-head"><b>'+r.seq+'. '+esc(r.project)+'</b>'+(r.status==='resolved'?'<span class="st green">已整改</span>':'')+'</div><div class="rcard-body"><div><span>问题</span><p>'+esc(r.issue)+'</p></div><div><span>整改措施</span><p>'+esc(r.measure)+'</p></div></div><div class="rcard-meta"><span>负责人：'+esc(r.owner||'未填')+'</span><span>'+r.month+'月分析</span></div>'+(act?'<div class="rcard-actions">'+act+'</div>':'')+'</article>';
+      }}).join('');
+      ct.querySelectorAll('.rbtn.adopt').forEach(b=>b.addEventListener('click',function(){{
+        const list=loadRectify(),item=list.find(r=>r.id===this.dataset.id);
+        if(item){{item.status='adopted';saveRectify(list);renderRectify()}}
+      }}));
+      ct.querySelectorAll('.rbtn.ignore').forEach(b=>b.addEventListener('click',function(){{
+        let list=loadRectify();list=list.filter(r=>r.id!==this.dataset.id);
+        saveRectify(list);renderRectify();
+      }}));
+      ct.querySelectorAll('.rbtn.resolve').forEach(b=>b.addEventListener('click',function(){{
+        const list=loadRectify(),item=list.find(r=>r.id===this.dataset.id);
+        if(item){{item.status='resolved';saveRectify(list);renderRectify()}}
+      }}));
+    }}
+    function bindRectify(){{
+      document.querySelectorAll('.rtab').forEach(b=>b.addEventListener('click',function(){{
+        rectifyTab=this.dataset.tab;renderRectify();
+      }}));
+      const rb=document.getElementById('rectifyBtn');
+      if(rb)rb.addEventListener('click',generateRectify);
+    }}
+    async function generateRectify(){{
+      const cfg=localStorage.getItem('ai_config');
+      if(!cfg){{alert('请先在看板首页配置 AI 模型');return}}
+      let c;try{{c=JSON.parse(cfg)}}catch(e){{alert('AI 配置格式错误');return}}
+      if(!c.apiUrl||!c.apiKey||!c.model){{alert('AI 配置不完整');return}}
+      const s=calcAll(curM);
+      const problems=s.items.filter(t=>t.status==='red'||t.status==='yellow');
+      if(!problems.length){{alert('当前'+curM+'月无异常/风险任务');return}}
+      const taskList=problems.map(t=>'序号:'+t.seq+' | 项目:'+t.project+' | 负责人:'+(t.owner||'未填')+' | 中心:'+t.center+' | 状态:'+t.statusText+' | 原因:'+t.reason+' | 计划:'+cpt(t.latestPlan||'未填',40)+' | 实际:'+cpt(t.latestActual||'未填',60)+' | 得分:'+(t.latestScore||'无')).join('\\n');
+      const prompt='你是项目管理整改顾问。以下是'+curM+'月的异常/风险任务数据，请根据每个任务的实际进展和异常原因推测根本原因，生成针对性的整改措施。\\n\\n要求：\\n1. 根据任务的实际进展和异常原因，推测根本原因，给出简明问题摘要（不超过30字）\\n2. 针对根本原因给出具体可执行的整改措施，包括责任人、时间节点、关键动作（不超过80字）\\n3. 严格按JSON数组格式返回，不要返回其他内容\\n\\n问题任务列表：\\n'+taskList+'\\n\\n返回格式示例：\\n[{{"seq":1,"issue":"问题摘要含原因分析","measure":"整改措施含责任人、时间、动作"}}]'
+      const btn=document.getElementById('rectifyBtn');
+      btn.disabled=true;btn.textContent='AI 分析中('+curM+'月)...';
+      let url=c.apiUrl.replace(/\\/$/,'');
+      if(!url.endsWith('/chat/completions'))url+=(url.endsWith('/v1')||url.endsWith('/v4')?'':'/v1')+'/chat/completions';
+      try{{
+        const resp=await fetch(url,{{method:'POST',headers:{{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey}},body:JSON.stringify({{model:c.model,messages:[{{role:'user',content:prompt}}],stream:true}})}});
+        if(!resp.ok){{const err=await resp.text();throw new Error('API错误('+resp.status+'): '+err)}}
+        const reader=resp.body.getReader();const decoder=new TextDecoder();let result='';let buffer='';
+        while(true){{
+          const{{done,value}}=await reader.read();if(done)break;
+          buffer+=decoder.decode(value,{{stream:true}});const lines=buffer.split('\\n');buffer=lines.pop()||'';
+          for(const line of lines){{
+            const trimmed=line.trim();if(!trimmed.startsWith('data: '))continue;
+            const data=trimmed.slice(6);if(data==='[DONE]')continue;
+            try{{const json=JSON.parse(data);const delta=json.choices?.[0]?.delta?.content;if(delta)result+=delta}}catch(e){{}}
+          }}
+        }}
+        if(!result){{alert('AI 未返回数据');return}}
+        const jsonMatch=result.match(/\\[[\\s\\S]*\\]/);
+        if(!jsonMatch){{alert('AI 返回格式异常，请重试\\n'+result.slice(0,200));return}}
+        let items;try{{items=JSON.parse(jsonMatch[0])}}catch(e){{alert('AI 返回 JSON 解析失败\\n'+result.slice(0,200));return}}
+        const probMap={{}};problems.forEach(t=>{{probMap[t.seq]=t}});
+        const list=loadRectify();
+        const now=new Date().toISOString().slice(0,10);
+        let added=0;
+        items.forEach(item=>{{
+          const task=probMap[item.seq];if(!task)return;
+          if(list.some(r=>r.seq===item.seq&&r.month===curM))return;
+          list.push({{id:'r_'+Date.now()+'_'+item.seq,seq:item.seq,project:task.project,owner:task.owner||'',issue:item.issue||'',measure:item.measure||'',status:'pending',month:curM,created:now}});
+          added++;
+        }});
+        saveRectify(list);rectifyTab='pending';renderRectify();
+        alert('生成成功！新增 '+added+' 项整改任务');
+      }}catch(e){{alert('AI 调用失败：'+e.message)
+      }}finally{{btn.disabled=false;btn.textContent='AI分析生成整改任务'}}
+    }}
 
     render(CM);
   }})();

@@ -35,6 +35,7 @@
     .decision b{font-size:22px}.decision strong{font-size:34px;color:var(--red)}.decision span{display:block;color:var(--muted);font-size:12px;margin-bottom:3px}
     .grid{display:grid;grid-template-columns:1.02fr .98fr;gap:10px;margin-bottom:10px}
     .lower{display:grid;grid-template-columns:1.15fr .85fr;gap:10px}
+    .lower-left{display:flex;flex-direction:column;gap:10px}
     .panel{background:#fff;border:1px solid rgba(210,220,233,.94);border-radius:var(--radius);box-shadow:0 12px 34px rgba(31,48,83,.08);overflow:hidden}
     .head{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#f7f9fc)}
     .head b{font-size:16px}.head span{color:var(--muted);font-size:12px;margin-left:8px}
@@ -46,7 +47,7 @@
     .icard{margin:8px;padding:10px;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;background:#fff}.icard.red{border-color:#ffc8c2;box-shadow:inset 4px 0 0 var(--red)}.icard.yellow{border-color:#f3d894;box-shadow:inset 4px 0 0 var(--yellow)}
     .ititle{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}.ititle b{font-size:14px}
     dl{display:grid;grid-template-columns:56px 1fr;margin:0;gap:3px 8px;font-size:12px}dt{color:var(--muted)}dd{margin:0;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .mswrap{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 12px 12px}.ms{border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:var(--radius);padding:9px;min-height:126px;cursor:pointer;display:flex;flex-direction:column;gap:5px}.ms.green{background:var(--green-soft);border-color:#bce8ce;border-top-color:var(--green)}.ms.yellow{background:var(--yellow-soft);border-color:#f3d894;border-top-color:var(--yellow)}.ms.red{background:var(--red-soft);border-color:#ffc8c2;border-top-color:var(--red)}.ms b{font-size:13px}.ms span,.ms p{font-size:12px;color:var(--muted);margin:0}.ms strong{font-size:22px;margin-top:auto}.ms em{font-style:normal;font-weight:800;color:var(--ink)}
+    .mswrap{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 12px 12px;overflow-y:auto}.ms{border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:var(--radius);padding:9px;min-height:126px;cursor:pointer;display:flex;flex-direction:column;gap:5px}.ms.green{background:var(--green-soft);border-color:#bce8ce;border-top-color:var(--green)}.ms.yellow{background:var(--yellow-soft);border-color:#f3d894;border-top-color:var(--yellow)}.ms.red{background:var(--red-soft);border-color:#ffc8c2;border-top-color:var(--red)}.ms b{font-size:13px}.ms span,.ms p{font-size:12px;color:var(--muted);margin:0}.ms strong{font-size:22px;margin-top:auto}.ms em{font-style:normal;font-weight:800;color:var(--ink)}
     .empty{padding:20px;text-align:center;color:var(--muted);font-size:13px;margin:0}
     .drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.34);backdrop-filter:blur(2px);display:none;z-index:20}.drawer-mask.open{display:block}.drawer{position:fixed;top:0;right:0;width:min(820px,95vw);height:100vh;background:#fff;z-index:21;box-shadow:-24px 0 52px rgba(20,33,58,.22);transform:translateX(104%);transition:.22s;display:flex;flex-direction:column}.drawer.open{transform:translateX(0)}.drawer-head{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}.drawer h2{margin:0;font-size:20px}.drawer p{margin:6px 0 0;color:var(--muted);font-size:13px}.close{width:34px;height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:22px;cursor:pointer}.drawer-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:#f7f9fc}.drawer-summary div{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px}.drawer-summary span{display:block;font-size:12px;color:var(--muted)}.drawer-summary b{font-size:20px}.drawer-body{padding:12px 18px 18px;overflow:auto}
     .tcard{border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:10px;background:#fff}.tcard.red{background:var(--red-soft);border-color:#ffc8c2}.tcard.yellow{background:var(--yellow-soft);border-color:#f3d894}.tcard.green{background:var(--green-soft);border-color:#bce8ce}.ttop{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.ttop b{font-size:15px}.tmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}.tmeta span,.desc span{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}.tmeta strong,.desc p{margin:0;color:var(--ink);font-size:13px;line-height:1.45}.desc{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}
@@ -70,6 +71,16 @@
     .ai-input{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#f7f9fc}
     .ai-input input{flex:1;height:38px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font-size:14px}
     .ai-input button{height:38px;background:var(--blue);color:#fff;border:none;border-radius:6px;padding:0 18px;font-weight:700;font-size:14px;cursor:pointer}
+    .rectify-tabs{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);background:#f7f9fc}
+    .rtab{height:30px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)}.rtab:hover{background:var(--blue-soft)}.rtab.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .rectify-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;overflow-y:auto}
+    .rcard{border:1px solid var(--line);border-radius:var(--radius);padding:12px;border-left:4px solid var(--yellow);background:#fff}.rcard.adopted{border-left-color:var(--blue)}.rcard.resolved{border-left-color:var(--green);opacity:.7}
+    .rcard-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.rcard-head b{font-size:14px}
+    .rcard-body{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}.rcard-body span{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}.rcard-body p{margin:0;font-size:13px;line-height:1.45;color:var(--ink)}
+    .rcard-meta{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:8px}
+    .rcard-actions{display:flex;gap:8px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}
+    .rbtn{height:28px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer}.rbtn:hover{background:var(--blue-soft)}.rbtn.adopt{border-color:var(--blue);color:var(--blue)}.rbtn.ignore{border-color:var(--red);color:var(--red)}.rbtn.resolve{border-color:var(--green);color:var(--green)}
+    @media(max-width:760px){.rectify-cards,.rcard-body{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -78,7 +89,7 @@
       <div><h1>支撑中心目标驾驶舱看板</h1><p class="sub">子表：支撑中心目标｜数据来源：2026年工作目标o (3).xlsx</p></div>
       <div class="actions"><button class="ai-btn" id="aiBtn">&#9733; AI 分析</button><button class="btn" id="ruleBtn">扣分规则</button><a class="btn" href="dashboard_index.html">看板首页</a><span class="stamp">更新：2026-05-03</span></div>
     </header>
-    <nav class="mbar"><label>分析月份：</label><button class="mbtn" data-m="1">1月</button><button class="mbtn" data-m="2">2月</button><button class="mbtn" data-m="3">3月</button><button class="mbtn" data-m="4">4月</button><button class="mbtn" data-m="5">5月</button><button class="mbtn-go" id="goBtn">确定</button></nav>
+    <nav class="mbar"><label>分析月份：</label><span id="monthBtns"></span><button class="mbtn-go" id="goBtn">确定</button></nav>
     <div id="root"></div>
   </main>
   <div class="ai-modal" id="aiModal">
@@ -116,6 +127,7 @@
   <script>
   (function(){
     let DD={"tasks": [{"seq": 1, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "统一技术底座建设", "target": "实现统一技术架构与基础能力底座，支撑产品化与组件复用（核心系统接入率 ≥80%，产品化率基础支撑）", "stagePlan": "1、5月-6月：完成技术架构统一与标准体系建设\n完成：三大平台统一技术架构设计、统一接口/权限/消息/日志规范、系统技术资产梳理\n验收标准：输出《统一技术架构规范V1.0》、核心系统接入统一架构 ≥80%、技术标准覆盖率 ≥70%\n7月-8月：完成基础能力组件建设\n完成：权限中心/消息中心/任务中心统一建设、基础组件库V1.0上线、核心模块组件化改造\n验收标准：≥3类公共组件上线运行、≥30%系统实现组件复用、组件库稳定运行\n9月-10月：完成核心系统产品化试点\n完成：1–2个核心系统产品化改造、产品版本管理机制建立、标准产品包形成\n验收标准：至少1个系统产品化运行、产品化率 ≥40%、系统可独立发版\n11月-12月：完成产品体系固化\n完成：产品体系V1.0发布、标准产品包沉淀、技术资产沉淀\n验收标准：产品化率 ≥50%、标准产品包 ≥1套、技术资产完整率 100%", "owner": "周全", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "1、5月-6月：完成技术架构统一与标准体系建设\n完成：三大平台统一技术架构设计、统一接口/权限/消息/日志规范、系统技术资产梳理\n验收标准：输出《统一技术架构规范V1.0》、核心系统接入统一架构 ≥80%、技术标准覆盖率 ≥70%\n7月-8月：完成基础能力组件建设\n完成：权限中心/消息中心/任务中心统一建设、基础组件库V1.0上线、核心模块组件化改造\n验收标准：≥3类公共组件上线运行、≥30%系统实现组件复用、组件库稳定运行\n9月-10月：完成核心系统产品化试点\n完成：1–2个核心系统产品化改造、产品版本管理机制建立、标准产品包形成\n验收标准：至少1个系统产品化运行、产品化率 ≥40%、系统可独立发版\n11月-12月：完成产品体系固化\n完成：产品体系V1.0发布、标准产品包沉淀、技术资产沉淀\n验收标准：产品化率 ≥50%、标准产品包 ≥1套、技术资产完整率 100%", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 2, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "AI研发体系建设", "target": "实现AI研发应用初步覆盖研发全流程（AI覆盖率 ≥30%）", "stagePlan": "5月-6月：完成AI研发治理体系与流程规范建设\n\n完成：AI研发规范体系建立、AI使用纳入研发流程（需求/设计/开发/测试）、AI使用行为统计机制建设\n验收标准：AI使用100%纳入研发流程规范、AI使用行为100%可统计、AI工具在研发全流程全面覆盖\n\n7月-8月：完成AI深度嵌入研发全流程\n\n完成：AI嵌入需求分析与设计评审、AI辅助代码评审机制上线、AI自动生成测试用例能力应用、AI参与研发过程评审\n验收标准：AI覆盖研发流程 ≥70%、代码评审AI参与率 ≥50%、测试用例AI生成率 ≥40%\n\n9月-10月：完成AI研发效率量化体系建设\n\n完成：AI研发效率评估模型建立、研发周期对比分析体系、AI贡献度量化机制（代码/测试/缺陷）\n验收标准：研发周期缩短 ≥10%、缺陷提前发现率 ≥20%、AI贡献度实现可量化统计\n\n11月-12月：完成AI研发体系标准化固化\n\n完成：AI研发体系V1.0固化、AI能力纳入研发标准流程、AI工具链统一化\n验收标准：AI覆盖研发流程 ≥80%、AI研发体系制度化运行、AI能力纳入标准研发体系", "owner": "张成礼", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成AI研发治理体系与流程规范建设\n\n完成：AI研发规范体系建立、AI使用纳入研发流程（需求/设计/开发/测试）、AI使用行为统计机制建设\n验收标准：AI使用100%纳入研发流程规范、AI使用行为100%可统计、AI工具在研发全流程全面覆盖\n\n7月-8月：完成AI深度嵌入研发全流程\n\n完成：AI嵌入需求分析与设计评审、AI辅助代码评审机制上线、AI自动生成测试用例能力应用、AI参与研发过程评审\n验收标准：AI覆盖研发流程 ≥70%、代码评审AI参与率 ≥50%、测试用例AI生成率 ≥40%\n\n9月-10月：完成AI研发效率量化体系建设\n\n完成：AI研发效率评估模型建立、研发周期对比分析体系、AI贡献度量化机制（代码/测试/缺陷）\n验收标准：研发周期缩短 ≥10%、缺陷提前发现率 ≥20%、AI贡献度实现可量化统计\n\n11月-12月：完成AI研发体系标准化固化\n\n完成：AI研发体系V1.0固化、AI能力纳入研发标准流程、AI工具链统一化\n验收标准：AI覆盖研发流程 ≥80%、AI研发体系制度化运行、AI能力纳入标准研发体系", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 3, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "重点任务", "project": "运营监测平台建设（统一监测中枢）", "target": "", "stagePlan": "5月-6月：完成运营监测平台总体架构设计与现状整合\n\n完成：现有运维监测系统梳理（机电/网络/软件/收费）、统一监测架构设计、指标体系定义、数据接入标准制定\n验收标准：输出《运营监测平台总体设计方案V1.0》、完成≥80%现有监测系统梳理、统一指标体系100%定义\n\n7月-8月：完成监测平台核心能力建设与数据接入\n\n完成：统一监测平台原型开发、告警中心/指标中心/设备中心建设、核心系统数据接入（收费/机电/路网）\n验收标准：≥80%核心系统完成数据接入、告警分类体系100%上线、平台核心模块稳定运行\n\n9月-10月：完成告警闭环与智能派单能力建设\n\n完成：告警闭环流程上线、自动派单机制建设、与质控中心缺陷体系打通、问题处理闭环机制形成\n验收标准：告警闭环率 ≥60%、A类问题响应 ≤30分钟、告警-工单闭环100%可追溯\n\n11月-12月：完成智能化监测能力与运营分析体系\n\n完成：监测数据分析模型建设、异常识别能力上线、年度运营分析报告生成机制、AI辅助运维能力接入\n验收标准：系统监测覆盖率 ≥90%、异常自动识别率 ≥50%、年度运营分析报告100%自动生成", "owner": "龙炽", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成运营监测平台总体架构设计与现状整合\n\n完成：现有运维监测系统梳理（机电/网络/软件/收费）、统一监测架构设计、指标体系定义、数据接入标准制定\n验收标准：输出《运营监测平台总体设计方案V1.0》、完成≥80%现有监测系统梳理、统一指标体系100%定义\n\n7月-8月：完成监测平台核心能力建设与数据接入\n\n完成：统一监测平台原型开发、告警中心/指标中心/设备中心建设、核心系统数据接入（收费/机电/路网）\n验收标准：≥80%核心系统完成数据接入、告警分类体系100%上线、平台核心模块稳定运行\n\n9月-10月：完成告警闭环与智能派单能力建设\n\n完成：告警闭环流程上线、自动派单机制建设、与质控中心缺陷体系打通、问题处理闭环机制形成\n验收标准：告警闭环率 ≥60%、A类问题响应 ≤30分钟、告警-工单闭环100%可追溯\n\n11月-12月：完成智能化监测能力与运营分析体系\n\n完成：监测数据分析模型建设、异常识别能力上线、年度运营分析报告生成机制、AI辅助运维能力接入\n验收标准：系统监测覆盖率 ≥90%、异常自动识别率 ≥50%、年度运营分析报告100%自动生成", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 4, "sheet": "支撑中心目标", "center": "产品研发与效能中心", "keyTask": "", "project": "研发流程与研发治理体系建设", "target": "明确需求评审、开发、测试、发布全流程及Git规范、Code Review等质量要求，所有项目已接入统一代码仓库并按新流程执行", "stagePlan": "5月-6月：完成研发流程与质量规范体系建设\n\n完成：统一研发流程（需求-设计-开发-测试-发布-运维）、质量规范体系制定、代码与测试准入准出标准统一\n验收标准：输出《研发流程与质量规范V1.0》、100%项目纳入统一流程管理、质量规范覆盖率100%\n\n7月-8月：完成统一需求与资源池建设（技术）\n\n完成：统一需求池建设、需求分类与分级机制、研发资源池（人力/组件/能力）统一管理机制建立\n验收标准：100%需求纳入统一需求池、≥80%需求结构化管理、资源调度透明可追踪\n\n9月-10月：完成研发效能看板体系建设\n\n完成：研发效能指标体系设计（交付周期/缺陷率/复用率/AI参与度）、效能看板开发、数据自动采集机制建设\n验收标准：研发效能看板上线运行、≥80%研发过程数据自动采集、研发效率指标可量化\n\n11月-12月：完成研发治理体系固化与运行\n\n完成：研发流程、质量规范、需求池、效能体系一体化整合、形成研发治理平台V1.0、制度化运行\n验收标准：研发流程执行率 ≥90%、需求池覆盖率 100%、研发效能指标月度可追踪并纳入考核体系", "owner": "陈勇", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成研发流程与质量规范体系建设\n\n完成：统一研发流程（需求-设计-开发-测试-发布-运维）、质量规范体系制定、代码与测试准入准出标准统一\n验收标准：输出《研发流程与质量规范V1.0》、100%项目纳入统一流程管理、质量规范覆盖率100%\n\n7月-8月：完成统一需求与资源池建设（技术）\n\n完成：统一需求池建设、需求分类与分级机制、研发资源池（人力/组件/能力）统一管理机制建立\n验收标准：100%需求纳入统一需求池、≥80%需求结构化管理、资源调度透明可追踪\n\n9月-10月：完成研发效能看板体系建设\n\n完成：研发效能指标体系设计（交付周期/缺陷率/复用率/AI参与度）、效能看板开发、数据自动采集机制建设\n验收标准：研发效能看板上线运行、≥80%研发过程数据自动采集、研发效率指标可量化\n\n11月-12月：完成研发治理体系固化与运行\n\n完成：研发流程、质量规范、需求池、效能体系一体化整合、形成研发治理平台V1.0、制度化运行\n验收标准：研发流程执行率 ≥90%、需求池覆盖率 100%、研发效能指标月度可追踪并纳入考核体系", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": false, "needsDecision": false}, {"seq": 5, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "研发与生产一体化质量保障体系建设", "target": "", "stagePlan": "5月-6月：完成质量流程与标准体系统一\n\n完成：统一质量管理流程（需求评审-开发-测试-上线）、缺陷分级标准体系、测试准入与准出规范统一\n验收标准：输出《质量管理规范V1.0》、100%项目纳入统一质量流程、缺陷分级标准100%统一执行\n\n7月-8月：完成缺陷闭环与质量管控机制建设\n\n完成：缺陷闭环流程上线、阻断类问题强制流转机制、缺陷责任归因机制建立、质量问题工单化管理\n验收标准：缺陷闭环率 ≥40%、阻断类问题100%强制闭环、质量问题100%工单化管理\n\n9月-10月：完成质量数据体系与风险分析能力建设\n\n完成：质量数据看板建设、缺陷趋势分析模型、重大问题复盘机制、质量风险分级体系\n验收标准：质量数据覆盖 ≥70%、重大缺陷下降 ≥20%、质量分析月度运行机制建立\n\n11月-12月：完成质量红线机制与体系固化\n\n完成：质量红线制度发布、质量问责机制上线、质量考核纳入绩效体系、质量体系平台化运行\n验收标准：闭环率 ≥60%、红色问题100%纳管、重复缺陷率下降 ≥30%、质量考核100%纳入绩效", "owner": "郭胜美", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成质量流程与标准体系统一\n\n完成：统一质量管理流程（需求评审-开发-测试-上线）、缺陷分级标准体系、测试准入与准出规范统一\n验收标准：输出《质量管理规范V1.0》、100%项目纳入统一质量流程、缺陷分级标准100%统一执行\n\n7月-8月：完成缺陷闭环与质量管控机制建设\n\n完成：缺陷闭环流程上线、阻断类问题强制流转机制、缺陷责任归因机制建立、质量问题工单化管理\n验收标准：缺陷闭环率 ≥40%、阻断类问题100%强制闭环、质量问题100%工单化管理\n\n9月-10月：完成质量数据体系与风险分析能力建设\n\n完成：质量数据看板建设、缺陷趋势分析模型、重大问题复盘机制、质量风险分级体系\n验收标准：质量数据覆盖 ≥70%、重大缺陷下降 ≥20%、质量分析月度运行机制建立\n\n11月-12月：完成质量红线机制与体系固化\n\n完成：质量红线制度发布、质量问责机制上线、质量考核纳入绩效体系、质量体系平台化运行\n验收标准：闭环率 ≥60%、红色问题100%纳管、重复缺陷率下降 ≥30%、质量考核100%纳入绩效", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 6, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "系统稳定性与运行保障能力建设", "target": "", "stagePlan": "5月-6月：完成系统稳定性监测体系建设(业务）\n\n完成：系统稳定性指标体系建立、故障分类标准统一、监控数据接入规范制定\n验收标准：稳定性指标体系100%覆盖核心系统、故障分类标准统一率100%\n\n7月-8月：完成运行风险识别与预警机制建设\n\n完成：运行风险识别规则建立、异常预警模型设计、关键系统健康度评估机制\n验收标准：关键系统监测覆盖率 ≥80%、异常预警覆盖率 ≥60%\n\n9月-10月：完成稳定性提升与问题治理机制\n\n完成：重大故障复盘机制、系统性能优化闭环机制、跨系统问题联动治理机制\n验收标准：系统稳定性提升 ≥10%、重大故障复盘覆盖率100%、问题闭环率 ≥60%\n\n11月-12月：完成稳定性体系固化与运营分析\n\n完成：稳定性分析模型固化、年度运行质量报告机制、系统健康度评估体系\n验收标准：系统稳定性提升 ≥15%、年度运行报告100%自动生成、健康度评估体系上线运行", "owner": "陶棋盛", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成系统稳定性监测体系建设(业务）\n\n完成：系统稳定性指标体系建立、故障分类标准统一、监控数据接入规范制定\n验收标准：稳定性指标体系100%覆盖核心系统、故障分类标准统一率100%\n\n7月-8月：完成运行风险识别与预警机制建设\n\n完成：运行风险识别规则建立、异常预警模型设计、关键系统健康度评估机制\n验收标准：关键系统监测覆盖率 ≥80%、异常预警覆盖率 ≥60%\n\n9月-10月：完成稳定性提升与问题治理机制\n\n完成：重大故障复盘机制、系统性能优化闭环机制、跨系统问题联动治理机制\n验收标准：系统稳定性提升 ≥10%、重大故障复盘覆盖率100%、问题闭环率 ≥60%\n\n11月-12月：完成稳定性体系固化与运营分析\n\n完成：稳定性分析模型固化、年度运行质量报告机制、系统健康度评估体系\n验收标准：系统稳定性提升 ≥15%、年度运行报告100%自动生成、健康度评估体系上线运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 7, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "项目：质量治理平台与可视化体系建设", "target": "", "stagePlan": "5月-6月：完成质量数据体系设计\n\n完成：质量指标体系设计、数据采集标准统一、质量数据模型建立\n验收标准：质量指标体系覆盖100%核心系统、数据采集标准统一\n\n7月-8月：完成质量可视化看板建设\n\n完成：质量驾驶舱设计、缺陷趋势分析看板、项目质量评分体系\n验收标准：质量看板上线运行、≥80%数据自动采集、质量评分体系可用\n\n9月-10月：完成质量分析与决策支持能力建设\n\n完成：质量决策分析模型、问题预测机制、质量预警体系\n验收标准：质量问题预测准确率 ≥60%、质量预警机制上线运行\n\n11月-12月：完成质量治理体系平台化\n\n完成：质量管理平台V1.0固化、质量流程系统化运行、与研发/运维体系打通\n验收标准：质量治理平台上线运行、质量流程系统覆盖率 ≥90%、跨系统数据打通100%", "owner": "郭胜美", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成质量数据体系设计\n\n完成：质量指标体系设计、数据采集标准统一、质量数据模型建立\n验收标准：质量指标体系覆盖100%核心系统、数据采集标准统一\n\n7月-8月：完成质量可视化看板建设\n\n完成：质量驾驶舱设计、缺陷趋势分析看板、项目质量评分体系\n验收标准：质量看板上线运行、≥80%数据自动采集、质量评分体系可用\n\n9月-10月：完成质量分析与决策支持能力建设\n\n完成：质量决策分析模型、问题预测机制、质量预警体系\n验收标准：质量问题预测准确率 ≥60%、质量预警机制上线运行\n\n11月-12月：完成质量治理体系平台化\n\n完成：质量管理平台V1.0固化、质量流程系统化运行、与研发/运维体系打通\n验收标准：质量治理平台上线运行、质量流程系统覆盖率 ≥90%、跨系统数据打通100%", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 8, "sheet": "支撑中心目标", "center": "项目与质量管控中心", "keyTask": "重点任务", "project": "项目全过程管理体系建设", "target": "实现项目从立项到交付全过程可控（进度偏差 ≤10%）", "stagePlan": "5月-6月：完成项目管理制度与标准体系建设\n\n完成：项目分级分类管理规则制定、项目立项与审批流程统一、项目里程碑管理机制设计\n验收标准：输出《项目管理制度V1.0》、100%项目纳入统一管理台账、项目分级分类规则100%统一执行\n\n7月-8月：完成项目过程管控机制建设\n\n完成：项目进度跟踪机制上线、项目风险预警机制建立、资源调度与冲突协调机制建立\n验收标准：项目进度透明率 100%、项目延期风险预警覆盖率 ≥80%、关键资源调度记录100%可追溯\n\n9月-10月：完成项目交付与质量联动机制建设\n\n完成：项目阶段验收机制上线、交付与质量体系打通、问题闭环与责任归因机制建立\n验收标准：阶段验收覆盖率 ≥90%、项目问题闭环率 ≥60%、交付质量问题100%可追溯责任\n\n11月-12月：完成项目管理平台化与运行固化\n\n完成：项目管理看板上线、项目绩效评估机制建立、与研发/质控/运维数据打通\n验收标准：项目全过程可视化覆盖率 100%、项目进度偏差率 ≤10%、项目管理数据月度自动输出", "owner": "陶棋盛", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成项目管理制度与标准体系建设\n\n完成：项目分级分类管理规则制定、项目立项与审批流程统一、项目里程碑管理机制设计\n验收标准：输出《项目管理制度V1.0》、100%项目纳入统一管理台账、项目分级分类规则100%统一执行\n\n7月-8月：完成项目过程管控机制建设\n\n完成：项目进度跟踪机制上线、项目风险预警机制建立、资源调度与冲突协调机制建立\n验收标准：项目进度透明率 100%、项目延期风险预警覆盖率 ≥80%、关键资源调度记录100%可追溯\n\n9月-10月：完成项目交付与质量联动机制建设\n\n完成：项目阶段验收机制上线、交付与质量体系打通、问题闭环与责任归因机制建立\n验收标准：阶段验收覆盖率 ≥90%、项目问题闭环率 ≥60%、交付质量问题100%可追溯责任\n\n11月-12月：完成项目管理平台化与运行固化\n\n完成：项目管理看板上线、项目绩效评估机制建立、与研发/质控/运维数据打通\n验收标准：项目全过程可视化覆盖率 100%、项目进度偏差率 ≤10%、项目管理数据月度自动输出", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 9, "sheet": "支撑中心目标", "center": "行业解决方案与业务拓展中心", "keyTask": "重点任务", "project": "需求治理与解决方案产品化体系建设", "target": "", "stagePlan": "5月-6月：完成统一需求入口与需求治理体系建设（需求管理）\n\n完成：统一需求池建设、需求标准模板制定、需求分级分类机制建立、需求受理与分发流程统一\n验收标准：100%需求纳入统一需求池、≥80%需求结构化录入、需求入口唯一化实现\n\n7月-8月：完成解决方案标准化与产品化定义\n\n完成：典型业务场景拆解（收费/运营/建管/运维）、标准解决方案模板体系建立、解决方案组件化拆分\n验收标准：形成≥2套标准解决方案包、≥60%需求可映射至标准方案、方案复用机制初步建立\n\n9月-10月：完成方案驱动交付机制建设\n\n完成：方案评审机制上线、项目实施方案绑定机制建立、方案驱动研发与交付联动机制建立\n验收标准：≥40%项目通过标准方案驱动交付、方案评审覆盖率 ≥90%、交付周期下降 ≥15%\n\n11月-12月：完成解决方案体系产品化固化\n\n完成：解决方案体系V1.0发布、跨项目复用机制建立、标准方案库建设与版本管理机制\n验收标准：方案复用率 ≥60%、≥50%项目方案驱动交付、标准方案库稳定运行", "owner": "刘佶豪", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成统一需求入口与需求治理体系建设（需求管理）\n\n完成：统一需求池建设、需求标准模板制定、需求分级分类机制建立、需求受理与分发流程统一\n验收标准：100%需求纳入统一需求池、≥80%需求结构化录入、需求入口唯一化实现\n\n7月-8月：完成解决方案标准化与产品化定义\n\n完成：典型业务场景拆解（收费/运营/建管/运维）、标准解决方案模板体系建立、解决方案组件化拆分\n验收标准：形成≥2套标准解决方案包、≥60%需求可映射至标准方案、方案复用机制初步建立\n\n9月-10月：完成方案驱动交付机制建设\n\n完成：方案评审机制上线、项目实施方案绑定机制建立、方案驱动研发与交付联动机制建立\n验收标准：≥40%项目通过标准方案驱动交付、方案评审覆盖率 ≥90%、交付周期下降 ≥15%\n\n11月-12月：完成解决方案体系产品化固化\n\n完成：解决方案体系V1.0发布、跨项目复用机制建立、标准方案库建设与版本管理机制\n验收标准：方案复用率 ≥60%、≥50%项目方案驱动交付、标准方案库稳定运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "行业解决方案与业务拓展中心", "keyTask": "重点任务", "project": "市场支撑与产品化输出能力建设", "target": "", "stagePlan": "5月-6月：完成售前能力与行业方案体系建设\n\n完成：行业解决方案框架统一、售前支撑材料标准化、典型案例梳理（收费/路网/建管）\n验收标准：形成标准售前方案包≥1套、行业方案覆盖核心业务100%、售前响应机制建立\n\n7月-8月：完成项目售前-交付协同机制建设\n\n完成：售前需求评估机制、技术可行性评审机制、方案与研发联动机制建立\n验收标准：售前评审覆盖率 ≥80%、需求一次通过率提升 ≥20%、方案偏差率下降\n\n9月-10月：完成解决方案市场转化能力建设\n\n完成：标准方案推广机制建立、跨区域复制模式设计、外部项目适配机制建设\n验收标准：至少形成1个可复制推广方案模型、方案外部适配能力建立\n\n11月-12月：完成解决方案产品化体系固化\n\n完成：解决方案体系V1.0固化、方案库平台化管理、标准交付体系打通研发/质控\n验收标准：方案复用率 ≥60%、方案库100%线上化管理、跨中心协同机制稳定运行", "owner": "刘佶豪", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成售前能力与行业方案体系建设\n\n完成：行业解决方案框架统一、售前支撑材料标准化、典型案例梳理（收费/路网/建管）\n验收标准：形成标准售前方案包≥1套、行业方案覆盖核心业务100%、售前响应机制建立\n\n7月-8月：完成项目售前-交付协同机制建设\n\n完成：售前需求评估机制、技术可行性评审机制、方案与研发联动机制建立\n验收标准：售前评审覆盖率 ≥80%、需求一次通过率提升 ≥20%、方案偏差率下降\n\n9月-10月：完成解决方案市场转化能力建设\n\n完成：标准方案推广机制建立、跨区域复制模式设计、外部项目适配机制建设\n验收标准：至少形成1个可复制推广方案模型、方案外部适配能力建立\n\n11月-12月：完成解决方案产品化体系固化\n\n完成：解决方案体系V1.0固化、方案库平台化管理、标准交付体系打通研发/质控\n验收标准：方案复用率 ≥60%、方案库100%线上化管理、跨中心协同机制稳定运行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "商务中心", "keyTask": "重点任务", "project": "商务流程与体系建设", "target": "", "stagePlan": "5月-6月：完成商务拓展流程规范体系建设\n\n完成：\n商务拓展全流程梳理（线索获取—商机登记—评估分型—方案协同—立项/投标）、\n商机台账与统一入口机制建立、\n商务与解决方案中心/业务中心职责边界明确\n\n验收标准：\n输出《商务拓展流程规范V1.0》、\n商机100%纳入统一台账管理、\n流程执行机制建立并开始运行\n\n7月-8月：完成商机评估与分型机制建设\n\n完成：\n商机分类标准建立（产品类/产品改造类/定制开发类）、\n商机评估模型建立（需求清晰度、可复制性、投入产出）、\n商务+方案联合评审机制建立\n\n验收标准：\n商机分类覆盖率 ≥80%、\n商机评审执行率 ≥90%、\n形成标准评估模板并在实际项目中应用\n\n9月-10月：完成商务流程运行与优化\n\n完成：\n商务流程在实际商机中全面运行、\n商机流转与评审效率优化、\n非标准需求进入研发的管控机制强化\n\n验收标准：\n流程执行率 ≥90%、\n商机流转周期明显缩短（有数据支撑）、\n非标需求占比下降\n11月-12月：完成商务体系固化与标准化输出\n完成：\n商务拓展制度体系固化、\n标准流程与模板沉淀、\n形成可复制的商务运行模式\n验收标准：\n输出《商务拓展体系V1.0》、\n流程制度100%固化、\n商务运行机制稳定执行", "owner": "何穹雕", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成商务拓展流程规范体系建设\n\n完成：\n商务拓展全流程梳理（线索获取—商机登记—评估分型—方案协同—立项/投标）、\n商机台账与统一入口机制建立、\n商务与解决方案中心/业务中心职责边界明确\n\n验收标准：\n输出《商务拓展流程规范V1.0》、\n商机100%纳入统一台账管理、\n流程执行机制建立并开始运行\n\n7月-8月：完成商机评估与分型机制建设\n\n完成：\n商机分类标准建立（产品类/产品改造类/定制开发类）、\n商机评估模型建立（需求清晰度、可复制性、投入产出）、\n商务+方案联合评审机制建立\n\n验收标准：\n商机分类覆盖率 ≥80%、\n商机评审执行率 ≥90%、\n形成标准评估模板并在实际项目中应用\n\n9月-10月：完成商务流程运行与优化\n\n完成：\n商务流程在实际商机中全面运行、\n商机流转与评审效率优化、\n非标准需求进入研发的管控机制强化\n\n验收标准：\n流程执行率 ≥90%、\n商机流转周期明显缩短（有数据支撑）、\n非标需求占比下降\n11月-12月：完成商务体系固化与标准化输出\n完成：\n商务拓展制度体系固化、\n标准流程与模板沉淀、\n形成可复制的商务运行模式\n验收标准：\n输出《商务拓展体系V1.0》、\n流程制度100%固化、\n商务运行机制稳定执行", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}, {"seq": 10, "sheet": "支撑中心目标", "center": "商务中心", "keyTask": "重点任务", "project": "市场拓展能力建设", "target": "", "stagePlan": "5月-6月：完成市场与客户体系基础建设\n\n完成：\n目标市场梳理（省内/省外高速集团）、\n客户信息库建设与分级（重点/潜在/一般）、\n重点客户清单明确\n\n验收标准：\n形成客户清单 ≥10家、\n客户信息完整率 ≥90%、\n重点客户名单明确\n\n7月-8月：完成重点客户对接与商机获取\n\n完成：\n重点客户走访与对接、\n客户需求收集与初步分析、\n商机池建立并纳入台账\n\n验收标准：\n完成重点客户对接 ≥5家、\n形成有效商机 ≥5个、\n商机100%纳入统一台账\n\n9月-10月：完成商机转化与方案协同推进\n\n完成：\n重点商机推进进入方案阶段、\n组织解决方案中心参与需求分析、\n形成初步解决方案或合作路径\n\n验收标准：\n进入方案阶段商机 ≥3个、\n形成初步方案 ≥2个、\n商机转化路径清晰可跟踪\n\n11月-12月：完成市场拓展成果输出与路径沉淀\n\n完成：\n推动重点商机形成实质合作（项目/合作意向）、\n年度市场拓展总结分析、\n可复制拓展路径沉淀\n\n验收标准：\n形成实质性合作成果（项目或合作意向）、\n输出《市场拓展年度报告》、\n形成标准拓展路径1套", "owner": "何穹雕", "rawStatus": "进行中", "selfDeveloped": "", "assessor": "", "monthly": [{"month": 1, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 2, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 3, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 4, "plan": "", "actual": "", "score": "", "note": ""}, {"month": 5, "plan": "", "actual": "", "score": "", "note": ""}], "status": "yellow", "statusText": "风险", "reason": "进展待补充", "latestPlan": "5月-6月：完成市场与客户体系基础建设\n\n完成：\n目标市场梳理（省内/省外高速集团）、\n客户信息库建设与分级（重点/潜在/一般）、\n重点客户清单明确\n\n验收标准：\n形成客户清单 ≥10家、\n客户信息完整率 ≥90%、\n重点客户名单明确\n\n7月-8月：完成重点客户对接与商机获取\n\n完成：\n重点客户走访与对接、\n客户需求收集与初步分析、\n商机池建立并纳入台账\n\n验收标准：\n完成重点客户对接 ≥5家、\n形成有效商机 ≥5个、\n商机100%纳入统一台账\n\n9月-10月：完成商机转化与方案协同推进\n\n完成：\n重点商机推进进入方案阶段、\n组织解决方案中心参与需求分析、\n形成初步解决方案或合作路径\n\n验收标准：\n进入方案阶段商机 ≥3个、\n形成初步方案 ≥2个、\n商机转化路径清晰可跟踪\n\n11月-12月：完成市场拓展成果输出与路径沉淀\n\n完成：\n推动重点商机形成实质合作（项目/合作意向）、\n年度市场拓展总结分析、\n可复制拓展路径沉淀\n\n验收标准：\n形成实质性合作成果（项目或合作意向）、\n输出《市场拓展年度报告》、\n形成标准拓展路径1套", "latestActual": "", "latestScore": "", "latestNote": "", "hasMayPlan": true, "closed": false, "isKeyTask": true, "needsDecision": false}], "currentMonth": 5};
+    const defaultCM=DD.currentMonth||1;
     const ulKey='kanban_uploaded_support';
     const uploaded=localStorage.getItem(ulKey);
     if(uploaded){
@@ -125,8 +137,19 @@
         localStorage.removeItem(ulKey);
       }catch(e){localStorage.removeItem(ulKey)}
     }
-    const raw=DD.tasks, CM=DD.currentMonth;
+    const raw=DD.tasks;
+    /* 月份=MAX(Python默认值, 上传值, 数据实际检测) */
+    let CM=Math.max(defaultCM, DD.currentMonth||1);
+    raw.forEach(t=>(t.monthly||[]).forEach(m=>{if((m.plan||m.actual)&&m.month>CM)CM=m.month}));
+    DD.currentMonth=CM;
     let curM=CM;
+    /* 动态生成月份按钮 */
+    (function(){
+      const mb=document.getElementById('monthBtns');if(!mb)return;
+      let html='';
+      for(let m=1;m<=CM;m++)html+='<button class="mbtn" data-m="'+m+'">'+m+'月</button>';
+      mb.innerHTML=html;
+    })();
 
     const NEG=["扣分","未按要求","质量问题"],RISK=["暂缓","暂停","待确认","未开始","暂未启动","暂无进度","跟进","正在","待","风险"],DONE=["已完成","完成","已上线","已部署","已发起","已提交","已输出"],MN=["一","二","三","四","五","六","七","八","九","十","十一","十二"];
     function has(t,ws){return ws.some(w=>t.includes(w))}
@@ -268,23 +291,36 @@
           <section><div class="btitle yellow">黄榜预警 <span data-d="s::yellow" style="cursor:pointer">${s.yellow}项</span></div>${s.yellows.slice(0,4).map(t=>`<article class="icard yellow" data-d="t::${t.seq}"><div class="ititle"><b>${esc(cpt(t.project,22))}</b><span class="tag yellow">${esc(t.reason)}</span></div><dl><dt>中心</dt><dd>${esc(t.center)}</dd><dt>负责人</dt><dd>${esc(t.owner||"未填")}</dd><dt>实际</dt><dd>${esc(cpt(t.latestActual||t.latestNote||"未填实际",56))}</dd></dl></article>`).join("")||'<p class="empty">暂无黄榜任务</p>'}</section></div></article>
       </section>
       <section class="lower">
-        <article class="panel"><div class="head"><div><b>${ml}关键里程碑</b><span>有${ml}计划的节点</span></div></div>
-          <div class="mswrap">${s.mTasks.slice(0,5).map(t=>`<article class="ms ${t.status}" data-d="t::${t.seq}"><b>${esc(cpt(t.project,18))}</b><span>负责人：${esc(t.owner||"未填")}</span><p>${esc(cpt(t.latestPlan,54))}</p><strong>${ml}</strong><em>${ST[t.status]}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}</div></article>
+        <div class="lower-left">
+          <article class="panel"><div class="head"><div><b>${ml}关键里程碑</b><span>有${ml}计划的节点</span></div></div>
+          <div class="mswrap">${s.mTasks.slice(0,10).map(t=>`<article class="ms ${t.status}" data-d="t::${t.seq}"><b>${esc(cpt(t.project,18))}</b><span>负责人：${esc(t.owner||"未填")}</span><p>${esc(cpt(t.latestPlan,54))}</p><strong>${ml}</strong><em>${ST[t.status]}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}</div></article>
+          <article class="panel">
+          <div class="head"><div><b>整改任务清单</b><span>AI分析生成整改措施，持续跟踪</span></div><button class="ai-btn" id="rectifyBtn">AI分析生成整改任务</button></div>
+          <div class="rectify-tabs">
+          <button class="rtab on" data-tab="pending">待选 (0)</button>
+          <button class="rtab" data-tab="adopted">整改中 (0)</button>
+          <button class="rtab" data-tab="resolved">已整改 (0)</button>
+          </div>
+          <div class="rectify-cards" id="rectifyCards"></div>
+          </article>
+        </div>
         <article class="panel"><div class="head"><div><b>负责人问题统计</b><span>按负责人汇总异常/风险任务数量，点击行可下钻</span></div></div>
-          <table><thead><tr><th>负责人</th><th>任务数</th><th>异常</th><th>风险</th><th>正常</th><th style="max-width:260px">异常/风险项目</th></tr></thead><tbody>
-          ${(() => {
-            const om={};
-            s.items.forEach(t=>{
-              const o=t.owner||"未填";
-              if(!om[o])om[o]={name:o,total:0,green:0,yellow:0,red:0,issues:[]};
-              om[o].total++;om[o][t.status]++;
-              if(t.status==="red"||t.status==="yellow")om[o].issues.push(t.seq+"."+t.project);
-            });
-            return Object.values(om).sort((a,b)=>(b.red*3+b.yellow)-(a.red*3+a.yellow)).map(o=>`<tr style="cursor:pointer"><td><b>${esc(o.name)}</b></td><td data-d="o::${esc(o.name)}" style="cursor:pointer">${o.total}</td><td data-d="os::${esc(o.name)}::red" style="cursor:pointer">${o.red?`<span class="st red">${o.red}</span>`:0}</td><td data-d="os::${esc(o.name)}::yellow" style="cursor:pointer">${o.yellow?`<span class="st yellow">${o.yellow}</span>`:0}</td><td data-d="os::${esc(o.name)}::green" style="cursor:pointer">${o.green?`<span class="st green">${o.green}</span>`:0}</td><td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.issues.slice(0,3).join("；"))}</td></tr>`).join("");
-          })()}
-          </tbody></table></article>
+        <table><thead><tr><th>负责人</th><th>任务数</th><th>异常</th><th>风险</th><th>正常</th><th style="max-width:260px">异常/风险项目</th></tr></thead><tbody>
+        ${(() => {
+        const om={};
+        s.items.forEach(t=>{
+        const o=t.owner||"未填";
+        if(!om[o])om[o]={name:o,total:0,green:0,yellow:0,red:0,issues:[]};
+        om[o].total++;om[o][t.status]++;
+        if(t.status==="red"||t.status==="yellow")om[o].issues.push(t.seq+"."+t.project);
+        });
+        return Object.values(om).sort((a,b)=>(b.red*3+b.yellow)-(a.red*3+a.yellow)).map(o=>`<tr style="cursor:pointer"><td><b>${esc(o.name)}</b></td><td data-d="o::${esc(o.name)}" style="cursor:pointer">${o.total}</td><td data-d="os::${esc(o.name)}::red" style="cursor:pointer">${o.red?`<span class="st red">${o.red}</span>`:0}</td><td data-d="os::${esc(o.name)}::yellow" style="cursor:pointer">${o.yellow?`<span class="st yellow">${o.yellow}</span>`:0}</td><td data-d="os::${esc(o.name)}::green" style="cursor:pointer">${o.green?`<span class="st green">${o.green}</span>`:0}</td><td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.issues.slice(0,3).join("；"))}</td></tr>`).join("");
+        })()}
+        </tbody></table></article>
       </section>`;
       bindDrill();
+      bindRectify();
+      renderRectify();
     }
 
     function pick(key,m){
@@ -425,6 +461,96 @@
       addMsg('user',v);document.getElementById("aiInput").value='';callAI(v);
     });
     document.getElementById("aiInput").addEventListener("keydown",e=>{if(e.key==='Enter')document.getElementById("aiSend").click()});
+
+    /* 整改任务清单 */
+    const RK='rectify_support';
+    let rectifyTab='pending';
+    function loadRectify(){const d=localStorage.getItem(RK);if(d)try{return JSON.parse(d)}catch(e){}return[]}
+    function saveRectify(list){localStorage.setItem(RK,JSON.stringify(list))}
+    function renderRectify(){
+      const list=loadRectify();
+      const pn=list.filter(r=>r.status==='pending'),ad=list.filter(r=>r.status==='adopted'),rs=list.filter(r=>r.status==='resolved');
+      document.querySelectorAll('.rtab').forEach(b=>{
+        const t=b.dataset.tab,n=t==='pending'?pn.length:t==='adopted'?ad.length:rs.length;
+        b.textContent=(t==='pending'?'待选':t==='adopted'?'整改中':'已整改')+' ('+n+')';
+        b.classList.toggle('on',t===rectifyTab);
+      });
+      const fl=rectifyTab==='pending'?pn:rectifyTab==='adopted'?ad:rs;
+      const ct=document.getElementById('rectifyCards');
+      if(!ct)return;
+      if(!fl.length){ct.innerHTML='<p class="empty">暂无整改任务</p>';return}
+      ct.innerHTML=fl.map(r=>{
+        let act='';
+        if(r.status==='pending')act='<button class="rbtn adopt" data-id="'+r.id+'">采纳</button><button class="rbtn ignore" data-id="'+r.id+'">忽略</button>';
+        else if(r.status==='adopted')act='<button class="rbtn resolve" data-id="'+r.id+'">标记已整改</button>';
+        return '<article class="rcard '+r.status+'"><div class="rcard-head"><b>'+r.seq+'. '+esc(r.project)+'</b>'+(r.status==='resolved'?'<span class="st green">已整改</span>':'')+'</div><div class="rcard-body"><div><span>问题</span><p>'+esc(r.issue)+'</p></div><div><span>整改措施</span><p>'+esc(r.measure)+'</p></div></div><div class="rcard-meta"><span>负责人：'+esc(r.owner||'未填')+'</span><span>'+r.month+'月分析</span></div>'+(act?'<div class="rcard-actions">'+act+'</div>':'')+'</article>';
+      }).join('');
+      ct.querySelectorAll('.rbtn.adopt').forEach(b=>b.addEventListener('click',function(){
+        const list=loadRectify(),item=list.find(r=>r.id===this.dataset.id);
+        if(item){item.status='adopted';saveRectify(list);renderRectify()}
+      }));
+      ct.querySelectorAll('.rbtn.ignore').forEach(b=>b.addEventListener('click',function(){
+        let list=loadRectify();list=list.filter(r=>r.id!==this.dataset.id);
+        saveRectify(list);renderRectify();
+      }));
+      ct.querySelectorAll('.rbtn.resolve').forEach(b=>b.addEventListener('click',function(){
+        const list=loadRectify(),item=list.find(r=>r.id===this.dataset.id);
+        if(item){item.status='resolved';saveRectify(list);renderRectify()}
+      }));
+    }
+    function bindRectify(){
+      document.querySelectorAll('.rtab').forEach(b=>b.addEventListener('click',function(){
+        rectifyTab=this.dataset.tab;renderRectify();
+      }));
+      const rb=document.getElementById('rectifyBtn');
+      if(rb)rb.addEventListener('click',generateRectify);
+    }
+    async function generateRectify(){
+      const cfg=localStorage.getItem('ai_config');
+      if(!cfg){alert('请先在看板首页配置 AI 模型');return}
+      let c;try{c=JSON.parse(cfg)}catch(e){alert('AI 配置格式错误');return}
+      if(!c.apiUrl||!c.apiKey||!c.model){alert('AI 配置不完整');return}
+      const s=calcAll(curM);
+      const problems=s.items.filter(t=>t.status==='red'||t.status==='yellow');
+      if(!problems.length){alert('当前'+curM+'月无异常/风险任务');return}
+      const taskList=problems.map(t=>'序号:'+t.seq+' | 项目:'+t.project+' | 负责人:'+(t.owner||'未填')+' | 中心:'+t.center+' | 状态:'+t.statusText+' | 原因:'+t.reason+' | 计划:'+cpt(t.latestPlan||'未填',40)+' | 实际:'+cpt(t.latestActual||'未填',60)+' | 得分:'+(t.latestScore||'无')).join('\n');
+      const prompt='你是项目管理整改顾问。以下是'+curM+'月的异常/风险任务数据，请根据每个任务的实际进展和异常原因推测根本原因，生成针对性的整改措施。\n\n要求：\n1. 根据任务的实际进展和异常原因，推测根本原因，给出简明问题摘要（不超过30字）\n2. 针对根本原因给出具体可执行的整改措施，包括责任人、时间节点、关键动作（不超过80字）\n3. 严格按JSON数组格式返回，不要返回其他内容\n\n问题任务列表：\n'+taskList+'\n\n返回格式示例：\n[{"seq":1,"issue":"问题摘要含原因分析","measure":"整改措施含责任人、时间、动作"}]'
+      const btn=document.getElementById('rectifyBtn');
+      btn.disabled=true;btn.textContent='AI 分析中('+curM+'月)...';
+      let url=c.apiUrl.replace(/\/$/,'');
+      if(!url.endsWith('/chat/completions'))url+=(url.endsWith('/v1')||url.endsWith('/v4')?'':'/v1')+'/chat/completions';
+      try{
+        const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey},body:JSON.stringify({model:c.model,messages:[{role:'user',content:prompt}],stream:true})});
+        if(!resp.ok){const err=await resp.text();throw new Error('API错误('+resp.status+'): '+err)}
+        const reader=resp.body.getReader();const decoder=new TextDecoder();let result='';let buffer='';
+        while(true){
+          const{done,value}=await reader.read();if(done)break;
+          buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';
+          for(const line of lines){
+            const trimmed=line.trim();if(!trimmed.startsWith('data: '))continue;
+            const data=trimmed.slice(6);if(data==='[DONE]')continue;
+            try{const json=JSON.parse(data);const delta=json.choices?.[0]?.delta?.content;if(delta)result+=delta}catch(e){}
+          }
+        }
+        if(!result){alert('AI 未返回数据');return}
+        const jsonMatch=result.match(/\[[\s\S]*\]/);
+        if(!jsonMatch){alert('AI 返回格式异常，请重试\n'+result.slice(0,200));return}
+        let items;try{items=JSON.parse(jsonMatch[0])}catch(e){alert('AI 返回 JSON 解析失败\n'+result.slice(0,200));return}
+        const probMap={};problems.forEach(t=>{probMap[t.seq]=t});
+        const list=loadRectify();
+        const now=new Date().toISOString().slice(0,10);
+        let added=0;
+        items.forEach(item=>{
+          const task=probMap[item.seq];if(!task)return;
+          if(list.some(r=>r.seq===item.seq&&r.month===curM))return;
+          list.push({id:'r_'+Date.now()+'_'+item.seq,seq:item.seq,project:task.project,owner:task.owner||'',issue:item.issue||'',measure:item.measure||'',status:'pending',month:curM,created:now});
+          added++;
+        });
+        saveRectify(list);rectifyTab='pending';renderRectify();
+        alert('生成成功！新增 '+added+' 项整改任务');
+      }catch(e){alert('AI 调用失败：'+e.message)
+      }finally{btn.disabled=false;btn.textContent='AI分析生成整改任务'}
+    }
 
     render(CM);
   })();
