@@ -45,9 +45,12 @@ h2{margin:0 0 16px;font-size:22px}
 <div class="top-bar"><div><h1>2026年工作目标看板</h1><p>由"2026年工作目标o.xlsx"自动解析生成</p></div>
 <div class="btns">
 <button class="btn primary" id="uploadBtn">&#128194; 重新读取文件</button>
+<button class="btn" id="exportBtn">&#128190; 导出数据</button>
+<button class="btn" id="importBtn">&#128194; 导入数据</button>
 <button class="btn" id="cfgBtn">&#9881; AI 模型配置</button>
 </div></div>
 <input type="file" id="fileInput" accept=".xlsx" style="display:none">
+<input type="file" id="importInput" accept=".json" style="display:none">
 <section class="cards">
 <a class="card" href="business_goal_dashboard.html"><h2>业务目标看板</h2><div class="kpis"><div><span>任务</span><b>125</b></div><div><span>正常</span><b>0</b></div><div><span>风险</span><b>125</b></div><div><span>异常</span><b>0</b></div></div></a>
 <a class="card" href="support_center_goal_dashboard.html"><h2>支撑中心目标看板</h2><div class="kpis"><div><span>任务</span><b>12</b></div><div><span>正常</span><b>0</b></div><div><span>风险</span><b>12</b></div><div><span>异常</span><b>0</b></div></div></a>
@@ -214,5 +217,42 @@ h2{margin:0 0 16px;font-size:22px}
       toast('文件读取失败：'+err.message,'err');
     }
   });
+    /* 导出数据 */
+    const DATA_KEYS=['ai_config','rectify_business','rectify_support','kanban_uploaded_business','kanban_uploaded_support'];
+    document.getElementById('exportBtn').addEventListener('click',async function(){
+      const data={};
+      DATA_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v){data[k]=v.startsWith('{')||v.startsWith('[')?JSON.parse(v):v;}});
+      const keys=Object.keys(data);
+      if(!keys.length){toast('暂无数据可导出，请先使用看板产生数据','err');return}
+      const json=JSON.stringify(data,null,2);
+      const fname='kanban_data_'+new Date().toISOString().slice(0,10)+'.json';
+      try{
+        const handle=await window.showSaveFilePicker({startIn:'documents',suggestedName:fname,types:[{description:'JSON数据文件',accept:{'application/json':['.json']}}]});
+        const writable=await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        toast('已保存到：'+handle.name+'（'+keys.length+'项）','ok');
+      }catch(e){
+        if(e.name==='AbortError')return;
+        const blob=new Blob([json],{type:'application/json;charset=utf-8'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
+        document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(a.href)},100);
+        toast('已导出 '+keys.length+' 项数据到下载文件夹','ok');
+      }
+    });
+    document.getElementById('importBtn').addEventListener('click',()=>document.getElementById('importInput').click());
+    document.getElementById('importInput').addEventListener('change',function(){
+      const file=this.files[0];if(!file)return;this.value='';
+      const reader=new FileReader();
+      reader.onload=function(e){
+        try{
+          const data=JSON.parse(e.target.result);
+          let count=0;
+          Object.keys(data).forEach(k=>{localStorage.setItem(k,typeof data[k]==='string'?data[k]:JSON.stringify(data[k]));count++});
+          toast('导入成功！恢复 '+count+' 项数据','ok');
+        }catch(err){toast('导入失败：'+err.message,'err')}
+      };
+      reader.readAsText(file);
+    });
 })();
 </script></body></html>
