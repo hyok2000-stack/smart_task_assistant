@@ -367,6 +367,15 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
     .rcard-actions{{display:flex;gap:8px;border-top:1px dashed rgba(105,117,139,.28);padding-top:8px}}
     .rbtn{{height:28px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer}}.rbtn:hover{{background:var(--blue-soft)}}.rbtn.adopt{{border-color:var(--blue);color:var(--blue)}}.rbtn.ignore{{border-color:var(--red);color:var(--red)}}.rbtn.resolve{{border-color:var(--green);color:var(--green)}}
     @media(max-width:760px){{.rectify-cards,.rcard-body{{grid-template-columns:1fr}}}}
+    .cfg{{width:min(480px,94vw);background:#fff;border-radius:12px;border:1px solid var(--line);box-shadow:0 28px 70px rgba(20,33,58,.28);overflow:hidden}}
+    .cfg-head{{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f9fbff,#fff)}}
+    .cfg-head h2{{margin:0;font-size:18px}}
+    .fg{{margin-bottom:14px}}
+    .fg label{{display:block;font-weight:700;font-size:14px;margin-bottom:6px}}
+    .fg input{{width:100%;height:36px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font-size:14px;box-sizing:border-box}}
+    .fg input:focus{{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px rgba(33,88,208,.15)}}
+    .save-btn{{width:100%;height:40px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}}
+    .save-btn:hover{{background:#1a4bb8}}
   </style>
 </head>
 <body>
@@ -582,13 +591,25 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
           <article class="panel"><div class="head"><div><b>${{ml}}关键里程碑</b><span>有${{ml}}计划的节点</span></div></div>
           <div class="mswrap">${{s.mTasks.slice(0,10).map(t=>`<article class="ms ${{t.status}}" data-d="t::${{t.seq}}"><b>${{esc(cpt(t.project,18))}}</b><span>负责人：${{esc(t.owner||"未填")}}</span><p>${{esc(cpt(t.latestPlan,54))}}</p><strong>${{ml}}</strong><em>${{ST[t.status]}}</em></article>`).join("")||'<p class="empty">暂无该月计划任务</p>'}}</div></article>
           <article class="panel">
-          <div class="head"><div><b>整改任务清单</b><span>AI分析生成整改措施，持续跟踪</span></div><button class="ai-btn" id="rectifyBtn">AI分析生成整改任务</button></div>
+          <div class="head"><div><b>整改任务清单</b><span>AI分析生成整改措施，持续跟踪</span></div><button class="ai-btn" id="rectifyBtn">AI分析生成整改任务</button><button class="btn" id="addRectifyBtn" style="height:30px;font-size:12px;margin-left:6px">+ 手工录入</button></div>
           <div class="rectify-tabs">
           <button class="rtab on" data-tab="pending">待选 (0)</button>
           <button class="rtab" data-tab="adopted">整改中 (0)</button>
           <button class="rtab" data-tab="resolved">已整改 (0)</button>
           </div>
           <div class="rectify-cards" id="rectifyCards"></div>
+          <div class="modal" id="addRectifyModal">
+            <div class="cfg" style="width:min(480px,92vw)">
+              <div class="cfg-head"><h2 style="font-size:18px">手工录入整改任务</h2><button class="close" id="addRectifyClose">&times;</button></div>
+              <div style="padding:18px">
+                <div class="fg"><label>项目名称</label><input id="arProject" placeholder="输入项目名称"></div>
+                <div class="fg"><label>负责人</label><input id="arOwner" placeholder="输入负责人"></div>
+                <div class="fg"><label>问题描述</label><textarea id="arIssue" rows="3" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit" placeholder="简述问题（不超过30字）"></textarea></div>
+                <div class="fg"><label>整改措施</label><textarea id="arMeasure" rows="3" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit" placeholder="整改措施（不超过80字）"></textarea></div>
+                <button class="save-btn" id="arSaveBtn">保存到待选</button>
+              </div>
+            </div>
+          </div>
           </article>
         </div>
         <article class="panel"><div class="head"><div><b>负责人问题统计</b><span>按负责人汇总异常/风险任务数量，点击行可下钻</span></div></div>
@@ -791,6 +812,31 @@ def build_dashboard(title: str, subtitle: str, tasks: list[dict], output_path: P
       }}));
       const rb=document.getElementById('rectifyBtn');
       if(rb)rb.addEventListener('click',generateRectify);
+      const ab=document.getElementById('addRectifyBtn');
+      if(ab)ab.addEventListener('click',()=>document.getElementById('addRectifyModal').classList.add('open'));
+      const ac=document.getElementById('addRectifyClose');
+      if(ac)ac.addEventListener('click',()=>document.getElementById('addRectifyModal').classList.remove('open'));
+      const am=document.getElementById('addRectifyModal');
+      if(am)am.addEventListener('click',e=>{{if(e.target.id==='addRectifyModal')am.classList.remove('open')}});
+      const sv=document.getElementById('arSaveBtn');
+      if(sv)sv.addEventListener('click',function(){{
+        const project=document.getElementById('arProject').value.trim();
+        const owner=document.getElementById('arOwner').value.trim();
+        const issue=document.getElementById('arIssue').value.trim();
+        const measure=document.getElementById('arMeasure').value.trim();
+        if(!project||!issue||!measure){{alert('请填写项目名称、问题描述和整改措施');return}}
+        const list=loadRectify();
+        list.push({{
+          id:'m_'+Date.now(),seq:0,project,owner:owner||'',issue,measure,
+          status:'pending',month:curM,created:new Date().toISOString().slice(0,10)
+        }});
+        saveRectify(list);rectifyTab='pending';renderRectify();
+        document.getElementById('arProject').value='';
+        document.getElementById('arOwner').value='';
+        document.getElementById('arIssue').value='';
+        document.getElementById('arMeasure').value='';
+        document.getElementById('addRectifyModal').classList.remove('open');
+      }});
     }}
     async function generateRectify(){{
       const cfg=localStorage.getItem('ai_config');
