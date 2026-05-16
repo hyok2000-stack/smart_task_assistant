@@ -74,7 +74,9 @@ class WebStorageService implements StorageService {
     final defaultTags = Tag.getDefaultTags();
 
     for (var tag in defaultTags) {
-      _tags.add(tag);
+      if (!_tags.any((t) => t.id == tag.id)) {
+        _tags.add(tag);
+      }
     }
     await _saveTags();
   }
@@ -127,7 +129,7 @@ class WebStorageService implements StorageService {
 
   @override
   Future<List<Tag>> getAllTags() async {
-    return _tags;
+    return List.from(_tags);
   }
 
   @override

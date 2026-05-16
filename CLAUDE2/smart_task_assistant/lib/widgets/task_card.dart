@@ -792,8 +792,13 @@ class TaskCard extends StatelessWidget {
       TaskStatus.pending,
       TaskStatus.inProgress,
       TaskStatus.completed,
+      TaskStatus.cancelled,
     ];
     final currentIndex = statuses.indexOf(task.status);
+    if (currentIndex == -1) {
+      onStatusChange?.call(statuses[0]);
+      return;
+    }
     final nextIndex = (currentIndex + 1) % statuses.length;
     onStatusChange?.call(statuses[nextIndex]);
   }
@@ -1009,28 +1014,14 @@ class TaskCard extends StatelessWidget {
 
   /// 构建任务标签 - 点击打开标签管理对话框
   Widget _buildTaskTags(BuildContext context) {
-    print('===== TaskCard._buildTaskTags =====');
-    print('任务ID: ${task.id}');
-    print('任务标题: ${task.title}');
-    print('任务关联的标签ID: ${task.tagIds}');
-    print('可用标签数量: ${availableTags?.length ?? 0}');
-
     // 只显示任务已关联的标签
     final taskTags =
         availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
             [];
 
-    print('匹配到的标签数量: ${taskTags.length}');
-    for (var tag in taskTags) {
-      print('  - 标签ID: ${tag.id}, 名称: ${tag.name}');
-    }
-
     if (taskTags.isEmpty) {
-      print('没有匹配的标签，不显示');
-      print('====================================');
       return const SizedBox.shrink();
     }
-    print('====================================');
 
     return GestureDetector(
       onTap: () => _showTagEditDialog(context),

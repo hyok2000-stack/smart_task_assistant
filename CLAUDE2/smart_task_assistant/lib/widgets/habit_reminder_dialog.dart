@@ -129,11 +129,8 @@ class HabitReminderDialog extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () async {
-                        await provider.logCompletion(habit.id);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                        }
+                      onPressed: () {
+                        Navigator.of(context).pop();
                       },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: _getHabitColor(habit.id)),

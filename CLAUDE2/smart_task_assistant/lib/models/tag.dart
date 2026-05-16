@@ -1,3 +1,5 @@
+const Object _sentinel = Object();
+
 /// 标签模型
 class Tag {
   final String id;
@@ -79,7 +81,7 @@ class Tag {
     String? id,
     String? name,
     String? color,
-    String? icon,
+    Object? icon = _sentinel,
     int? sortOrder,
     bool? isDefault,
     DateTime? createdAt,
@@ -88,7 +90,7 @@ class Tag {
       id: id ?? this.id,
       name: name ?? this.name,
       color: color ?? this.color,
-      icon: icon ?? this.icon,
+      icon: identical(icon, _sentinel) ? this.icon : icon as String?,
       sortOrder: sortOrder ?? this.sortOrder,
       isDefault: isDefault ?? this.isDefault,
       createdAt: createdAt ?? this.createdAt,

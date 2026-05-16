@@ -140,8 +140,8 @@ class Task {
         id: id as String,
         title: title as String,
         content: json['content'] as String?,
-        status: TaskStatus.values[json['status'] as int? ?? 0],
-        priority: TaskPriority.values[json['priority'] as int? ?? 1],
+        status: _parseTaskStatus(json['status'] as int? ?? 0),
+        priority: _parseTaskPriority(json['priority'] as int? ?? 1),
         startTime: json['start_time'] != null
             ? DateTime.parse(json['start_time'] as String)
             : null,
@@ -169,9 +169,8 @@ class Task {
         reminderDismissed: json['reminder_dismissed'] is bool
             ? json['reminder_dismissed'] as bool
             : (json['reminder_dismissed'] as int? ?? 0) == 1,
-        reminderVoiceEnabled: json['reminder_voice_enabled'] is bool
-            ? json['reminder_voice_enabled'] as bool
-            : (json['reminder_voice_enabled'] as int? ?? 0) == 1,
+        reminderVoiceEnabled:
+            _parseBoolDefaultTrue(json['reminder_voice_enabled']),
         reminderVoiceType: json['reminder_voice_type'] as String?,
         reminderVoiceStyle: json['reminder_voice_style'] as String?,
         reminderVoiceSpeed: json['reminder_voice_speed'] as String?,
@@ -197,15 +196,15 @@ class Task {
       'completed_at': completedAt?.toIso8601String(),
       'assignee': assignee,
       'parent_id': parentId,
-      'is_recurring': isRecurring,
+      'is_recurring': isRecurring ? 1 : 0,
       'recurring_rule': recurringRule,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'tag_ids': jsonEncode(tagIds),
       'attachment_paths': jsonEncode(attachmentPaths),
       'reminder_minutes': reminderMinutes,
-      'reminder_dismissed': reminderDismissed,
-      'reminder_voice_enabled': reminderVoiceEnabled,
+      'reminder_dismissed': reminderDismissed ? 1 : 0,
+      'reminder_voice_enabled': reminderVoiceEnabled ? 1 : 0,
       'reminder_voice_type': reminderVoiceType,
       'reminder_voice_style': reminderVoiceStyle,
       'reminder_voice_speed': reminderVoiceSpeed,
@@ -221,7 +220,7 @@ class Task {
     Object? content = _sentinel,
     TaskStatus? status,
     TaskPriority? priority,
-    DateTime? startTime,
+    Object? startTime = _sentinel,
     Object? dueTime = _sentinel,
     Object? completedAt = _sentinel,
     Object? assignee = _sentinel,
@@ -246,7 +245,7 @@ class Task {
       content: identical(content, _sentinel) ? this.content : content as String?,
       status: status ?? this.status,
       priority: priority ?? this.priority,
-      startTime: startTime ?? this.startTime,
+      startTime: identical(startTime, _sentinel) ? this.startTime : startTime as DateTime?,
       dueTime: identical(dueTime, _sentinel) ? this.dueTime : dueTime as DateTime?,
       completedAt: identical(completedAt, _sentinel) ? this.completedAt : completedAt as DateTime?,
       assignee: identical(assignee, _sentinel) ? this.assignee : assignee as String?,
@@ -268,6 +267,30 @@ class Task {
           : reminderCustomVoicePath as String?,
     );
   }
+}
+
+TaskStatus _parseTaskStatus(int index) {
+  return index >= 0 && index < TaskStatus.values.length
+      ? TaskStatus.values[index]
+      : TaskStatus.pending;
+}
+
+TaskPriority _parseTaskPriority(int index) {
+  return index >= 0 && index < TaskPriority.values.length
+      ? TaskPriority.values[index]
+      : TaskPriority.medium;
+}
+
+bool _parseBoolDefaultTrue(dynamic value) {
+  if (value == null) return true;
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    final normalized = value.toLowerCase();
+    if (normalized == '0' || normalized == 'false') return false;
+    if (normalized == '1' || normalized == 'true') return true;
+  }
+  return true;
 }
 
 /// AI识别结果

@@ -148,15 +148,14 @@ class TaskDistributionService {
 
   /// 批量删除分发
   Future<void> deleteBatch(List<String> ids) async {
+    if (ids.isEmpty) return;
     final db = await _db.database;
-    for (final id in ids) {
-      await db.delete(
-        'task_distributions',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    }
-    debugPrint('已批量删除 ${ids.length} 个分发任务');
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await db.delete(
+      'task_distributions',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
   }
 
   /// 获取所有分发
@@ -220,13 +219,17 @@ class TaskDistributionService {
     return getByStatus(DistributionStatus.completed);
   }
 
+  String _escapeLike(String input) =>
+      input.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+
   /// 搜索分发
   Future<List<TaskDistribution>> search(String keyword) async {
     final db = await _db.database;
+    final escaped = _escapeLike(keyword);
     final List<Map<String, dynamic>> maps = await db.query(
       'task_distributions',
       where: 'assignee_name LIKE ? OR assignee_email LIKE ? OR notes LIKE ?',
-      whereArgs: ['%$keyword%', '%$keyword%', '%$keyword%'],
+      whereArgs: ['%$escaped%', '%$escaped%', '%$escaped%'],
       orderBy: 'created_at DESC',
     );
     return maps.map((map) => TaskDistribution.fromJson(map)).toList();

@@ -91,6 +91,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _reminderVoiceType = 'female';
       _reminderVoiceStyle = 'lively';
       _reminderVoiceSpeed = 'normal';
+      // 默认选中"工作"标签
+      _selectedTagIds = ['default_work'];
     }
   }
 
@@ -98,6 +100,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   void dispose() {
     _titleController.dispose();
     _contentController.dispose();
+    _customReminderController.dispose();
     _voicePlayingStream.close();
     super.dispose();
   }
@@ -1201,12 +1204,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() => _isProcessing = true);
 
     final provider = context.read<TaskProvider>();
-
-    // 调试日志：输出选中的标签ID
-    print('===== 保存任务 =====');
-    print('任务标题: ${_titleController.text.trim()}');
-    print('选中的标签ID: $_selectedTagIds');
-    print('标签数量: ${_selectedTagIds.length}');
 
     // 防御性检查：确保 voiceType 和 customVoicePath 一致
     // 如果 voiceType 为 'custom' 但路径为空，则回退到默认语音类型

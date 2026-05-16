@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -32,7 +33,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   DateTime? _selectedDueTime;
   int? _selectedReminderMinutes = 10; // 提前提醒时间（默认10分钟）
   bool _reminderVoiceEnabled = true; // 默认启用语音提醒
-  List<String> _selectedTags = [];
+  List<String> _selectedTags = ['工作'];
   bool _isCreating = false;
 
   // 自定义提醒时间
@@ -85,7 +86,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
           _parsedTask = result;
           _selectedPriority = result.priority;
           _selectedDueTime = result.dueTime;
-          _selectedTags = result.tags;
+          _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
           // 应用推荐的提醒时间
           if (result.recommendedReminderMinutes != null) {
             _selectedReminderMinutes = result.recommendedReminderMinutes;
@@ -102,7 +103,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
         _parseInputLocal(input);
       }
     } catch (e) {
-      debugPrint('AI解析失败，使用本地规则: $e');
       // AI 解析失败，回退到本地规则
       _parseInputLocal(input);
     } finally {
@@ -127,7 +127,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       if (result != null) {
         _selectedPriority = result.priority;
         _selectedDueTime = result.dueTime;
-        _selectedTags = result.tags;
+        _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
         // 应用推荐的提醒时间
         if (result.recommendedReminderMinutes != null) {
           _selectedReminderMinutes = result.recommendedReminderMinutes;
@@ -167,11 +167,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
           _parsedTask = result;
           _selectedPriority = result.priority;
           _selectedDueTime = result.dueTime;
-          _selectedTags = result.tags;
+          _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
         });
       }
     } catch (e) {
-      debugPrint('AI解析失败: $e');
     } finally {
       if (mounted) {
         setState(() => _isAILoading = false);
@@ -235,21 +234,13 @@ class _QuickAddModalState extends State<QuickAddModal> {
         isRecurring: _isRecurring,
         recurringRule: _isRecurring ? _recurringRule : null,
         reminderMinutes: _selectedReminderMinutes,
-        reminderVoiceEnabled: true, // 默认启用语音提醒
+        reminderVoiceEnabled: _reminderVoiceEnabled,
         reminderVoiceType: 'female',
         reminderVoiceStyle: 'lively',
         reminderVoiceSpeed: 'normal',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
-
-      debugPrint('===== 创建任务 =====');
-      debugPrint('ID: ${task.id}');
-      debugPrint('标题: ${task.title}');
-      debugPrint('截止时间: ${task.dueTime}');
-      debugPrint('优先级: ${task.priority}');
-      debugPrint('提醒时间: ${task.reminderMinutes}');
-      debugPrint('标签: $_selectedTags');
 
       final provider = context.read<TaskProvider>();
 
@@ -290,7 +281,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
         // 如果找到默认标签，直接添加
         if (tag != null) {
           tagIds.add(tag.id);
-          debugPrint('使用默认标签: ${tag.name} (${tag.id})');
           continue;
         }
 
@@ -305,7 +295,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
         if (tag != null) {
           tagIds.add(tag.id);
-          debugPrint('使用自定义标签: ${tag.name} (${tag.id})');
         } else {
           // 创建新标签
           final newTag = Tag(
@@ -315,16 +304,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
           );
           await provider.addTag(newTag);
           tagIds.add(newTag.id);
-          debugPrint('创建新标签: ${newTag.name} (${newTag.id})');
         }
       }
 
       // 将标签ID关联到任务
       final taskWithTags = task.copyWith(tagIds: tagIds);
       await provider.addTask(taskWithTags);
-      debugPrint('任务已添加标签: $tagIds');
-
-      debugPrint('任务已添加到 Provider');
 
       if (mounted) {
         Navigator.pop(context);
@@ -346,7 +331,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
         );
       }
     } catch (e) {
-      debugPrint('创建任务错误: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -373,7 +357,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       '#06B6D4',
       '#3B82F6',
     ];
-    return colors[DateTime.now().millisecond % colors.length];
+    return colors[Random().nextInt(colors.length)];
   }
 
   @override
@@ -1346,16 +1330,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
           }
         }
 
-        // 添加调试日志
-        debugPrint('===== _buildTagSelector =====');
-        debugPrint('标签总数: ${allTags.length}');
         final dbDefaultTags = allTags.where((t) => t.isDefault).toList();
         final customTags = allTags.where((t) => !t.isDefault).toList();
-        debugPrint('默认标签数量: ${dbDefaultTags.length}');
-        debugPrint('自定义标签数量: ${customTags.length}');
-        for (final tag in dbDefaultTags) {
-          debugPrint('  - ${tag.name} (${tag.color})');
-        }
 
         return Container(
           padding: const EdgeInsets.all(12),

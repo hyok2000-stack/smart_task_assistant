@@ -2,8 +2,12 @@ package com.smarttask.smart_task_assistant
 
 import android.app.*
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -15,6 +19,8 @@ class ReminderForegroundService : Service() {
     companion object {
         private const val TAG = "ReminderForegroundService"
         private const val CHANNEL_ID = "reminder_service_channel"
+        private const val FULLSCREEN_SILENT_CHANNEL_ID = "reminder_fullscreen_channel"
+        private const val FULLSCREEN_SOUND_CHANNEL_ID = "reminder_sound_channel_v2"
         private const val NOTIFICATION_ID = 2001
         private const val CHECK_INTERVAL = 30_000L // 30 seconds
 
@@ -24,6 +30,7 @@ class ReminderForegroundService : Service() {
         const val ACTION_APP_BACKGROUND = "com.smarttask.smart_task_assistant.ACTION_APP_BACKGROUND"
         const val ACTION_CLEAR_STATE = "com.smarttask.smart_task_assistant.ACTION_CLEAR_STATE"
         const val ACTION_CLEAR_CONTINUAL = "com.smarttask.smart_task_assistant.ACTION_CLEAR_CONTINUAL"
+        const val ACTION_SNOOZE = "com.smarttask.smart_task_assistant.ACTION_SNOOZE"
         const val ACTION_REFRESH_DATA = "com.smarttask.smart_task_assistant.ACTION_REFRESH_DATA"
         const val ACTION_CHECK = "com.smarttask.smart_task_assistant.ACTION_CHECK"
 
@@ -43,7 +50,9 @@ class ReminderForegroundService : Service() {
         private const val REMINDER_SHOWING_TIMEOUT = 120_000L // 2min timeout
 
         fun start(context: Context) {
-            val intent = Intent(context, ReminderForegroundService::class.java)
+            val intent = Intent(context, ReminderForegroundService::class.java).apply {
+                action = ACTION_CHECK
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -52,8 +61,14 @@ class ReminderForegroundService : Service() {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, ReminderForegroundService::class.java)
-            context.stopService(intent)
+            val intent = Intent(context, ReminderForegroundService::class.java).apply {
+                action = ACTION_STOP
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
     }
 
@@ -63,9 +78,28 @@ class ReminderForegroundService : Service() {
     private var handlerThread: HandlerThread? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var checkHandler: Handler? = null
+    private var screenStateReceiverRegistered = false
 
     @Volatile
     private var isAppForeground = false
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    isAppForeground = false
+                    Log.d(TAG, "Screen off detected, native reminder service takes over")
+                    checkHandler?.post {
+                        onHandleCheck()
+                        scheduleNextCheck()
+                    }
+                }
+                Intent.ACTION_USER_PRESENT -> {
+                    Log.d(TAG, "User present detected")
+                }
+            }
+        }
+    }
 
     // 标记 onCreate 的首次检查是否待执行，防止 onStartCommand(else) 重复触发
     @Volatile
@@ -92,10 +126,28 @@ class ReminderForegroundService : Service() {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ReminderService::Check")
         wakeLock?.setReferenceCounted(false)
 
+        try {
+            val screenFilter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(screenStateReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(screenStateReceiver, screenFilter)
+            }
+            screenStateReceiverRegistered = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register screen state receiver", e)
+        }
+
         // 立即执行首次检查（不等 30s），确保重启后不遗漏提醒
+        // 等待 TTS 引擎初始化完成后再执行首次检查，避免语音播放失败
         checkHandler?.post {
             onCreateCheckPending = false
-            Log.d(TAG, "Immediate first check after service create")
+            Log.d(TAG, "Immediate first check after service create, waiting for TTS...")
+            ttsHelper?.waitForReady()
+            Log.d(TAG, "TTS ready, proceeding with first check")
             onHandleCheck()
             scheduleNextCheck()
         }
@@ -113,9 +165,13 @@ class ReminderForegroundService : Service() {
             }
             ACTION_CHECK -> {
                 // AlarmManager woke us up — run check on HandlerThread (避免主线程阻塞)
-                checkHandler?.post {
-                    onHandleCheck()
-                    scheduleNextCheck()
+                if (onCreateCheckPending) {
+                    Log.d(TAG, "onCreate check pending, skip ACTION_CHECK to avoid double trigger")
+                } else {
+                    checkHandler?.post {
+                        onHandleCheck()
+                        scheduleNextCheck()
+                    }
                 }
             }
             ACTION_APP_FOREGROUND -> {
@@ -128,7 +184,6 @@ class ReminderForegroundService : Service() {
                 // 在后台线程同步状态 + 检查（避免主线程 DB 查询导致 ANR）
                 checkHandler?.post {
                     checker?.syncAllHabitsState()
-                    checker?.syncAllTasksState()
                     onHandleCheck()
                     scheduleNextCheck()
                 }
@@ -145,10 +200,27 @@ class ReminderForegroundService : Service() {
                     checker?.clearContinualState(id)
                 }
             }
+            ACTION_SNOOZE -> {
+                val id = intent.getStringExtra("id")
+                val minutes = intent.getIntExtra("minutes", 10)
+                if (id != null) {
+                    val snoozeUntil = intent.getLongExtra(
+                        "snoozeUntil",
+                        System.currentTimeMillis() + minutes * 60_000L
+                    )
+                    checker?.setSnooze(id, snoozeUntil)
+                    Log.d(TAG, "Task snoozed from Flutter: id=$id until=$snoozeUntil")
+                    scheduleNextCheck()
+                }
+            }
             ACTION_REFRESH_DATA -> {
                 val type = intent.getStringExtra("type") ?: "all"
                 val id = intent.getStringExtra("id")
-                checker?.refreshData(type, id)
+                checkHandler?.post {
+                    checker?.refreshData(type, id)
+                    onHandleCheck()
+                    scheduleNextCheck()
+                }
             }
             else -> {
                 // Initial start or restart — immediate check + schedule
@@ -175,6 +247,9 @@ class ReminderForegroundService : Service() {
      * 使用 setAlarmClock（闹钟级别），不受 Doze 模式限流。
      * setExactAndAllowWhileIdle 在 Doze 下被限流为约 9 分钟一次，
      * 导致持续提醒被延迟累积。
+     *
+     * 注意：setAlarmClock 要求墙钟时间（currentTimeMillis），
+     * setExactAndAllowWhileIdle 使用 elapsedRealtime。
      */
     private fun scheduleNextCheck() {
         val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
@@ -186,26 +261,30 @@ class ReminderForegroundService : Service() {
         )
 
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = SystemClock.elapsedRealtime() + CHECK_INTERVAL
+        val triggerWallClock = System.currentTimeMillis() + CHECK_INTERVAL
+        val triggerElapsed = SystemClock.elapsedRealtime() + CHECK_INTERVAL
 
         try {
             // 闹钟级别：不受 Doze 限制，到点必定触发
-            val alarmInfo = AlarmManager.AlarmClockInfo(triggerAt, null)
+            // AlarmClockInfo 使用墙钟时间（currentTimeMillis）
+            val alarmInfo = AlarmManager.AlarmClockInfo(triggerWallClock, null)
             alarmManager.setAlarmClock(alarmInfo, pendingIntent)
-            Log.d(TAG, "Next check scheduled in ${CHECK_INTERVAL}ms via AlarmClock")
+            Log.d(TAG, "Next check scheduled in ${CHECK_INTERVAL}ms via AlarmClock at $triggerWallClock")
         } catch (e: Exception) {
             Log.e(TAG, "setAlarmClock failed, falling back to setExactAndAllowWhileIdle", e)
             try {
+                // 降级方案：setExactAndAllowWhileIdle 使用 elapsedRealtime
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAt,
+                    triggerElapsed,
                     pendingIntent
                 )
+                Log.d(TAG, "Next check scheduled via setExactAndAllowWhileIdle")
             } catch (e2: Exception) {
                 Log.e(TAG, "setExactAndAllowWhileIdle also failed", e2)
                 alarmManager.set(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAt,
+                    triggerElapsed,
                     pendingIntent
                 )
             }
@@ -244,7 +323,9 @@ class ReminderForegroundService : Service() {
         }
 
         // Flutter 处理前台+亮屏的所有提醒，原生层完全跳过
-        val effectiveForeground = isAppForeground && isScreenOn()
+        val screenOn = isScreenOn()
+        val effectiveForeground = isAppForeground && screenOn
+        Log.d(TAG, "Check state: appForeground=$isAppForeground screenOn=$screenOn effectiveForeground=$effectiveForeground")
         if (effectiveForeground) {
             Log.d(TAG, "App foreground + screen on, skipping native check (Flutter handles it)")
             ReminderAlarmReceiver.releaseWakeLock()
@@ -252,19 +333,24 @@ class ReminderForegroundService : Service() {
         }
 
         // 从深度休眠唤醒时，延迟 2 秒等待系统服务（TTS/音频）恢复
-        if (!isScreenOn()) {
+        if (!screenOn) {
             try { Thread.sleep(2000L) } catch (_: InterruptedException) {}
         }
 
         val needsVoiceHold = try {
-            wakeLock?.acquire(30_000L)
+            wakeLock?.acquire(60_000L)
             val items = checker?.checkAll(isForeground = false) ?: emptyList()
 
             Log.d(TAG, "Check found ${items.size} items to trigger")
 
             for (item in items) {
                 Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
-                triggerReminder(item)
+                val voiceAcceptedOrNoVoice = triggerReminder(item)
+                if (voiceAcceptedOrNoVoice) {
+                    markReminderDelivered(item)
+                } else {
+                    Log.w(TAG, "Reminder voice was not accepted; keeping state unmarked for retry: ${item.id}")
+                }
             }
 
             items.any {
@@ -276,29 +362,53 @@ class ReminderForegroundService : Service() {
         }
 
         if (needsVoiceHold) {
-            // 语音播放需要额外时间（2.5s 延迟 + TTS 重试 + 播放），延迟释放锁
+            // 语音播放和 TTS 重试需要额外时间，延迟释放锁。
             checkHandler?.postDelayed({
                 try { wakeLock?.release() } catch (_: Exception) {}
+                audioHelper?.restoreAlarmVolume()
+                ttsHelper?.let { /* TTS helper restores volume on its own via callbacks */ }
                 Log.d(TAG, "WakeLock released (voice hold)")
                 ReminderAlarmReceiver.releaseWakeLock()
-            }, 30_000L)
+            }, 60_000L)
         } else {
             try { wakeLock?.release() } catch (_: Exception) {}
+            audioHelper?.restoreAlarmVolume()
             ReminderAlarmReceiver.releaseWakeLock()
         }
     }
 
-    private fun triggerReminder(item: ReminderChecker.ReminderItem) {
+    private fun markReminderDelivered(item: ReminderChecker.ReminderItem) {
+        when (item.type) {
+            "task" -> checker?.markTaskReminderShown(item.id)
+            "habit" -> checker?.markHabitTriggered(item.id)
+        }
+        Log.d(TAG, "Marked reminder delivered after voice accepted/no voice: type=${item.type} id=${item.id}")
+    }
+
+    private fun triggerReminder(item: ReminderChecker.ReminderItem): Boolean {
         // 到达此方法时 effectiveForeground 必为 false（onHandleCheck 已跳过前台场景）
-        // 由原生层全权处理：声音、语音、弹窗
+        // 由原生层全权处理：声音、语音（不弹全屏界面）
+
+        val uiAlreadyShowing = isReminderShowing
+        if (uiAlreadyShowing) {
+            Log.d(TAG, "Reminder UI already showing; retrying voice without opening another UI")
+        }
 
         // Play sound + vibration
-        audioHelper?.playSequence(item.soundEnabled, item.vibrationEnabled)
+        if (!uiAlreadyShowing) {
+            audioHelper?.playSequence(item.soundEnabled, item.vibrationEnabled)
+        }
 
         // Play voice with delay (TTS or custom voice file)
         val hasVoiceContent = item.voiceEnabled &&
             (!item.voiceText.isNullOrBlank() || !item.customVoicePath.isNullOrBlank() || !item.title.isNullOrBlank())
         Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent, voiceText=${item.voiceText}, customPath=${item.customVoicePath}")
+        var voiceAccepted = !hasVoiceContent
+
+        // 不弹全屏界面，只发一条静默通知保持前台服务
+        if (!uiAlreadyShowing) {
+            postSilentNotification(item)
+        }
 
         if (hasVoiceContent) {
             val speakText = when {
@@ -315,26 +425,26 @@ class ReminderForegroundService : Service() {
                 else -> item.title
             }
             Log.d(TAG, "Requesting voice for '${item.title}': text='$speakText'")
-            ttsHelper?.speak(
+            val effectiveCustomVoicePath =
+                if (item.voiceType == "custom") item.customVoicePath else null
+            voiceAccepted = ttsHelper?.speak(
                 text = speakText ?: "",
                 voiceType = item.voiceType,
                 voiceStyle = item.voiceStyle,
                 speed = item.voiceSpeed,
-                customVoicePath = item.customVoicePath
-            )
+                customVoicePath = effectiveCustomVoicePath
+            ) ?: false
+            Log.d(TAG, "Voice accepted for '${item.title}': $voiceAccepted")
         }
 
         // Send event to Flutter
         val eventJson = buildEventJson(item.id, item.type, "shown")
         ReminderBridge.getInstance().sendEvent(eventJson)
 
-        // Show FullScreenActivity if app is in background
-        if (!isReminderShowing) {
-            showFullScreenReminder(item)
-        }
+        return voiceAccepted
     }
 
-    private fun showFullScreenReminder(item: ReminderChecker.ReminderItem) {
+    private fun showFullScreenReminder(item: ReminderChecker.ReminderItem): Boolean {
         try {
             postFullScreenNotification(item)
 
@@ -366,19 +476,70 @@ class ReminderForegroundService : Service() {
                 isReminderShowing = true
                 isReminderShowingSince = System.currentTimeMillis()
             }
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show full-screen reminder", e)
             isReminderShowing = false
+            return false
+        }
+    }
+
+    /**
+     * 发送一条静默提醒通知（不弹全屏界面），仅保持前台服务
+     * 语音播报由 TTS 独立处理
+     */
+    private fun postSilentNotification(item: ReminderChecker.ReminderItem) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    "reminder_voice_only",
+                    "语音提醒",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "仅语音提醒，不弹窗"
+                    setSound(null, null)
+                    enableVibration(false)
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val notification = NotificationCompat.Builder(this, "reminder_voice_only")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(item.title ?: "任务提醒")
+                .setContentText(item.body ?: "")
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setSound(null)
+                .setAutoCancel(true)
+                .setTimeoutAfter(30_000L)
+                .build()
+
+            nm.notify(item.id.hashCode(), notification)
+            Log.d(TAG, "Silent voice-only notification posted for: ${item.title}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to post silent notification", e)
         }
     }
 
     private fun postFullScreenNotification(item: ReminderChecker.ReminderItem) {
         val nm = getSystemService(NotificationManager::class.java)
 
-        val channelId = "reminder_fullscreen_channel"
+        val channelId = if (item.soundEnabled) {
+            FULLSCREEN_SOUND_CHANNEL_ID
+        } else {
+            FULLSCREEN_SILENT_CHANNEL_ID
+        }
+        val notificationSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val alarmAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId,
+                FULLSCREEN_SILENT_CHANNEL_ID,
                 "全屏提醒",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -389,6 +550,20 @@ class ReminderForegroundService : Service() {
                 setShowBadge(false)
             }
             nm.createNotificationChannel(channel)
+            val soundChannel = NotificationChannel(
+                FULLSCREEN_SOUND_CHANNEL_ID,
+                "Reminder sound",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Reminder notifications with sound while locked or asleep"
+                enableLights(true)
+                enableVibration(true)
+                if (notificationSoundUri != null) {
+                    setSound(notificationSoundUri, alarmAttributes)
+                }
+                setShowBadge(false)
+            }
+            nm.createNotificationChannel(soundChannel)
         }
 
         val fullScreenIntent = Intent(this, FullScreenReminderActivity::class.java).apply {
@@ -419,6 +594,7 @@ class ReminderForegroundService : Service() {
             .setContentText(item.body ?: "")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setSound(if (item.soundEnabled) notificationSoundUri else null)
             .setAutoCancel(true)
             .setTimeoutAfter(60_000L)
             .setFullScreenIntent(fullScreenPendingIntent, true)
@@ -488,10 +664,11 @@ class ReminderForegroundService : Service() {
         super.onTaskRemoved(rootIntent)
         Log.d(TAG, "onTaskRemoved — app swiped from recents")
         isAppForeground = false
+        isReminderShowing = false
 
         // 重要：先安排重启，再做任何清理
         // onDestroy 中 cancelScheduledCheck 只取消周期检查 alarm，不影响重启 alarm
-        scheduleRestart(3_000L)
+        scheduleRestart(1_000L)
     }
 
     override fun onDestroy() {
@@ -501,8 +678,16 @@ class ReminderForegroundService : Service() {
         isAppForeground = false
         isReminderShowing = false
 
-        // 只取消周期检查 alarm，不取消重启 alarm
-        cancelScheduledCheck()
+        if (userRequestedStop) {
+            cancelScheduledCheck()
+        } else {
+            Log.d(TAG, "Keeping scheduled check alarm alive after service destroy")
+        }
+
+        if (screenStateReceiverRegistered) {
+            try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) {}
+            screenStateReceiverRegistered = false
+        }
 
         handlerThread?.quitSafely()
         try { wakeLock?.release() } catch (_: Exception) {}
@@ -518,7 +703,7 @@ class ReminderForegroundService : Service() {
         // 非用户主动停止时，安排重启
         if (!userRequestedStop) {
             Log.d(TAG, "Service destroyed unexpectedly, scheduling restart")
-            scheduleRestart(5_000L)
+            scheduleRestart(1_000L)
         }
     }
 
@@ -535,12 +720,23 @@ class ReminderForegroundService : Service() {
             )
 
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + delayMs,
-                pendingIntent
-            )
-            Log.d(TAG, "Restart scheduled in ${delayMs}ms via Receiver")
+            val triggerWallClock = System.currentTimeMillis() + delayMs
+            val triggerElapsed = SystemClock.elapsedRealtime() + delayMs
+            try {
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(triggerWallClock, null),
+                    pendingIntent
+                )
+                Log.d(TAG, "Restart scheduled in ${delayMs}ms via AlarmClock")
+            } catch (e: Exception) {
+                Log.e(TAG, "Restart AlarmClock failed, falling back to setExactAndAllowWhileIdle", e)
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerElapsed,
+                    pendingIntent
+                )
+                Log.d(TAG, "Restart scheduled in ${delayMs}ms via setExactAndAllowWhileIdle")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule restart", e)
         }

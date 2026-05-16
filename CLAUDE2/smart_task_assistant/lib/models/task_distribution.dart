@@ -1,3 +1,9 @@
+DistributionStatus _parseDistributionStatus(int index) {
+  return index >= 0 && index < DistributionStatus.values.length
+      ? DistributionStatus.values[index]
+      : DistributionStatus.pending;
+}
+
 /// 任务分发状态枚举
 enum DistributionStatus {
   pending, // 待确认
@@ -92,29 +98,33 @@ class TaskDistribution {
 
   /// 从 JSON 创建
   factory TaskDistribution.fromJson(Map<String, dynamic> json) {
-    return TaskDistribution(
-      id: json['id'] as String,
-      taskId: json['task_id'] as String,
-      assigneeName: json['assignee_name'] as String,
-      assigneeEmail: json['assignee_email'] as String?,
-      assigneePhone: json['assignee_phone'] as String?,
-      status: DistributionStatus.values[json['status'] as int? ?? 0],
-      distributedAt: DateTime.parse(json['distributed_at'] as String),
-      acceptedAt: json['accepted_at'] != null
-          ? DateTime.parse(json['accepted_at'] as String)
-          : null,
-      completedAt: json['completed_at'] != null
-          ? DateTime.parse(json['completed_at'] as String)
-          : null,
-      dueDate: json['due_date'] != null
-          ? DateTime.parse(json['due_date'] as String)
-          : null,
-      notes: json['notes'] as String?,
-      progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
-      responseMessage: json['response_message'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-    );
+    try {
+      return TaskDistribution(
+        id: json['id'] as String,
+        taskId: json['task_id'] as String,
+        assigneeName: json['assignee_name'] as String,
+        assigneeEmail: json['assignee_email'] as String?,
+        assigneePhone: json['assignee_phone'] as String?,
+        status: _parseDistributionStatus(json['status'] as int? ?? 0),
+        distributedAt: DateTime.parse(json['distributed_at'] as String),
+        acceptedAt: json['accepted_at'] != null
+            ? DateTime.parse(json['accepted_at'] as String)
+            : null,
+        completedAt: json['completed_at'] != null
+            ? DateTime.parse(json['completed_at'] as String)
+            : null,
+        dueDate: json['due_date'] != null
+            ? DateTime.parse(json['due_date'] as String)
+            : null,
+        notes: json['notes'] as String?,
+        progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+        responseMessage: json['response_message'] as String?,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        updatedAt: DateTime.parse(json['updated_at'] as String),
+      );
+    } catch (e) {
+      throw FormatException('Failed to parse task_distribution JSON: $e');
+    }
   }
 
   /// 转换为 JSON

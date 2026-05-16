@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
@@ -21,7 +20,7 @@ class HabitProvider extends ChangeNotifier {
       MethodChannel('com.smarttask.smart_task_assistant/reminder');
 
   void _notifyNativeDataChanged(String type, [String? id]) {
-    if (!Platform.isAndroid) return;
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       _reminderChannel
           .invokeMethod('notifyDataChanged', {'type': type, 'id': id});

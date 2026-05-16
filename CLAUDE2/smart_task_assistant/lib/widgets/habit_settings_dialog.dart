@@ -26,14 +26,35 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
   late Habit _editedHabit;
   final _voicePlayingStream = StreamController<bool>.broadcast();
 
+  late final TextEditingController _targetCountController;
+  late final TextEditingController _intervalMinutesController;
+  late final TextEditingController _advanceMinutesController;
+  late final TextEditingController _voiceTextController;
+
   @override
   void initState() {
     super.initState();
     _editedHabit = widget.habit;
+    _targetCountController = TextEditingController(
+      text: _editedHabit.targetCount.toString(),
+    );
+    _intervalMinutesController = TextEditingController(
+      text: _editedHabit.intervalMinutes.toString(),
+    );
+    _advanceMinutesController = TextEditingController(
+      text: (_editedHabit.advanceMinutes ?? 10).toString(),
+    );
+    _voiceTextController = TextEditingController(
+      text: _editedHabit.voiceText,
+    );
   }
 
   @override
   void dispose() {
+    _targetCountController.dispose();
+    _intervalMinutesController.dispose();
+    _advanceMinutesController.dispose();
+    _voiceTextController.dispose();
     _voicePlayingStream.close();
     super.dispose();
   }
@@ -99,15 +120,14 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
             SizedBox(
               width: 60,
               child: TextField(
-                controller: TextEditingController(
-                  text: _editedHabit.targetCount.toString(),
-                ),
+                controller: _targetCountController,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
                 onChanged: (value) {
+                  final parsed = int.tryParse(value) ?? 1;
                   _editedHabit = _editedHabit.copyWith(
-                    targetCount: int.tryParse(value) ?? 1,
+                    targetCount: parsed < 1 ? 1 : parsed,
                   );
                 },
               ),
@@ -142,15 +162,14 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
               SizedBox(
                 width: 60,
                 child: TextField(
-                  controller: TextEditingController(
-                    text: _editedHabit.intervalMinutes.toString(),
-                  ),
+                  controller: _intervalMinutesController,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   textAlign: TextAlign.center,
                   onChanged: (value) {
+                    final parsed = int.tryParse(value) ?? 60;
                     _editedHabit = _editedHabit.copyWith(
-                      intervalMinutes: int.tryParse(value) ?? 60,
+                      intervalMinutes: parsed < 1 ? 1 : parsed,
                     );
                   },
                 ),
@@ -274,9 +293,7 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
                 SizedBox(
                   width: 60,
                   child: TextField(
-                    controller: TextEditingController(
-                      text: (_editedHabit.advanceMinutes ?? 10).toString(),
-                    ),
+                    controller: _advanceMinutesController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     textAlign: TextAlign.center,
@@ -362,7 +379,7 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: TextEditingController(text: _editedHabit.voiceText),
+          controller: _voiceTextController,
           decoration: const InputDecoration(
             labelText: '语音内容',
             hintText: '输入自定义语音内容',
@@ -567,6 +584,7 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
       speed: _editedHabit.voiceSpeed,
       customVoicePath: _editedHabit.customVoicePath,
     );
+    if (!mounted) return;
     _voicePlayingStream.add(false);
   }
 

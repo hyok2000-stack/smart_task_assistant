@@ -285,10 +285,14 @@ class SettingsProvider extends ChangeNotifier {
 
   /// 保存设置
   Future<void> _saveSettings() async {
-    if (kIsWeb) {
-      _saveToWeb();
-    } else {
-      await _saveToNative();
+    try {
+      if (kIsWeb) {
+        _saveToWeb();
+      } else {
+        await _saveToNative();
+      }
+    } catch (e) {
+      debugPrint('保存设置失败: $e');
     }
   }
 

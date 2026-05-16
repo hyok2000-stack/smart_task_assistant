@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 8, // 更新版本号为 8（添加自定义语音文件功能）
+      version: 9, // 更新版本号为 9（统一任务语音默认开关）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -88,7 +88,7 @@ class DatabaseHelper {
         attachment_paths TEXT,
         reminder_minutes INTEGER,
         reminder_dismissed INTEGER DEFAULT 0,
-        reminder_voice_enabled INTEGER DEFAULT 0,
+        reminder_voice_enabled INTEGER DEFAULT 1,
         reminder_voice_type TEXT DEFAULT 'neutral',
         reminder_voice_style TEXT DEFAULT 'standard',
         reminder_voice_speed TEXT DEFAULT 'normal',
@@ -236,7 +236,8 @@ class DatabaseHelper {
     final defaultTags = Tag.getDefaultTags();
 
     for (var tag in defaultTags) {
-      await db.insert('tags', tag.toJson());
+      await db.insert('tags', tag.toJson(),
+          conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 
@@ -392,7 +393,7 @@ class DatabaseHelper {
     if (oldVersion < 7) {
       try {
         await db.execute(
-            'ALTER TABLE tasks ADD COLUMN reminder_voice_enabled INTEGER DEFAULT 0');
+            'ALTER TABLE tasks ADD COLUMN reminder_voice_enabled INTEGER DEFAULT 1');
       } catch (e) {
         debugPrint('列 reminder_voice_enabled 已存在: $e');
       }
@@ -453,6 +454,23 @@ class DatabaseHelper {
       debugPrint('自定义语音路径字段添加成功');
     }
 
+    // 版本8 -> 版本9: 统一任务语音提醒默认开启
+    if (oldVersion < 9) {
+      try {
+        await db.execute('''
+          UPDATE tasks
+          SET reminder_voice_enabled = 1
+          WHERE reminder_minutes IS NOT NULL
+            AND due_time IS NOT NULL
+            AND status IN (0, 1)
+            AND (reminder_voice_enabled IS NULL OR reminder_voice_enabled = 0)
+        ''');
+        debugPrint('任务语音提醒默认开关已修复');
+      } catch (e) {
+        debugPrint('修复任务语音提醒默认开关失败: $e');
+      }
+    }
+
     // 确保性能索引存在（不升级 schema version）
     try {
       await db.execute(
@@ -479,7 +497,7 @@ class DatabaseHelper {
     final result = await db.insert(
       'tasks',
       task.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      conflictAlgorithm: ConflictAlgorithm.fail,
     );
 
     debugPrint('插入结果: $result (行ID)');
@@ -597,23 +615,24 @@ class DatabaseHelper {
 
   /// 批量删除任务
   Future<void> deleteTasks(List<String> ids) async {
+    if (ids.isEmpty) return;
     final db = await database;
-    for (var id in ids) {
-      await db.delete(
-        'tasks',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    }
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await db.delete(
+      'tasks',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
   }
 
   /// 搜索任务
   Future<List<Task>> searchTasks(String keyword) async {
     final db = await database;
+    final escaped = keyword.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
     final List<Map<String, dynamic>> maps = await db.query(
       'tasks',
       where: 'title LIKE ? OR content LIKE ?',
-      whereArgs: ['%$keyword%', '%$keyword%'],
+      whereArgs: ['%$escaped%', '%$escaped%'],
       orderBy: 'created_at DESC',
     );
     return List.generate(maps.length, (i) => Task.fromJson(maps[i]));
@@ -696,7 +715,7 @@ class DatabaseHelper {
     final overdue = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM tasks WHERE due_time < ? AND status != ? AND status != ?',
-            [todayStart.toIso8601String(), TaskStatus.completed.index, TaskStatus.cancelled.index],
+            [now.toIso8601String(), TaskStatus.completed.index, TaskStatus.cancelled.index],
           ),
         ) ??
         0;

@@ -71,6 +71,11 @@ class _TagCreateDialogState extends State<TagCreateDialog> {
       }
     } catch (e) {
       debugPrint('创建标签失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建标签失败: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isCreating = false);
     }
