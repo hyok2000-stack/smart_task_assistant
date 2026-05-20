@@ -43,6 +43,12 @@ class Task {
   String? reminderVoiceStyle; // 语音风格：standard/gentle/lively
   String? reminderVoiceSpeed; // 语音速度：slow/normal/fast
   String? reminderCustomVoicePath; // 自定义语音文件路径
+  String? sourceType; // 任务来源：local / team_distribution
+  String? sourceTaskId; // 来源任务ID（分发时指向原任务）
+  String? sourceDistributionId; // 来源分发ID
+  String? teamId; // 所属团队ID
+  String? ownerUserId; // 任务所有者ID（后台分配）
+  int? version; // 同步版本号，用于冲突检测
 
   Task({
     required this.id,
@@ -64,10 +70,16 @@ class Task {
     this.reminderMinutes,
     this.reminderDismissed = false,
     this.reminderVoiceEnabled = true,
-    this.reminderVoiceType = 'neutral',
+    this.reminderVoiceType,
     this.reminderVoiceStyle = 'standard',
     this.reminderVoiceSpeed = 'normal',
     this.reminderCustomVoicePath,
+    this.sourceType,
+    this.sourceTaskId,
+    this.sourceDistributionId,
+    this.teamId,
+    this.ownerUserId,
+    this.version,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         tagIds = tagIds ?? [],
@@ -175,6 +187,12 @@ class Task {
         reminderVoiceStyle: json['reminder_voice_style'] as String?,
         reminderVoiceSpeed: json['reminder_voice_speed'] as String?,
         reminderCustomVoicePath: json['reminder_custom_voice_path'] as String?,
+        sourceType: json['source_type'] as String?,
+        sourceTaskId: json['source_task_id'] as String?,
+        sourceDistributionId: json['source_distribution_id'] as String?,
+        teamId: json['team_id'] as String?,
+        ownerUserId: json['owner_user_id'] as String?,
+        version: json['version'] as int?,
       );
     } on FormatException {
       rethrow; // 重新抛出格式异常
@@ -209,6 +227,12 @@ class Task {
       'reminder_voice_style': reminderVoiceStyle,
       'reminder_voice_speed': reminderVoiceSpeed,
       'reminder_custom_voice_path': reminderCustomVoicePath,
+      'source_type': sourceType,
+      'source_task_id': sourceTaskId,
+      'source_distribution_id': sourceDistributionId,
+      'team_id': teamId,
+      'owner_user_id': ownerUserId,
+      'version': version,
     };
   }
 
@@ -238,6 +262,12 @@ class Task {
     String? reminderVoiceStyle,
     String? reminderVoiceSpeed,
     Object? reminderCustomVoicePath = _sentinel,
+    Object? sourceType = _sentinel,
+    Object? sourceTaskId = _sentinel,
+    Object? sourceDistributionId = _sentinel,
+    Object? teamId = _sentinel,
+    Object? ownerUserId = _sentinel,
+    int? version,
   }) {
     return Task(
       id: id ?? this.id,
@@ -265,6 +295,12 @@ class Task {
       reminderCustomVoicePath: identical(reminderCustomVoicePath, _sentinel)
           ? this.reminderCustomVoicePath
           : reminderCustomVoicePath as String?,
+      sourceType: identical(sourceType, _sentinel) ? this.sourceType : sourceType as String?,
+      sourceTaskId: identical(sourceTaskId, _sentinel) ? this.sourceTaskId : sourceTaskId as String?,
+      sourceDistributionId: identical(sourceDistributionId, _sentinel) ? this.sourceDistributionId : sourceDistributionId as String?,
+      teamId: identical(teamId, _sentinel) ? this.teamId : teamId as String?,
+      ownerUserId: identical(ownerUserId, _sentinel) ? this.ownerUserId : ownerUserId as String?,
+      version: version ?? this.version,
     );
   }
 }

@@ -23,6 +23,7 @@ class TaskCard extends StatelessWidget {
   final bool selectable;
   final bool isSelected;
   final ValueChanged<bool>? onSelectionChanged;
+  final bool isDistributed;
 
   const TaskCard({
     super.key,
@@ -42,6 +43,7 @@ class TaskCard extends StatelessWidget {
     this.selectable = false,
     this.isSelected = false,
     this.onSelectionChanged,
+    this.isDistributed = false,
   });
 
   @override
@@ -180,6 +182,10 @@ class TaskCard extends StatelessWidget {
                           task.reminderMinutes! > 0) ...[
                         const SizedBox(width: 6),
                         Icon(Icons.alarm, size: 11, color: Colors.orange),
+                      ],
+                      if (isDistributed) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
                       ],
                     ],
                   ),
@@ -478,6 +484,8 @@ class TaskCard extends StatelessWidget {
                             availableTags!.isNotEmpty &&
                             task.tagIds.isNotEmpty)
                           _buildTaskTags(context),
+                        // 已分发标记
+                        if (isDistributed) _buildDistributedBadge(),
                       ],
                     ),
                   ],
@@ -486,6 +494,31 @@ class TaskCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDistributedBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
+          const SizedBox(width: 3),
+          Text(
+            '已分发',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

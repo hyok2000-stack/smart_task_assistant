@@ -7,9 +7,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
+import '../models/task_comment.dart';
 import '../providers/task_provider.dart';
 import '../services/ai_service.dart';
+import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
+import '../services/task_comment_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 
@@ -57,6 +60,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   // 语音测试播放状态流
   final _voicePlayingStream = StreamController<bool>.broadcast();
 
+  // 评论相关
+  List<TaskComment> _comments = [];
+  List<BackendDistribution> _taskDistributions = [];
+  final _commentController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +102,49 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       // 默认选中"工作"标签
       _selectedTagIds = ['default_work'];
     }
+    // 加载评论
+    if (widget.isEditing) {
+      _loadComments();
+    }
+  }
+
+  Future<void> _loadComments() async {
+    final task = widget.task!;
+    final currentUserId = BackendApiService.instance.userId;
+
+    // 1. Fetch distributions and remote comments from backend
+    final backend = BackendApiService.instance;
+    if (backend.isLoggedIn) {
+      try {
+        final dists = await backend.getDistributionsForTask(task.id);
+        // Save remote comments for dedup, but don't add to main list
+        for (final d in dists) {
+          try {
+            final remoteComments = await backend.getRecipientComments(d.id);
+            if (remoteComments.isNotEmpty) {
+              await TaskCommentService.instance.saveRemoteComments(remoteComments);
+            }
+          } catch (_) {}
+        }
+        // Main comment list: only current user's comments on THIS task
+        final myComments = await TaskCommentService.instance.getComments(task.id);
+        final filtered = myComments.where((c) => c.authorUserId == currentUserId).toList();
+        if (mounted) {
+          setState(() {
+            _comments = filtered;
+            _taskDistributions = dists;
+          });
+        }
+        return;
+      } catch (_) {}
+    }
+
+    // Fallback: local only
+    final myComments = await TaskCommentService.instance.getComments(task.id);
+    final filtered = myComments.where((c) => c.authorUserId == currentUserId).toList();
+    if (mounted) {
+      setState(() => _comments = filtered);
+    }
   }
 
   @override
@@ -101,6 +152,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _titleController.dispose();
     _contentController.dispose();
     _customReminderController.dispose();
+    _commentController.dispose();
     _voicePlayingStream.close();
     super.dispose();
   }
@@ -829,12 +881,297 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 const SizedBox(height: 8),
                 _buildStatusSelector(l),
               ],
+              // 任务来源（编辑模式）
+              if (widget.isEditing && widget.task!.sourceType != null) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '任务来源',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                _buildSourceInfo(),
+              ],
+              // 评论（编辑模式）
+              if (widget.isEditing) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '评论 (${_comments.length})',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                _buildCommentsSection(),
+              ],
+              // 分发状态（编辑模式）
+              if (widget.isEditing && _taskDistributions.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '分发状态 (${_taskDistributions.length})',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                ..._taskDistributions.map((d) => _buildDistributionItem(d)),
+              ],
               const SizedBox(height: 40),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildSourceInfo() {
+    final task = widget.task!;
+    final sourceLabel = task.sourceType == 'team_distribution'
+        ? '团队分发'
+        : task.sourceType == 'local'
+            ? '本地创建'
+            : task.sourceType ?? '本地';
+    final sourceColor = task.sourceType == 'team_distribution'
+        ? AppTheme.primaryColor
+        : Colors.grey.shade600;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.source_outlined, size: 20, color: sourceColor),
+          const SizedBox(width: 8),
+          Text('来源：$sourceLabel', style: TextStyle(fontSize: 14, color: sourceColor, fontWeight: FontWeight.w500)),
+          if (task.sourceTaskId != null) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '原任务：${task.sourceTaskId!.substring(0, task.sourceTaskId!.length > 8 ? 8 : task.sourceTaskId!.length)}...',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+          const Spacer(),
+          Text(
+            '创建于 ${task.createdAt.month}/${task.createdAt.day} ${task.createdAt.hour.toString().padLeft(2, '0')}:${task.createdAt.minute.toString().padLeft(2, '0')}',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 评论列表
+        if (_comments.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text('暂无评论', style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+            ),
+          )
+        else
+          ..._comments.map((comment) => _buildCommentItem(comment)),
+        const SizedBox(height: 8),
+        // 新增评论输入
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _commentController,
+                decoration: InputDecoration(
+                  hintText: '添加评论...',
+                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                onSubmitted: (_) => _addComment(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _addComment,
+              icon: const Icon(Icons.send_rounded),
+              color: AppTheme.primaryColor,
+              iconSize: 22,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommentItem(TaskComment comment) {
+    final time = comment.createdAt;
+    final timeStr = '${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final currentUserId = BackendApiService.instance.userId;
+    final isMine = comment.authorUserId == null || comment.authorUserId == currentUserId;
+    final authorLabel = isMine ? '我' : (comment.authorName ?? '其他用户');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isMine ? Colors.grey.shade50 : const Color(0xFFE8F0FE),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(authorLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isMine ? Colors.grey.shade600 : AppTheme.primaryColor)),
+              const SizedBox(width: 6),
+              Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              if (comment.synced) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.cloud_done_outlined, size: 12, color: Colors.green.shade400),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(comment.content, style: const TextStyle(fontSize: 14, color: AppTheme.textPrimaryColor)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDistributionItem(BackendDistribution d) {
+    final task = widget.task!;
+    final currentUserId = BackendApiService.instance.userId;
+    final isSender = d.sourceTaskId == task.id;
+
+    final statusLabel = {
+      'generated': '已生成',
+      'sent': '已发送',
+      'accepted': '已接受',
+      'rejected': '已拒绝',
+      'completed': '已完成',
+      'failed': '失败',
+    }[d.status] ?? d.status;
+    final statusColor = {
+      'generated': Colors.orange,
+      'sent': Colors.blue,
+      'accepted': AppTheme.primaryColor,
+      'rejected': Colors.red,
+      'completed': Colors.green,
+      'failed': Colors.red,
+    }[d.status] ?? Colors.grey;
+
+    final name = isSender ? (d.recipientName ?? '未知') : (d.senderName ?? '未知');
+    final role = isSender ? '接收方' : '发送方';
+    final icon = isSender ? Icons.send_outlined : Icons.inbox_outlined;
+
+    return GestureDetector(
+      onTap: () => _showDistributionComments(d, name, role),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4FF),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: AppTheme.primaryColor),
+                const SizedBox(width: 6),
+                Text('$role：$name', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textPrimaryColor)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(statusLabel, style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w500)),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+              ],
+            ),
+            if (d.recipientTaskStatus != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text('任务状态：', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  Text(
+                    {'pending': '待处理', 'in_progress': '进行中', 'completed': '已完成', 'cancelled': '已取消'}[d.recipientTaskStatus] ?? d.recipientTaskStatus!,
+                    style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ],
+            if (d.remark != null && d.remark!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('备注：${d.remark!}', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ],
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.chat_bubble_outline, size: 14, color: Colors.grey.shade500),
+                const SizedBox(width: 4),
+                Text('点击查看评论', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDistributionComments(BackendDistribution d, String otherName, String otherRole) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollController) => _DistributionCommentsSheet(
+          distribution: d,
+          currentUserId: BackendApiService.instance.userId ?? '',
+          otherName: otherName,
+          otherRole: otherRole,
+          scrollController: scrollController,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty || !widget.isEditing) return;
+    _commentController.clear();
+    final comment = await TaskCommentService.instance.addLocalComment(
+      taskId: widget.task!.id,
+      content: text,
+    );
+    setState(() => _comments.add(comment));
   }
 
   Widget _buildPriorityChip(TaskPriority priority, String label, Color color) {
@@ -1278,6 +1615,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         reminderCustomVoicePath: _reminderCustomVoicePath,
         isRecurring: _isRecurring,
         recurringRule: _isRecurring ? _recurringRule : null,
+        sourceType: 'local',
       );
 
       await provider.addTask(task);
@@ -1323,6 +1661,155 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       checkmarkColor: Colors.white, // 改为白色打勾号
       backgroundColor: Colors.grey.shade100,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    );
+  }
+}
+
+class _DistributionCommentsSheet extends StatefulWidget {
+  final BackendDistribution distribution;
+  final String currentUserId;
+  final String otherName;
+  final String otherRole;
+  final ScrollController scrollController;
+
+  const _DistributionCommentsSheet({
+    required this.distribution,
+    required this.currentUserId,
+    required this.otherName,
+    required this.otherRole,
+    required this.scrollController,
+  });
+
+  @override
+  State<_DistributionCommentsSheet> createState() => _DistributionCommentsSheetState();
+}
+
+class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> {
+  List<BackendTaskComment>? _comments;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchComments();
+  }
+
+  Future<void> _fetchComments() async {
+    try {
+      final backend = BackendApiService.instance;
+      final result = await backend.getRecipientComments(widget.distribution.id);
+      // Only show the other party's comments, not current user's
+      final filtered = result.where((c) => c.authorUserId != widget.currentUserId).toList();
+      if (mounted) {
+        setState(() {
+          _comments = filtered;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.distribution;
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE))),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.forum_outlined, size: 20, color: AppTheme.primaryColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${widget.otherRole}：${widget.otherName} 的评论',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('加载失败', style: TextStyle(color: Colors.grey.shade500)),
+                          const SizedBox(height: 8),
+                          TextButton(onPressed: _fetchComments, child: const Text('重试')),
+                        ],
+                      ),
+                    )
+                  : _comments == null || _comments!.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.chat_bubble_outline, size: 40, color: Colors.grey.shade300),
+                              const SizedBox(height: 8),
+                              Text('暂无评论', style: TextStyle(fontSize: 14, color: Colors.grey.shade400)),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: widget.scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _comments!.length,
+                          itemBuilder: (ctx, i) {
+                            final c = _comments![i];
+                            final timeStr =
+                                '${c.serverCreatedAt.month}/${c.serverCreatedAt.day} ${c.serverCreatedAt.hour.toString().padLeft(2, '0')}:${c.serverCreatedAt.minute.toString().padLeft(2, '0')}';
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F0FE),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        c.authorName ?? widget.otherName,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(c.content, style: const TextStyle(fontSize: 14, color: AppTheme.textPrimaryColor)),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
     );
   }
 }

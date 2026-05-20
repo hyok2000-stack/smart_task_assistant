@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/task.dart';
+import '../models/task_comment.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../theme/app_theme.dart';
@@ -12,6 +13,8 @@ import '../utils/app_localizations.dart';
 import '../services/weather_service.dart';
 import '../models/city.dart';
 import '../widgets/city_selector_dialog.dart';
+import '../services/backend_api_service.dart';
+import '../services/task_comment_service.dart';
 import 'add_task_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
@@ -198,7 +201,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ValueListenableBuilder<String>(
                               valueListenable: _currentTimeNotifier,
                               builder: (context, time, _) {
-                                if (time.isEmpty) return const SizedBox.shrink();
+                                if (time.isEmpty)
+                                  return const SizedBox.shrink();
                                 return Column(
                                   children: [
                                     const SizedBox(height: 6),
@@ -208,7 +212,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.primaryColor.withOpacity(0.1),
+                                        color: AppTheme.primaryColor
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -258,6 +263,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(height: 16),
                     // 天气信息卡片
                     _buildWeatherCard(),
+                    const SizedBox(height: 12),
+                    _buildBackendSyncBanner(provider),
                     const SizedBox(height: 12),
                     // 进度卡片 - 紧凑版
                     _buildProgressCard(provider),
@@ -346,6 +353,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 task: task,
                                 compact: true,
                                 onTap: () => _showTaskDetail(task),
+                                isDistributed: provider.distributedTaskIds.contains(task.id),
                                 availableTags: _getAllTags(provider),
                                 onTagsChanged: (tagIds) =>
                                     _updateTaskTags(task.id, tagIds, provider),
@@ -402,10 +410,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // 待处理任务列表 - 只显示未完成的任务
             provider.todayTasks.every((t) => t.isCompleted)
                 ? SliverToBoxAdapter(
-                    child:
-                        provider.todayTasks.isEmpty
-                            ? _buildEmptyState()
-                            : const SizedBox.shrink(), // 如果只有已完成任务，不显示空状态
+                    child: provider.todayTasks.isEmpty
+                        ? _buildEmptyState()
+                        : const SizedBox.shrink(), // 如果只有已完成任务，不显示空状态
                   )
                 : SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -423,6 +430,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: TaskCard(
                               task: task,
                               onTap: () => _showTaskDetail(task),
+                              isDistributed: provider.distributedTaskIds.contains(task.id),
                               onComplete: () =>
                                   _completeTask(task.id, provider),
                               onDelete: () => _deleteTask(task.id, provider),
@@ -491,68 +499,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 16),
                       Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    onChanged: provider.setSearchQuery,
-                                    onSubmitted: provider.setSearchQuery,
-                                    decoration: InputDecoration(
-                                      hintText: l.searchHint,
-                                      prefixIcon:
-                                          const Icon(Icons.search_rounded),
-                                      border: InputBorder.none,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (provider.searchQuery.isNotEmpty)
-                                  IconButton(
-                                    icon: const Icon(Icons.clear_rounded),
-                                    onPressed: () =>
-                                        provider.setSearchQuery(''),
-                                  ),
-                                Container(
-                                  margin: const EdgeInsets.all(4),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      FocusScope.of(context).unfocus();
-                                    },
-                                    icon: const Icon(Icons.search, size: 18),
-                                    label: Text(l.search),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 10),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1.5,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 15,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                onChanged: provider.setSearchQuery,
+                                onSubmitted: provider.setSearchQuery,
+                                decoration: InputDecoration(
+                                  hintText: l.searchHint,
+                                  prefixIcon: const Icon(Icons.search_rounded),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (provider.searchQuery.isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.clear_rounded),
+                                onPressed: () => provider.setSearchQuery(''),
+                              ),
+                            Container(
+                              margin: const EdgeInsets.all(4),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  FocusScope.of(context).unfocus();
+                                },
+                                icon: const Icon(Icons.search, size: 18),
+                                label: Text(l.search),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -586,9 +591,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 _buildTagFilterChip(null, '全部标签', null),
                                 const SizedBox(width: 8),
                                 ...tags.map((tag) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _buildTagFilterChip(tag.id, tag.name, tag.color),
-                                )),
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: _buildTagFilterChip(
+                                          tag.id, tag.name, tag.color),
+                                    )),
                               ],
                             ),
                           );
@@ -614,6 +620,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               child: TaskCard(
                                 task: task,
                                 onTap: () => _showTaskDetail(task),
+                                isDistributed: provider.distributedTaskIds.contains(task.id),
                                 onComplete: () =>
                                     _completeTask(task.id, provider),
                                 onDelete: () => _deleteTask(task.id, provider),
@@ -694,6 +701,106 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackendSyncBanner(TaskProvider provider) {
+    final loggedIn = provider.isBackendLoggedIn;
+    final error = provider.backendSyncError;
+    final pending = provider.pendingBackendSyncCount;
+
+    Color color;
+    IconData icon;
+    String title;
+    String subtitle;
+
+    if (!loggedIn) {
+      color = AppTheme.textHintColor;
+      icon = Icons.cloud_off_outlined;
+      title = '未登录云同步';
+      subtitle = '本地任务可继续离线使用';
+    } else if (provider.isBackendSyncing) {
+      color = AppTheme.infoColor;
+      icon = Icons.sync_rounded;
+      title = '正在同步';
+      subtitle = '正在与后台交换任务数据';
+    } else if (error != null && error.isNotEmpty) {
+      color = AppTheme.errorColor;
+      icon = Icons.cloud_off_rounded;
+      title = '同步失败';
+      subtitle = pending > 0 ? '有 $pending 个变更待重试' : '点此重试同步';
+    } else {
+      color = AppTheme.successColor;
+      icon = Icons.cloud_done_outlined;
+      title = '云同步已开启';
+      subtitle = provider.lastBackendSyncAt == null
+          ? '尚未完成同步'
+          : '最后同步 ${_formatDateTime(provider.lastBackendSyncAt!)}';
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: loggedIn
+          ? () async {
+              try {
+                final count = await provider.syncAllWithBackend();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('同步完成，更新 $count 个任务')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('同步失败：$e')),
+                );
+              }
+            }
+          : () => setState(() => _currentIndex = 4),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: AppTheme.textHintColor),
           ],
         ),
       ),
@@ -1462,8 +1569,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     final overdueTasks = provider.overdueTasks;
 
                     // 调试信息
-                    debugPrint(
-                        '🔍 显示逾期任务弹窗: ${overdueTasks.length} 个逾期任务');
+                    debugPrint('🔍 显示逾期任务弹窗: ${overdueTasks.length} 个逾期任务');
                     for (var task in overdueTasks) {
                       debugPrint(
                           '  - ${task.title}, 截止: ${task.dueTime}, 是否逾期: ${task.isOverdue}, 状态: ${task.status}');
@@ -1477,7 +1583,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Icon(
                               Icons.check_circle_outline,
                               size: 48,
-                              color: AppTheme.successColor.withValues(alpha: 0.5),
+                              color:
+                                  AppTheme.successColor.withValues(alpha: 0.5),
                             ),
                             const SizedBox(height: 16),
                             const Text(
@@ -1676,6 +1783,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         const SizedBox(height: 24),
                         _buildStatusSelector(task),
                         const SizedBox(height: 24),
+                        _buildTaskCommentsSection(task),
+                        const SizedBox(height: 24),
+                        _buildDistributionStatusSection(task),
+                        const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
@@ -1688,6 +1799,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryColor,
                               foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _showDistributeTaskDialog(task),
+                            icon: const Icon(Icons.send_rounded),
+                            label: const Text('分发给团队成员'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primaryColor,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -2193,6 +2320,738 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildTaskCommentsSection(Task task) {
+    final currentUserId = BackendApiService.instance.userId;
+    return FutureBuilder<List<TaskComment>>(
+      future: TaskCommentService.instance.getComments(task.id),
+      builder: (context, snapshot) {
+        final allComments = snapshot.data ?? [];
+        final comments = allComments.where((c) => c.authorUserId == currentUserId).toList();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.12)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.chat_bubble_outline_rounded,
+                      size: 18, color: AppTheme.primaryColor),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '任务评论',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => _showAddCommentDialog(task),
+                    child: const Text('添加'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: LinearProgressIndicator(minHeight: 2),
+                )
+              else if (comments.isEmpty)
+                Text(
+                  '暂无评论',
+                  style: TextStyle(color: AppTheme.textSecondaryColor),
+                )
+              else
+                ...comments.map(
+                  (comment) => Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          comment.content,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_formatDateTime(comment.createdAt)} · ${comment.synced ? '已同步' : comment.syncError == null ? '待同步' : '同步失败'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: comment.syncError == null
+                                ? AppTheme.textHintColor
+                                : AppTheme.errorColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddCommentDialog(Task task) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('添加评论'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: '输入任务进展、说明或反馈',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final content = controller.text.trim();
+              if (content.isEmpty) return;
+              try {
+                final localComment =
+                    await TaskCommentService.instance.addLocalComment(
+                  taskId: task.id,
+                  content: content,
+                );
+
+                // 先同步到后端，再关闭对话框
+                if (BackendApiService.instance.isLoggedIn) {
+                  try {
+                    await BackendApiService.instance.pushTask(task);
+                    await BackendApiService.instance.addComment(
+                      taskId: task.id,
+                      content: content,
+                      clientCommentId: localComment.id,
+                      operationId: localComment.operationId,
+                    );
+                    await TaskCommentService.instance
+                        .markSynced(localComment.id);
+                  } catch (syncError) {
+                    await TaskCommentService.instance
+                        .markSyncFailed(localComment.id, syncError);
+                  }
+                }
+
+                if (!mounted) return;
+                Navigator.pop(context);
+                Navigator.pop(context);
+                _showTaskDetail(task);
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('评论失败：$e')),
+                );
+              }
+            },
+            child: const Text('发布'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>?> _loadTeamAndMembers() async {
+    try {
+      final teams = await BackendApiService.instance.getMyTeams();
+      if (teams.isEmpty) return null;
+      final teamId = teams.first['id'] as String;
+      final members = await BackendApiService.instance.getTeamMembers(teamId);
+      return {'teamId': teamId, 'members': members};
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _showDistributeTaskDialog(Task task) {
+    final remarkController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.62,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '分发给团队成员',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: remarkController,
+                    decoration: const InputDecoration(
+                      labelText: '分发备注',
+                      hintText: '可选，例如处理要求或背景说明',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: FutureBuilder<Map<String, dynamic>?>(
+                      future: _loadTeamAndMembers(),
+                      builder: (context, snapshot) {
+                        if (!BackendApiService.instance.isLoggedIn) {
+                          return const Center(child: Text('请先在设置页登录后台同步'));
+                        }
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (snapshot.data == null) {
+                          return const Center(child: Text('您尚未加入任何团队，请先在后台创建或加入团队'));
+                        }
+                        final teamId = snapshot.data!['teamId'] as String;
+                        final members = snapshot.data!['members'] as List<BackendTeamMember>;
+                        if (members.isEmpty) {
+                          return const Center(child: Text('暂无团队成员'));
+                        }
+                        return ListView.separated(
+                          controller: scrollController,
+                          itemCount: members.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final member = members[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: member.online
+                                    ? AppTheme.successColor.withOpacity(0.15)
+                                    : AppTheme.textHintColor.withOpacity(0.15),
+                                child: Icon(
+                                  member.online
+                                      ? Icons.person_rounded
+                                      : Icons.person_off_rounded,
+                                  color: member.online
+                                      ? AppTheme.successColor
+                                      : AppTheme.textHintColor,
+                                ),
+                              ),
+                              title: Text(member.displayName),
+                              subtitle: Text(
+                                '${member.role} ${member.phoneMasked ?? ''}',
+                              ),
+                              trailing: const Icon(Icons.send_rounded),
+                              onTap: () async {
+                                try {
+                                  await BackendApiService.instance
+                                      .pushTask(task);
+                                  await BackendApiService.instance
+                                      .distributeTask(
+                                    sourceTaskId: task.id,
+                                    recipientUserId: member.userId,
+                                    teamId: teamId,
+                                    remark: remarkController.text.trim().isEmpty
+                                        ? null
+                                        : remarkController.text.trim(),
+                                  );
+                                  if (!mounted) return;
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content:
+                                          Text('已分发给 ${member.displayName}'),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('分发失败：$e')),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _getDistributionStatusText(String status) {
+    switch (status) {
+      case 'generated':
+      case 'sent':
+        return '已发送';
+      case 'received':
+        return '已接收';
+      case 'viewed':
+        return '已查看';
+      case 'completed':
+        return '已完成';
+      case 'failed':
+        return '失败';
+      default:
+        return status;
+    }
+  }
+
+  Color _getDistributionStatusColor(String status) {
+    switch (status) {
+      case 'generated':
+      case 'sent':
+        return AppTheme.infoColor;
+      case 'received':
+        return AppTheme.warningColor;
+      case 'viewed':
+        return AppTheme.primaryColor;
+      case 'completed':
+        return AppTheme.successColor;
+      case 'failed':
+        return AppTheme.errorColor;
+      default:
+        return AppTheme.textHintColor;
+    }
+  }
+
+  String _getRecipientTaskStatusText(String? status) {
+    switch (status) {
+      case 'pending':
+        return '待处理';
+      case 'in_progress':
+        return '进行中';
+      case 'completed':
+        return '已完成';
+      case 'cancelled':
+        return '已取消';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildDistributionStatusSection(Task task) {
+    if (!BackendApiService.instance.isLoggedIn) return const SizedBox.shrink();
+    return FutureBuilder<List<BackendDistribution>>(
+      future: BackendApiService.instance.getDistributionsForTask(task.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 40,
+            child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+          );
+        }
+        final distributions = snapshot.data ?? [];
+        if (distributions.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.send_rounded, size: 18, color: AppTheme.primaryColor),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '分发状态',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${distributions.length}',
+                      style: TextStyle(fontSize: 11, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...distributions.map((d) => _buildDistributionItem(d)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDistributionItem(BackendDistribution d) {
+    final statusColor = _getDistributionStatusColor(d.status);
+    final statusText = _getDistributionStatusText(d.status);
+    final recipientLabel = d.recipientName ?? '未知';
+    final taskStatusText = _getRecipientTaskStatusText(d.recipientTaskStatus);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: statusColor.withOpacity(0.12),
+                child: Icon(Icons.person_rounded, size: 16, color: statusColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  recipientLabel,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          if (taskStatusText.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.assignment_rounded, size: 14, color: AppTheme.textSecondaryColor),
+                const SizedBox(width: 4),
+                Text(
+                  '对方任务状态：$taskStatusText',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondaryColor),
+                ),
+              ],
+            ),
+          ],
+          // Tappable comment summary → opens full comments
+          if (d.commentCount > 0) ...[
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: () => _showRecipientCommentsDialog(d),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppTheme.infoColor),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        d.lastCommentSummary != null
+                            ? '${d.commentCount}条评论：${d.lastCommentSummary!}'
+                            : '${d.commentCount}条评论',
+                        style: TextStyle(fontSize: 12, color: AppTheme.infoColor),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 16, color: AppTheme.textHintColor),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          // Status change timeline
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () => _showStatusTimelineDialog(d),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 14, color: AppTheme.textSecondaryColor),
+                  const SizedBox(width: 4),
+                  Text(
+                    '状态变更日志',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondaryColor),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.chevron_right, size: 16, color: AppTheme.textHintColor),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRecipientCommentsDialog(BackendDistribution d) {
+    final currentUserId = BackendApiService.instance.userId;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.8,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '${d.recipientName ?? "对方"}的评论',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<BackendTaskComment>>(
+                  future: BackendApiService.instance.getRecipientComments(d.id),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final allComments = snapshot.data ?? [];
+                    final comments = allComments.where((c) => c.authorUserId != currentUserId).toList();
+                    if (comments.isEmpty) {
+                      return const Center(child: Text('暂无评论'));
+                    }
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: comments.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final c = comments[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    c.authorName ?? '未知',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    _formatDateTime(c.serverCreatedAt),
+                                    style: TextStyle(fontSize: 11, color: AppTheme.textHintColor),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(c.content, style: const TextStyle(fontSize: 14)),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showStatusTimelineDialog(BackendDistribution d) {
+    final statusLabels = {
+      'pending': '待处理',
+      'in_progress': '进行中',
+      'completed': '已完成',
+      'cancelled': '已取消',
+    };
+    final sourceLabels = {
+      'sender': '发送方',
+      'recipient': '接收方',
+      'admin': '管理员',
+    };
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.8,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '状态变更日志',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<StatusChangeLog>>(
+                  future: BackendApiService.instance.getStatusChangeLogs(d.id),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final logs = snapshot.data ?? [];
+                    if (logs.isEmpty) {
+                      return const Center(child: Text('暂无状态变更记录'));
+                    }
+                    return ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: logs.length,
+                      itemBuilder: (context, index) {
+                        final log = logs[index];
+                        final sourceColor = log.source == 'recipient'
+                            ? AppTheme.infoColor
+                            : log.source == 'admin'
+                                ? Colors.orange
+                                : AppTheme.successColor;
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Timeline line + dot
+                              SizedBox(
+                                width: 32,
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: sourceColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    if (index < logs.length - 1)
+                                      Expanded(
+                                        child: Container(width: 2, color: Colors.grey.shade300),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Content
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            log.changedByName ?? '未知',
+                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: sourceColor),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: sourceColor.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              sourceLabels[log.source] ?? log.source,
+                                              style: TextStyle(fontSize: 10, color: sourceColor),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${statusLabels[log.previousStatus] ?? log.previousStatus} → ${statusLabels[log.newStatus] ?? log.newStatus}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _formatDateTime(log.createdAt),
+                                        style: TextStyle(fontSize: 11, color: AppTheme.textHintColor),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetailRow(IconData icon, String label, String value) {
     final l = context.l;
     return Padding(
@@ -2489,6 +3348,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: TaskCard(
                     task: task,
                     onTap: () => _showTaskDetail(task),
+                    isDistributed: provider.distributedTaskIds.contains(task.id),
                     onComplete: () => _restoreTask(task.id, provider),
                     onDelete: () => _deleteTask(task.id, provider),
                     onStatusChange: (status) =>

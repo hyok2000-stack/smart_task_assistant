@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../database/storage_service.dart';
 import '../database/database_helper.dart';
+import '../services/backend_api_service.dart';
+import '../services/task_comment_service.dart';
 
 // 条件导入：文件操作
 import '../utils/platform_file_stub.dart'
@@ -25,7 +28,8 @@ class TaskProvider extends ChangeNotifier {
   void _notifyNativeDataChanged(String type, [String? id]) {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
-      _reminderChannel.invokeMethod('notifyDataChanged', {'type': type, 'id': id});
+      _reminderChannel
+          .invokeMethod('notifyDataChanged', {'type': type, 'id': id});
     } catch (_) {}
   }
 
@@ -35,10 +39,18 @@ class TaskProvider extends ChangeNotifier {
   List<Tag> _tags = [];
   bool _isLoading = false;
   String? _error;
+  bool _isBackendSyncing = false;
+  bool _isSyncRunning = false;
+  DateTime? _lastBackendSyncAt;
+  String? _backendSyncError;
+  int _pendingBackendSyncCount = 0;
+  Set<String> _distributedTaskIds = {};
+  List<BackendDistribution> _distributions = [];
 
   // 缓存的筛选列表
   List<Task> _cachedCompletedTasks = [];
   List<Task> _cachedActiveTasks = [];
+  final BackendApiService _backend = BackendApiService.instance;
 
   // 筛选条件
   TaskStatus? _filterStatus;
@@ -55,6 +67,13 @@ class TaskProvider extends ChangeNotifier {
   List<Tag> get tags => _tags;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get isBackendSyncing => _isBackendSyncing;
+  DateTime? get lastBackendSyncAt => _lastBackendSyncAt;
+  String? get backendSyncError => _backendSyncError;
+  int get pendingBackendSyncCount => _pendingBackendSyncCount;
+  bool get isBackendLoggedIn => _backend.isLoggedIn;
+  Set<String> get distributedTaskIds => _distributedTaskIds;
+  List<BackendDistribution> get distributions => _distributions;
   TaskStatus? get filterStatus => _filterStatus;
   TaskPriority? get filterPriority => _filterPriority;
   String? get filterTagId => _filterTagId;
@@ -169,8 +188,7 @@ class TaskProvider extends ChangeNotifier {
       _recalculateTodayTasks();
 
       // 初始化缓存列表
-      _cachedCompletedTasks =
-          _tasks.where((t) => t.isCompleted).toList();
+      _cachedCompletedTasks = _tasks.where((t) => t.isCompleted).toList();
       _cachedActiveTasks = _tasks
           .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
           .toList();
@@ -180,6 +198,9 @@ class TaskProvider extends ChangeNotifier {
 
       _isLoading = false;
       debugPrint('===== TaskProvider.loadData 完成 =====');
+      await _backend.init();
+      _lastBackendSyncAt = await _backend.getLastSyncAt();
+      await _loadBackendSyncState();
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('===== TaskProvider.loadData 失败 =====');
@@ -259,6 +280,7 @@ class TaskProvider extends ChangeNotifier {
       notifyListeners();
       debugPrint('notifyListeners 完成');
       _notifyNativeDataChanged('task', task.id);
+      _syncTaskSilently(task);
     } catch (e) {
       debugPrint('addTask 错误: $e');
       _error = e.toString();
@@ -278,8 +300,7 @@ class TaskProvider extends ChangeNotifier {
           task.status == TaskStatus.completed;
 
       // 检查提醒相关字段是否改变
-      final reminderFieldsChanged =
-          oldTask.dueTime != task.dueTime ||
+      final reminderFieldsChanged = oldTask.dueTime != task.dueTime ||
           oldTask.reminderMinutes != task.reminderMinutes ||
           oldTask.reminderDismissed != task.reminderDismissed;
 
@@ -306,6 +327,7 @@ class TaskProvider extends ChangeNotifier {
 
       notifyListeners();
       _notifyNativeDataChanged('task', task.id);
+      _syncTaskSilently(task);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -451,13 +473,10 @@ class TaskProvider extends ChangeNotifier {
     _overdueTasks = _tasks
         .where(
           (t) =>
-              !t.isCompleted &&
-              t.status != TaskStatus.cancelled &&
-              t.isOverdue,
+              !t.isCompleted && t.status != TaskStatus.cancelled && t.isOverdue,
         )
         .toList();
-    _cachedCompletedTasks =
-        _tasks.where((t) => t.isCompleted).toList();
+    _cachedCompletedTasks = _tasks.where((t) => t.isCompleted).toList();
     _cachedActiveTasks = _tasks
         .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
         .toList();
@@ -494,6 +513,12 @@ class TaskProvider extends ChangeNotifier {
 
       notifyListeners();
       _notifyNativeDataChanged('task', id);
+      final deletedTask = Task(
+        id: id,
+        title: 'deleted',
+        updatedAt: DateTime.now(),
+      );
+      _syncTaskSilently(deletedTask, deleted: true);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -784,6 +809,209 @@ class TaskProvider extends ChangeNotifier {
       debugPrint('导入数据失败: $e');
       rethrow;
     }
+  }
+
+  /// 手动从后台拉取任务，保持本地优先：仅新增本地不存在的云端任务。
+  Future<int> syncFromBackend() async {
+    await _backend.init();
+    if (!_backend.isLoggedIn) return 0;
+    if (_isSyncRunning) return 0;
+    _isSyncRunning = true;
+
+    _setBackendSyncing(true);
+    final lastSyncAt = await _backend.getLastSyncAt();
+    try {
+      final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
+      var changed = 0;
+
+      for (final remoteTask in pullResult.tasks) {
+        final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
+        if (index == -1) {
+          await _storage.insertTask(remoteTask);
+          _tasks.insert(0, remoteTask);
+          changed++;
+          continue;
+        }
+
+        final localTask = _tasks[index];
+        if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
+          await _storage.updateTask(remoteTask);
+          _tasks[index] = remoteTask;
+          changed++;
+        }
+      }
+
+      // 删除远端已删除的任务
+      for (final deletedId in pullResult.deletedTaskIds) {
+        final index = _tasks.indexWhere((task) => task.id == deletedId);
+        if (index != -1) {
+          await _storage.deleteTask(deletedId);
+          _tasks.removeAt(index);
+          changed++;
+        }
+      }
+
+      // push 待同步评论，再保存 pull 返回的远端评论
+      await _syncPendingComments();
+      if (pullResult.comments.isNotEmpty) {
+        await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
+      }
+
+      // 更新分发缓存
+      try {
+        final distributions = await _backend.getDistributions();
+        _distributions = distributions;
+        _distributedTaskIds = distributions
+            .where((d) => d.sourceTaskId != null)
+            .map((d) => d.sourceTaskId!)
+            .toSet();
+      } catch (_) {}
+
+      _lastBackendSyncAt = DateTime.now();
+      _backendSyncError = null;
+      if (changed > 0) {
+        _refreshTaskLists();
+      }
+      await _saveBackendSyncState();
+      notifyListeners();
+      return changed;
+    } catch (e) {
+      _backendSyncError = e.toString();
+      await _saveBackendSyncState();
+      notifyListeners();
+      rethrow;
+    } finally {
+      _isSyncRunning = false;
+      _setBackendSyncing(false);
+    }
+  }
+
+  /// 登录后首次同步：先拉取云端变更，再上传本机任务。
+  Future<int> syncAllWithBackend() async {
+    await _backend.init();
+    if (!_backend.isLoggedIn) return 0;
+    if (_isSyncRunning) return 0;
+    _isSyncRunning = true;
+
+    _setBackendSyncing(true);
+
+    try {
+      // 先 pull：获取远端最新数据（包括 admin 修改的），更新本地
+      final lastSyncAt = await _backend.getLastSyncAt();
+      final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
+      var changed = 0;
+      for (final remoteTask in pullResult.tasks) {
+        final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
+        if (index == -1) {
+          await _storage.insertTask(remoteTask);
+          _tasks.insert(0, remoteTask);
+          changed++;
+          continue;
+        }
+        final localTask = _tasks[index];
+        if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
+          await _storage.updateTask(remoteTask);
+          _tasks[index] = remoteTask;
+          changed++;
+        }
+      }
+      for (final deletedId in pullResult.deletedTaskIds) {
+        final index = _tasks.indexWhere((task) => task.id == deletedId);
+        if (index != -1) {
+          await _storage.deleteTask(deletedId);
+          _tasks.removeAt(index);
+          changed++;
+        }
+      }
+      if (pullResult.comments.isNotEmpty) {
+        await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
+      }
+
+      // 后 push：本地数据已同步到最新，再推送不会覆盖远端修改
+      await _backend.pushTasks(List.of(_tasks));
+      await _syncPendingComments();
+      _pendingBackendSyncCount = 0;
+
+      _lastBackendSyncAt = DateTime.now();
+      _backendSyncError = null;
+      _pendingBackendSyncCount = 0;
+      if (changed > 0) {
+        _refreshTaskLists();
+      }
+      await _saveBackendSyncState();
+      notifyListeners();
+      return changed;
+    } catch (e) {
+      _backendSyncError = e.toString();
+      await _saveBackendSyncState();
+      notifyListeners();
+      rethrow;
+    } finally {
+      _isSyncRunning = false;
+      _setBackendSyncing(false);
+    }
+  }
+
+  Future<void> _syncTaskSilently(Task task, {bool deleted = false}) async {
+    try {
+      await _backend.init();
+      if (!_backend.isLoggedIn || _isSyncRunning) return;
+      await _backend.pushTask(task, deleted: deleted);
+      if (_pendingBackendSyncCount > 0) _pendingBackendSyncCount--;
+      _lastBackendSyncAt = DateTime.now();
+      _backendSyncError = null;
+      await _saveBackendSyncState();
+      notifyListeners();
+    } catch (e) {
+      _pendingBackendSyncCount++;
+      _backendSyncError = e.toString();
+      await _saveBackendSyncState();
+      notifyListeners();
+      debugPrint('后台任务同步失败，已保留本地数据: $e');
+    }
+  }
+
+  Future<int> _syncPendingComments() async {
+    return TaskCommentService.instance.syncPendingComments(
+      backend: _backend,
+      ensureTaskSynced: (taskId) async {
+        final index = _tasks.indexWhere((task) => task.id == taskId);
+        if (index == -1) {
+          throw Exception('评论所属任务已不存在');
+        }
+        await _backend.pushTask(_tasks[index]);
+      },
+    );
+  }
+
+  Future<void> _loadBackendSyncState() async {
+    final prefs = await SharedPreferences.getInstance();
+    _pendingBackendSyncCount = prefs.getInt('backend.pendingSyncCount') ?? 0;
+    _backendSyncError = prefs.getString('backend.syncError');
+    final lastSync = prefs.getString('backend.lastSyncAt');
+    _lastBackendSyncAt =
+        lastSync == null ? _lastBackendSyncAt : DateTime.tryParse(lastSync);
+  }
+
+  Future<void> _saveBackendSyncState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('backend.pendingSyncCount', _pendingBackendSyncCount);
+    if (_backendSyncError == null) {
+      await prefs.remove('backend.syncError');
+    } else {
+      await prefs.setString('backend.syncError', _backendSyncError!);
+    }
+    if (_lastBackendSyncAt != null) {
+      await prefs.setString(
+        'backend.lastSyncAt',
+        _lastBackendSyncAt!.toIso8601String(),
+      );
+    }
+  }
+
+  void _setBackendSyncing(bool value) {
+    _isBackendSyncing = value;
+    notifyListeners();
   }
 
   /// 重置数据库连接（用于应用重启或恢复时）

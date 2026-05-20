@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 9, // 更新版本号为 9（统一任务语音默认开关）
+      version: 12, // 更新版本号为 12（添加 version 字段用于同步冲突检测）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -92,7 +92,13 @@ class DatabaseHelper {
         reminder_voice_type TEXT DEFAULT 'neutral',
         reminder_voice_style TEXT DEFAULT 'standard',
         reminder_voice_speed TEXT DEFAULT 'normal',
-        reminder_custom_voice_path TEXT
+        reminder_custom_voice_path TEXT,
+        source_type TEXT,
+        source_task_id TEXT,
+        source_distribution_id TEXT,
+        team_id TEXT,
+        owner_user_id TEXT,
+        version INTEGER
       )
     ''');
 
@@ -469,6 +475,65 @@ class DatabaseHelper {
       } catch (e) {
         debugPrint('修复任务语音提醒默认开关失败: $e');
       }
+    }
+
+    // 版本9 -> 版本10: 添加任务来源字段
+    if (oldVersion < 10) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN source_type TEXT');
+      } catch (e) {
+        debugPrint('列 source_type 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN source_task_id TEXT');
+      } catch (e) {
+        debugPrint('列 source_task_id 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN team_id TEXT');
+      } catch (e) {
+        debugPrint('列 team_id 已存在: $e');
+      }
+      // 为已有任务设置默认来源
+      try {
+        await db.execute('''
+          UPDATE tasks SET source_type = 'local' WHERE source_type IS NULL
+        ''');
+      } catch (e) {
+        debugPrint('更新任务默认来源失败: $e');
+      }
+      debugPrint('任务来源字段添加成功');
+    }
+
+    // 版本10 -> 版本11: 添加 owner_user_id, source_distribution_id 字段
+    if (oldVersion < 11) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN source_distribution_id TEXT');
+      } catch (e) {
+        debugPrint('列 source_distribution_id 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN owner_user_id TEXT');
+      } catch (e) {
+        debugPrint('列 owner_user_id 已存在: $e');
+      }
+      debugPrint('任务同步字段添加成功');
+    }
+
+    // 版本11 -> 版本12: 添加 version 字段
+    if (oldVersion < 12) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN version INTEGER');
+      } catch (e) {
+        debugPrint('列 version 已存在: $e');
+      }
+      debugPrint('同步 version 字段添加成功');
     }
 
     // 确保性能索引存在（不升级 schema version）

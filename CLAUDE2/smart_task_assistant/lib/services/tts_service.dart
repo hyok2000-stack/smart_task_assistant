@@ -36,7 +36,7 @@ class TTSService {
   StreamSubscription? _audioPlayerCompleteSubscription;
 
   // 外部音量配置（由 SettingsProvider 设置）
-  double _volume = 0.9;
+  double _volume = 1.0;
 
   /// 设置 TTS 音量 (0.0-1.0)
   set volume(double v) => _volume = v.clamp(0.0, 1.0);
@@ -296,7 +296,8 @@ class TTSService {
               break;
             case 'neutral':
             default:
-              selectedVoice = _neutralVoice;
+              // null/neutral → use system default, don't override voice
+              selectedVoice = null;
               break;
           }
 
@@ -384,6 +385,7 @@ class TTSService {
         _playbackCompleter?.complete();
       });
 
+      await _audioPlayer.setVolume(_volume);
       await _audioPlayer.play(DeviceFileSource(path));
     } catch (e) {
       debugPrint('播放自定义语音文件失败: $e');
