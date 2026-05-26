@@ -36,34 +36,6 @@ class ReminderAudioHelper(private val context: Context) {
     private val audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
-    private var savedAlarmVolume = -1
-
-    fun setMaxAlarmVolume() {
-        try {
-            savedAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
-            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            val halfVolume = max / 2
-            if (savedAlarmVolume != halfVolume) {
-                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, halfVolume, 0)
-                Log.d(TAG, "Alarm volume set to half: $savedAlarmVolume -> $halfVolume (max=$max)")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to set alarm volume", e)
-        }
-    }
-
-    fun restoreAlarmVolume() {
-        if (savedAlarmVolume >= 0) {
-            try {
-                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, savedAlarmVolume, 0)
-                Log.d(TAG, "Alarm volume restored to: $savedAlarmVolume")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to restore alarm volume", e)
-            }
-            savedAlarmVolume = -1
-        }
-    }
-
     private fun requestAlarmAudioFocus() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -173,9 +145,20 @@ class ReminderAudioHelper(private val context: Context) {
                 context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             } ?: return
 
+            if (!vibrator.hasVibrator()) {
+                Log.w(TAG, "Device has no vibrator")
+                return
+            }
+
             val pattern = longArrayOf(0, 300, 100, 300, 100, 300)
-            val effect = VibrationEffect.createWaveform(pattern, -1)
-            vibrator.vibrate(effect)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val effect = VibrationEffect.createWaveform(pattern, -1)
+                vibrator.vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
+            }
+            Log.d(TAG, "Reminder vibration started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play vibration", e)
         }
@@ -221,8 +204,6 @@ class ReminderAudioHelper(private val context: Context) {
      * 播放完整序列：声音 + 振动同时进行，延迟 1s 后返回（给调用方播放 TTS）
      */
     fun playSequence(soundEnabled: Boolean, vibrationEnabled: Boolean) {
-        // 将闹钟流音量调至最大，确保后台提醒声音能被听到
-        setMaxAlarmVolume()
         if (soundEnabled) {
             playReminderSound()
         }

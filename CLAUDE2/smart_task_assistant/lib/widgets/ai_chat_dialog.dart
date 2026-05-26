@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
 import '../models/task_suggestion.dart';
+import '../models/task.dart';
 import '../providers/task_provider.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
@@ -155,6 +156,27 @@ class _AIChatDialogState extends State<AIChatDialog>
     try {
       // 加载AI配置
       await _aiService.loadConfig();
+
+      // C8: 检测任务创建意图
+      final taskKeywords = ['创建任务', '添加任务', '新建任务', '提醒我', '帮我记', '安排', '待办'];
+      final isTaskIntent = taskKeywords.any((k) => message.contains(k));
+      if (isTaskIntent) {
+        final parsed = await _aiService.parseTask(message);
+        if (parsed != null) {
+          setState(() {
+            _messages.add(_ChatMessage(
+              content: '',
+              isUser: false,
+              type: ChatMessageType.taskSuggestion,
+              parsedTask: parsed,
+              engineType: _aiService.currentModelDisplayName,
+            ));
+            _isLoading = false;
+          });
+          _scrollToBottom();
+          return;
+        }
+      }
 
       // 获取任务列表
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
@@ -574,6 +596,12 @@ class _AIChatDialogState extends State<AIChatDialog>
       return _buildPrioritySuggestionCard(message.suggestion!);
     }
 
+    // C8: 处理任务建议消息
+    if (message.type == ChatMessageType.taskSuggestion &&
+        message.parsedTask != null) {
+      return _buildTaskSuggestionCard(message.parsedTask!);
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -966,6 +994,116 @@ class _AIChatDialogState extends State<AIChatDialog>
     );
   }
 
+  // C8: Task suggestion card
+  Widget _buildTaskSuggestionCard(ParsedTask parsed) {
+    final priorityText = {
+      TaskPriority.high: '高优先级',
+      TaskPriority.medium: '中优先级',
+      TaskPriority.low: '低优先级',
+    }[parsed.priority] ?? '中优先级';
+    final priorityColor = {
+      TaskPriority.high: AppTheme.highPriorityColor,
+      TaskPriority.medium: AppTheme.mediumPriorityColor,
+      TaskPriority.low: AppTheme.lowPriorityColor,
+    }[parsed.priority] ?? AppTheme.mediumPriorityColor;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: AppTheme.primaryColor, size: 18),
+                const SizedBox(width: 8),
+                const Text('AI 任务建议', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(parsed.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                  if (parsed.content != null && parsed.content!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(parsed.content!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  ],
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: priorityColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Text(priorityText, style: TextStyle(fontSize: 11, color: priorityColor, fontWeight: FontWeight.w500)),
+                      ),
+                      if (parsed.dueTime != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                          child: Text('截止: ${parsed.dueTime!.month}/${parsed.dueTime!.day} ${parsed.dueTime!.hour}:${parsed.dueTime!.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final provider = Provider.of<TaskProvider>(context, listen: false);
+                  final task = Task(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    title: parsed.title,
+                    content: parsed.content,
+                    priority: parsed.priority,
+                    dueTime: parsed.dueTime,
+                    tagIds: parsed.tags,
+                    reminderMinutes: parsed.recommendedReminderMinutes ?? 10,
+                    sourceType: 'local',
+                  );
+                  provider.addTask(task);
+                  setState(() {
+                    _messages.add(_ChatMessage(
+                      content: '任务已创建！',
+                      isUser: false,
+                    ));
+                  });
+                  _scrollToBottom();
+                },
+                icon: const Icon(Icons.add_task_rounded, size: 18),
+                label: const Text('创建此任务'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDot(int index) {
     return AnimatedBuilder(
       animation: _typingAnimationController,
@@ -1001,6 +1139,7 @@ enum ChatMessageType {
   normal,
   urgent,
   prioritySuggestion,
+  taskSuggestion,
 }
 
 class _ChatMessage {
@@ -1008,6 +1147,7 @@ class _ChatMessage {
   final bool isUser;
   final ChatMessageType type;
   final TaskPrioritySuggestion? suggestion;
+  final ParsedTask? parsedTask;
   final String? engineType;
 
   _ChatMessage({
@@ -1015,6 +1155,7 @@ class _ChatMessage {
     required this.isUser,
     this.type = ChatMessageType.normal,
     this.suggestion,
+    this.parsedTask,
     this.engineType,
   });
 }

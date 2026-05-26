@@ -86,9 +86,11 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             ACTION_RESTART -> {
                 // 服务重启：直接启动 Service
                 Log.d(TAG, "Restarting ReminderForegroundService via alarm")
+                serviceIntent.action = ReminderForegroundService.ACTION_CHECK
                 startServiceSafely(context, serviceIntent)
             }
             else -> {
+                serviceIntent.action = ReminderForegroundService.ACTION_CHECK
                 // 来自其他源（如 BootReceiver 转发）也启动服务
                 startServiceSafely(context, serviceIntent)
             }

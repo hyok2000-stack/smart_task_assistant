@@ -4,12 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.app.AlarmManager
 import android.app.NotificationManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -28,6 +30,44 @@ class MainActivity : FlutterActivity() {
     private var reminderMethodChannel: MethodChannel? = null
     private var reminderEventChannel: EventChannel? = null
     private var reminderEventSink: EventChannel.EventSink? = null
+
+    private fun dispatchReminderService(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun notifyReminderAppState(foreground: Boolean) {
+        try {
+            val intent = Intent(this, ReminderForegroundService::class.java).apply {
+                action = if (foreground) {
+                    ReminderForegroundService.ACTION_APP_FOREGROUND
+                } else {
+                    ReminderForegroundService.ACTION_APP_BACKGROUND
+                }
+            }
+            dispatchReminderService(intent)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to notify reminder app state: foreground=$foreground", e)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        notifyReminderAppState(true)
+    }
+
+    override fun onPause() {
+        notifyReminderAppState(false)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        notifyReminderAppState(false)
+        super.onStop()
+    }
 
     // 剪贴板变化广播接收器
     private val clipboardReceiver = object : BroadcastReceiver() {
@@ -117,7 +157,7 @@ class MainActivity : FlutterActivity() {
                         val intent = Intent(this, ReminderForegroundService::class.java).apply {
                             action = ReminderForegroundService.ACTION_APP_FOREGROUND
                         }
-                        startService(intent)
+                        dispatchReminderService(intent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_ERROR", "Failed to notify foreground: ${e.message}", null)
@@ -128,7 +168,7 @@ class MainActivity : FlutterActivity() {
                         val intent = Intent(this, ReminderForegroundService::class.java).apply {
                             action = ReminderForegroundService.ACTION_APP_BACKGROUND
                         }
-                        startService(intent)
+                        dispatchReminderService(intent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_ERROR", "Failed to notify background: ${e.message}", null)
@@ -143,7 +183,7 @@ class MainActivity : FlutterActivity() {
                             putExtra("type", type)
                             if (id != null) putExtra("id", id)
                         }
-                        startService(intent)
+                        dispatchReminderService(intent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_ERROR", "Failed to notify data changed: ${e.message}", null)
@@ -159,7 +199,7 @@ class MainActivity : FlutterActivity() {
                             action = ReminderForegroundService.ACTION_CLEAR_STATE
                             putExtra("id", id)
                         }
-                        startService(intent)
+                        dispatchReminderService(intent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_ERROR", "Failed to clear state: ${e.message}", null)
@@ -175,10 +215,30 @@ class MainActivity : FlutterActivity() {
                             action = ReminderForegroundService.ACTION_CLEAR_CONTINUAL
                             putExtra("id", id)
                         }
-                        startService(intent)
+                        dispatchReminderService(intent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_ERROR", "Failed to clear continual state: ${e.message}", null)
+                    }
+                }
+                "snoozeReminder" -> {
+                    try {
+                        val id = call.argument<String>("id") ?: run {
+                            result.error("INVALID_ARG", "id is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val minutes = call.argument<Int>("minutes") ?: 10
+                        val snoozeUntil = call.argument<Number>("snoozeUntil")?.toLong()
+                        val intent = Intent(this, ReminderForegroundService::class.java).apply {
+                            action = ReminderForegroundService.ACTION_SNOOZE
+                            putExtra("id", id)
+                            putExtra("minutes", minutes)
+                            if (snoozeUntil != null) putExtra("snoozeUntil", snoozeUntil)
+                        }
+                        dispatchReminderService(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SERVICE_ERROR", "Failed to snooze reminder: ${e.message}", null)
                     }
                 }
                 "requestFullScreenPermission" -> {
@@ -222,6 +282,49 @@ class MainActivity : FlutterActivity() {
                         }
                     } catch (e: Exception) {
                         result.success(true)
+                    }
+                }
+                "areNotificationsEnabled" -> {
+                    try {
+                        result.success(NotificationManagerCompat.from(this).areNotificationsEnabled())
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "openNotificationSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", "Failed to open notification settings: ${e.message}", null)
+                    }
+                }
+                "canScheduleExactAlarms" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val alarmManager = getSystemService(AlarmManager::class.java)
+                            result.success(alarmManager.canScheduleExactAlarms())
+                        } else {
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "openExactAlarmSettings" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", "Failed to open exact alarm settings: ${e.message}", null)
                     }
                 }
                 "isBatteryOptimized" -> {
@@ -295,6 +398,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        notifyReminderAppState(false)
         super.onDestroy()
         // Cleanup clipboard channels
         clipboardEventChannel?.setStreamHandler(null)

@@ -571,13 +571,9 @@ class AIService {
     return _parseWithRules(input);
   }
 
-  /// 回退到本地规则引擎
+  /// 回退到本地规则引擎（仅本次降级，不修改持久化配置）
   void _fallbackToRules() {
-    if (_config.enabled) {
-      debugPrint('AI 服务连接失败，自动切换回本地规则引擎');
-      _config = _config.copyWith(enabled: false);
-      saveConfig();
-    }
+    debugPrint('AI 服务本次调用失败，临时降级到本地规则引擎');
   }
 
   TaskPriority _parsePriority(String? value) {
@@ -591,6 +587,49 @@ class AIService {
       default:
         return TaskPriority.medium;
     }
+  }
+
+  /// C9: 根据标题和内容建议优先级和截止时间
+  Map<String, dynamic> suggestMetadata(String title, [String? content]) {
+    TaskPriority suggestedPriority = TaskPriority.medium;
+    DateTime? suggestedDueTime;
+    String reason = '';
+
+    final text = '$title ${content ?? ''}'.toLowerCase();
+
+    // 高优先级关键词
+    if (text.contains('紧急') || text.contains('马上') || text.contains('立即') || text.contains('尽快') || text.contains('urgent')) {
+      suggestedPriority = TaskPriority.high;
+      reason = '包含紧急关键词';
+    } else if (text.contains('重要') || text.contains('必须') || text.contains('关键') || text.contains('critical')) {
+      suggestedPriority = TaskPriority.high;
+      reason = '包含重要性关键词';
+    } else if (text.contains('低') && (text.contains('优先') || text.contains('不重要'))) {
+      suggestedPriority = TaskPriority.low;
+      reason = '包含低优先级关键词';
+    }
+
+    // 截止时间建议
+    final now = DateTime.now();
+    if (text.contains('会议') || text.contains('开会')) {
+      suggestedDueTime = DateTime(now.year, now.month, now.day, 17, 0);
+      if (reason.isNotEmpty) reason += '；';
+      reason += '会议类任务建议今天下班前';
+    } else if (text.contains('修复') || text.contains('bug') || text.contains('故障')) {
+      suggestedDueTime = now.add(const Duration(hours: 4));
+      if (reason.isNotEmpty) reason += '；';
+      reason += '修复类任务建议4小时内';
+    } else if (text.contains('报告') || text.contains('总结') || text.contains('周报')) {
+      suggestedDueTime = now.add(const Duration(days: 1));
+      if (reason.isNotEmpty) reason += '；';
+      reason += '报告类任务建议明天完成';
+    }
+
+    return {
+      'suggestedPriority': suggestedPriority,
+      'suggestedDueTime': suggestedDueTime,
+      'reason': reason,
+    };
   }
 
   /// 生成任务优先级建议
@@ -857,56 +896,23 @@ class AIService {
     }
   }
 
-  /// 检查AI模型是否可用
-  Future<bool> isAIModelAvailable() async {
-    if (!_config.enabled) {
-      return false;
-    }
-
-    if (_config.provider == 'local') {
-      return false;
-    }
-
+  /// 检查AI模型是否可用（基于配置判断，不发送探测请求）
+  bool isAIModelAvailable() {
+    if (!_config.enabled) return false;
+    if (_config.provider == 'local') return false;
     if (_config.apiKey.isEmpty ||
         _config.baseUrl.isEmpty ||
         _config.model.isEmpty) {
       return false;
     }
-
-    try {
-      final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 5);
-      dio.options.receiveTimeout = const Duration(seconds: 5);
-
-      final response = await dio.post(
-        '${_config.baseUrl}/chat/completions',
-        options: Options(
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ${_config.apiKey}',
-          },
-        ),
-        data: {
-          'model': _config.model,
-          'messages': [
-            {'role': 'user', 'content': 'Hi'}
-          ],
-          'max_tokens': 5,
-        },
-      );
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('AI模型可用性检查失败: $e');
-      return false;
-    }
+    return true;
   }
 
   /// 发送聊天消息
   Future<ChatResult> chatWithEngineInfo(String message,
       {List<Map<String, String>>? history, List<Task>? tasks}) async {
     // 先检查AI模型是否可用
-    final aiAvailable = await isAIModelAvailable();
+    final aiAvailable = isAIModelAvailable();
 
     if (!aiAvailable) {
       // 使用本地规则引擎
@@ -1004,11 +1010,11 @@ class AIService {
       }
     } catch (e) {
       debugPrint('AI 聊天失败: $e');
-      // AI失败，回退到本地规则引擎
       final response = _chatWithRules(message, tasks);
+      final engineLabel = _config.enabled ? '$currentModelDisplayName（连接失败，已降级）' : '本地规则引擎';
       return ChatResult(
         content: response,
-        engineType: '本地规则引擎',
+        engineType: engineLabel,
         isFromAI: false,
       );
     }

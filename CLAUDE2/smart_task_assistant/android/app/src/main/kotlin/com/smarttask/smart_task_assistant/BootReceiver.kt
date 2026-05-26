@@ -49,7 +49,9 @@ class BootReceiver : BroadcastReceiver() {
         ReminderAlarmReceiver.acquireWakeLock(context)
 
         try {
-            val serviceIntent = Intent(context, ReminderForegroundService::class.java)
+            val serviceIntent = Intent(context, ReminderForegroundService::class.java).apply {
+                action = ReminderForegroundService.ACTION_CHECK
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {
@@ -58,6 +60,7 @@ class BootReceiver : BroadcastReceiver() {
             Log.d(TAG, "ReminderForegroundService started (trigger=${context.javaClass.simpleName})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start service", e)
+            ReminderAlarmReceiver.releaseWakeLock()
         }
     }
 }

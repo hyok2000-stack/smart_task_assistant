@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
+import '../services/backend_api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 
@@ -63,6 +64,9 @@ class StatsScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 // 标签使用统计
                 _buildTagStatsCard(context, provider, l),
+                const SizedBox(height: 24),
+                // C10: 生成报告
+                _buildReportCard(context, provider),
               ],
             ),
           );
@@ -730,6 +734,176 @@ class StatsScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  // C10: Report generation card
+  Widget _buildReportCard(BuildContext context, TaskProvider provider) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.assessment_rounded, color: AppTheme.primaryColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text('数据报告', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _ReportGenerator(),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportGenerator extends StatefulWidget {
+  @override
+  State<_ReportGenerator> createState() => _ReportGeneratorState();
+}
+
+class _ReportGeneratorState extends State<_ReportGenerator> {
+  Map<String, dynamic>? _report;
+  bool _loading = false;
+  String _period = 'weekly';
+
+  Future<void> _generate() async {
+    setState(() => _loading = true);
+
+    // 尝试从后端获取，失败则用本地数据
+    Map<String, dynamic>? data;
+    if (BackendApiService.instance.isLoggedIn) {
+      data = await BackendApiService.instance.getReportSummary(period: _period);
+    }
+
+    if (data == null) {
+      // 本地生成报告
+      final provider = Provider.of<TaskProvider>(context, listen: false);
+      final tasks = provider.tasks;
+      final now = DateTime.now();
+      DateTime since;
+      if (_period == 'daily') {
+        since = now.subtract(const Duration(hours: 24));
+      } else if (_period == 'monthly') {
+        since = now.subtract(const Duration(days: 30));
+      } else {
+        since = now.subtract(const Duration(days: 7));
+      }
+      final total = tasks.length;
+      final completed = tasks.where((t) => t.isCompleted).length;
+      final inProgress = tasks.where((t) => t.status == TaskStatus.inProgress).length;
+      final overdue = tasks.where((t) => !t.isCompleted && t.isOverdue).length;
+      data = {
+        'totalTasks': total,
+        'completedTasks': completed,
+        'inProgressTasks': inProgress,
+        'overdueTasks': overdue,
+        'completionRate': total > 0 ? (completed / total * 100) : 0,
+      };
+    }
+
+    if (mounted) {
+      setState(() {
+        _report = data;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _periodChip('日报', 'daily'),
+            const SizedBox(width: 8),
+            _periodChip('周报', 'weekly'),
+            const SizedBox(width: 8),
+            _periodChip('月报', 'monthly'),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: _loading ? null : _generate,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('生成', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+        if (_loading) const Padding(
+          padding: EdgeInsets.all(20),
+          child: Center(child: CircularProgressIndicator(color: AppTheme.primaryColor)),
+        ),
+        if (_report != null && !_loading) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                _reportRow('总任务数', '${_report!['totalTasks'] ?? 0}'),
+                _reportRow('已完成', '${_report!['completedTasks'] ?? 0}'),
+                _reportRow('进行中', '${_report!['inProgressTasks'] ?? 0}'),
+                _reportRow('逾期', '${_report!['overdueTasks'] ?? 0}'),
+                _reportRow('完成率', '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _periodChip(String label, String value) {
+    final selected = _period == value;
+    return GestureDetector(
+      onTap: () => setState(() => _period = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(16),
+          border: selected ? Border.all(color: AppTheme.primaryColor) : null,
+        ),
+        child: Text(label, style: TextStyle(fontSize: 12, color: selected ? AppTheme.primaryColor : AppTheme.textSecondaryColor, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+      ),
+    );
+  }
+
+  Widget _reportRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondaryColor)),
+          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 }

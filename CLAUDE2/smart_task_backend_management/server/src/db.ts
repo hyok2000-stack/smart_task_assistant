@@ -126,6 +126,7 @@ function createSeedData(): DatabaseShape {
     operationLogs: [],
     inviteCodes: [],
     statusChangeLogs: [],
+    notifications: [],
   };
 }
 
@@ -141,6 +142,7 @@ export function readDb(): DatabaseShape {
   const db = JSON.parse(readFileSync(dbPath, "utf8")) as DatabaseShape;
   if (!db.inviteCodes) db.inviteCodes = [];
   if (!db.statusChangeLogs) db.statusChangeLogs = [];
+  if (!db.notifications) db.notifications = [];
   return db;
 }
 

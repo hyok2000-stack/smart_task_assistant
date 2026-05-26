@@ -9,6 +9,27 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    - build/**
+    - .dart_tool/**
+    - OUTPUT/**
+    - databack/**
+    - android/.gradle/**
+    - android/app/build/**
+    - ios/Flutter/Generated.xcconfig
+    - ios/Flutter/flutter_export_environment.sh
+    - macos/Flutter/GeneratedPluginRegistrant.swift
+    - linux/flutter/generated_*.*
+    - linux/flutter/generated_plugins.cmake
+    - windows/flutter/generated_*.*
+    - windows/flutter/generated_plugins.cmake
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "fix_*.py"
+    - "replace_*.py"
+    - "test_*.py"
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

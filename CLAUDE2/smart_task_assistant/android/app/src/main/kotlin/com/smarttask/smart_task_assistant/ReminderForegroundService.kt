@@ -8,7 +8,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.*
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -79,6 +81,7 @@ class ReminderForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var checkHandler: Handler? = null
     private var screenStateReceiverRegistered = false
+    private var voiceHoldRunnable: Runnable? = null
 
     @Volatile
     private var isAppForeground = false
@@ -89,9 +92,16 @@ class ReminderForegroundService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     isAppForeground = false
                     Log.d(TAG, "Screen off detected, native reminder service takes over")
+                    // 获取 WakeLock 确保 handler 线程执行完毕前 CPU 不会休眠
+                    // 否则 CPU 可能在 post 执行前就回睡，导致 onHandleCheck 和 scheduleNextCheck 不执行
+                    ReminderAlarmReceiver.acquireWakeLock(this@ReminderForegroundService)
                     checkHandler?.post {
-                        onHandleCheck()
-                        scheduleNextCheck()
+                        try {
+                            onHandleCheck()
+                            scheduleNextCheck()
+                        } finally {
+                            ReminderAlarmReceiver.releaseWakeLock()
+                        }
                     }
                 }
                 Intent.ACTION_USER_PRESENT -> {
@@ -119,6 +129,9 @@ class ReminderForegroundService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
+        // 电池优化和精确定时权限检查（国产 ROM Doze 模式必需）
+        checkBatteryAndAlarmPermissions()
+
         handlerThread = HandlerThread("ReminderCheckThread").apply { start() }
         checkHandler = Handler(handlerThread!!.looper)
 
@@ -143,13 +156,71 @@ class ReminderForegroundService : Service() {
 
         // 立即执行首次检查（不等 30s），确保重启后不遗漏提醒
         // 等待 TTS 引擎初始化完成后再执行首次检查，避免语音播放失败
+        // 获取 WakeLock 防止 TTS 初始化期间 CPU 休眠导致后续检查不执行
+        ReminderAlarmReceiver.acquireWakeLock(this)
         checkHandler?.post {
-            onCreateCheckPending = false
-            Log.d(TAG, "Immediate first check after service create, waiting for TTS...")
-            ttsHelper?.waitForReady()
-            Log.d(TAG, "TTS ready, proceeding with first check")
-            onHandleCheck()
-            scheduleNextCheck()
+            try {
+                onCreateCheckPending = false
+                Log.d(TAG, "Immediate first check after service create, waiting for TTS...")
+                ttsHelper?.waitForReady()
+                Log.d(TAG, "TTS ready, proceeding with first check")
+                onHandleCheck()
+                // scheduleNextCheck 已在 onHandleCheck 内部调用，此处作为安全兜底
+                scheduleNextCheck()
+            } finally {
+                ReminderAlarmReceiver.releaseWakeLock()
+            }
+        }
+    }
+
+    /**
+     * 检查电池优化白名单和精确定时权限
+     * 国产 ROM 在 Doze 模式下会延迟或取消非白名单 APP 的 AlarmManager 闹钟，
+     * 导致休眠时提醒完全失效。首次创建时自动请求一次白名单。
+     */
+    private fun checkBatteryAndAlarmPermissions() {
+        // --- 电池优化 ---
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isIgnoring = pm.isIgnoringBatteryOptimizations(packageName)
+        Log.d(TAG, "Battery optimization: isIgnoring=$isIgnoring")
+
+        if (!isIgnoring) {
+            Log.w(TAG, "WARNING: App is NOT whitelisted from battery optimization! " +
+                "Reminders will be delayed or missed during Doze mode.")
+            val sp = getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
+            if (!sp.getBoolean("battery_optimization_prompted", false)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    sp.edit().putBoolean("battery_optimization_prompted", true).apply()
+                    Log.d(TAG, "Battery optimization exemption dialog shown")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to show battery optimization dialog", e)
+                    try {
+                        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        sp.edit().putBoolean("battery_optimization_prompted", true).apply()
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "Also failed to open battery settings", e2)
+                    }
+                }
+            }
+        }
+
+        // --- 精确定时权限 (Android 12+) ---
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val canSchedule = alarmManager.canScheduleExactAlarms()
+            Log.d(TAG, "Exact alarm permission: canScheduleExactAlarms=$canSchedule")
+            if (!canSchedule) {
+                Log.w(TAG, "WARNING: Exact alarm permission not granted! " +
+                    "setAlarmClock() will silently fail on Android 12+.")
+            }
         }
     }
 
@@ -316,6 +387,10 @@ class ReminderForegroundService : Service() {
     }
 
     private fun onHandleCheck() {
+        // 取消上一次检查周期的延迟释放，防止在本次检查期间误杀 WakeLock
+        voiceHoldRunnable?.let { checkHandler?.removeCallbacks(it) }
+        voiceHoldRunnable = null
+
         // 超时自动重置 isReminderShowing（防止 Activity 未成功启动导致永远无法弹窗）
         if (isReminderShowing && System.currentTimeMillis() - isReminderShowingSince > REMINDER_SHOWING_TIMEOUT) {
             isReminderShowing = false
@@ -328,13 +403,9 @@ class ReminderForegroundService : Service() {
         Log.d(TAG, "Check state: appForeground=$isAppForeground screenOn=$screenOn effectiveForeground=$effectiveForeground")
         if (effectiveForeground) {
             Log.d(TAG, "App foreground + screen on, skipping native check (Flutter handles it)")
+            scheduleNextCheck()
             ReminderAlarmReceiver.releaseWakeLock()
             return
-        }
-
-        // 从深度休眠唤醒时，延迟 2 秒等待系统服务（TTS/音频）恢复
-        if (!screenOn) {
-            try { Thread.sleep(2000L) } catch (_: InterruptedException) {}
         }
 
         val needsVoiceHold = try {
@@ -361,18 +432,21 @@ class ReminderForegroundService : Service() {
             false
         }
 
+        // 在释放 WakeLock 前先调度下次检查，确保闹钟不会丢失
+        scheduleNextCheck()
+
         if (needsVoiceHold) {
             // 语音播放和 TTS 重试需要额外时间，延迟释放锁。
-            checkHandler?.postDelayed({
+            // 使用 voiceHoldRunnable 追踪，下次 onHandleCheck 会取消此释放
+            voiceHoldRunnable = Runnable {
                 try { wakeLock?.release() } catch (_: Exception) {}
-                audioHelper?.restoreAlarmVolume()
-                ttsHelper?.let { /* TTS helper restores volume on its own via callbacks */ }
                 Log.d(TAG, "WakeLock released (voice hold)")
                 ReminderAlarmReceiver.releaseWakeLock()
-            }, 60_000L)
+                voiceHoldRunnable = null
+            }
+            checkHandler?.postDelayed(voiceHoldRunnable!!, 60_000L)
         } else {
             try { wakeLock?.release() } catch (_: Exception) {}
-            audioHelper?.restoreAlarmVolume()
             ReminderAlarmReceiver.releaseWakeLock()
         }
     }
@@ -389,14 +463,38 @@ class ReminderForegroundService : Service() {
         // 到达此方法时 effectiveForeground 必为 false（onHandleCheck 已跳过前台场景）
         // 由原生层全权处理：声音、语音（不弹全屏界面）
 
+        val screenOn = isScreenOn()
+        // 屏幕关闭时，亮屏唤醒音频硬件 + 等待系统恢复
+        // 不仅限于语音提醒 — 通知声音也需要音频硬件就绪
+        if (!screenOn) {
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                val screenLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "ReminderService::ScreenWake"
+                )
+                screenLock.acquire(10_000L)
+                checkHandler?.postDelayed({
+                    try { if (screenLock.isHeld) screenLock.release() } catch (_: Exception) {}
+                }, 10_000L)
+                Log.d(TAG, "Screen wake acquired for reminder")
+            } catch (e: Exception) {
+                Log.w(TAG, "Screen wake failed", e)
+            }
+            // 等待音频子系统和通知系统从 Doze 恢复
+            try { Thread.sleep(5000L) } catch (_: InterruptedException) {}
+        }
+
         val uiAlreadyShowing = isReminderShowing
         if (uiAlreadyShowing) {
             Log.d(TAG, "Reminder UI already showing; retrying voice without opening another UI")
         }
 
-        // Play sound + vibration
-        if (!uiAlreadyShowing) {
-            audioHelper?.playSequence(item.soundEnabled, item.vibrationEnabled)
+        // 振动：由 Vibrator 服务直接触发（Doze 模式可靠）
+        // 声音：由通知系统播放（postSilentNotification 使用 IMPORTANCE_HIGH + USAGE_ALARM）
+        // 不使用 MediaPlayer 播放通知音 — MediaPlayer 在 Doze 下可能因音频硬件未恢复而失败
+        if (item.vibrationEnabled) {
+            audioHelper?.playVibration()
         }
 
         // Play voice with delay (TTS or custom voice file)
@@ -485,42 +583,56 @@ class ReminderForegroundService : Service() {
     }
 
     /**
-     * 发送一条静默提醒通知（不弹全屏界面），仅保持前台服务
-     * 语音播报由 TTS 独立处理
+     * 发送提醒通知（带声音），使用通知系统播放声音（Doze 模式下最可靠）
+     * 通知系统有系统级权限，MediaPlayer 在 Doze 下可能因音频硬件未恢复而静默失败
      */
     private fun postSilentNotification(item: ReminderChecker.ReminderItem) {
         try {
             val nm = getSystemService(NotificationManager::class.java)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // 删除旧通道（旧通道创建时 setSound(null)，Android 不允许修改已创建通道的声音设置）
+                nm.deleteNotificationChannel("reminder_voice_only")
+
+                val alarmAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 val channel = NotificationChannel(
-                    "reminder_voice_only",
-                    "语音提醒",
-                    NotificationManager.IMPORTANCE_LOW
+                    "reminder_alarm_v2",
+                    "任务提醒",
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "仅语音提醒，不弹窗"
-                    setSound(null, null)
+                    description = "任务和习惯提醒通知（闹钟级别）"
+                    if (soundUri != null && item.soundEnabled) {
+                        setSound(soundUri, alarmAttributes)
+                    } else {
+                        setSound(null, null)
+                    }
+                    // 振动由 Vibrator 服务直接控制，通知通道不重复振动
                     enableVibration(false)
                     setShowBadge(false)
+                    setBypassDnd(true)
                 }
                 nm.createNotificationChannel(channel)
             }
 
-            val notification = NotificationCompat.Builder(this, "reminder_voice_only")
+            val notification = NotificationCompat.Builder(this, "reminder_alarm_v2")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(item.title ?: "任务提醒")
                 .setContentText(item.body ?: "")
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setSound(null)
                 .setAutoCancel(true)
                 .setTimeoutAfter(30_000L)
                 .build()
 
             nm.notify(item.id.hashCode(), notification)
-            Log.d(TAG, "Silent voice-only notification posted for: ${item.title}")
+            Log.d(TAG, "Sound notification posted for: ${item.title} (sound=${item.soundEnabled}, vibration=${item.vibrationEnabled})")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to post silent notification", e)
+            Log.e(TAG, "Failed to post notification", e)
         }
     }
 

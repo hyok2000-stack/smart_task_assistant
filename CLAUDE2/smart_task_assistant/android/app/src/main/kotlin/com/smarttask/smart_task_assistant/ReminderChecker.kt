@@ -152,7 +152,7 @@ class ReminderChecker(private val context: Context) {
                         dueTime = it.getString(5),
                         reminderMinutes = if (it.isNull(6)) null else it.getInt(6),
                         reminderDismissed = it.getInt(7),
-                        voiceEnabled = it.getInt(8),
+                        voiceEnabled = if (it.isNull(8)) 1 else it.getInt(8),
                         voiceType = it.getString(9),
                         voiceStyle = it.getString(10),
                         voiceSpeed = it.getString(11),
@@ -514,6 +514,14 @@ class ReminderChecker(private val context: Context) {
         sp.edit().putLong(String.format(KEY_LAST_REMIND, id), System.currentTimeMillis()).apply()
     }
 
+    fun markTaskReminderShown(id: String) {
+        val now = System.currentTimeMillis()
+        sp.edit()
+            .putLong(String.format(KEY_FIRST_SENT, id), now)
+            .putLong(String.format(KEY_LAST_REMIND, id), now)
+            .apply()
+    }
+
     fun setSnooze(id: String, snoozeUntil: Long) {
         sp.edit().putLong(String.format(KEY_SNOOZE, id), snoozeUntil).apply()
     }
@@ -594,37 +602,8 @@ class ReminderChecker(private val context: Context) {
      * 防止从前台切到后台时原生层重新触发首次提醒（声音+语音+弹窗）。
      */
     fun syncAllTasksState() {
-        val db = openDb() ?: return
-        try {
-            val now = System.currentTimeMillis()
-            val editor = sp.edit()
-            val tasks = queryActiveTasks(db)
-            var syncedCount = 0
-            for (task in tasks) {
-                val dueTime = parseDueTimeMillis(task.dueTime ?: continue) ?: continue
-                val reminderMinutes = task.reminderMinutes ?: continue
-                val reminderTime = dueTime - reminderMinutes.toLong() * 60_000
-
-                // 只同步已过提醒时间的任务
-                if (now >= reminderTime) {
-                    val firstSentKey = String.format(KEY_FIRST_SENT, task.id)
-                    val lastRemindKey = String.format(KEY_LAST_REMIND, task.id)
-                    if (!sp.contains(firstSentKey)) {
-                        editor.putLong(firstSentKey, now)
-                    }
-                    editor.putLong(lastRemindKey, now)
-                    syncedCount++
-                }
-            }
-            editor.apply()
-            Log.d(TAG, "Synced state for $syncedCount/${tasks.size} active tasks")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to sync task state", e)
-        } finally {
-            db.close()
-        }
+        Log.d(TAG, "Task state sync skipped; native layer marks tasks only after a real reminder is shown")
     }
-
     fun markHabitTriggered(id: String) {
         val now = System.currentTimeMillis()
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -686,8 +665,6 @@ class ReminderChecker(private val context: Context) {
             Log.d(TAG, "Found ${tasks.size} active tasks for reminder check")
             for (task in tasks) {
                 if (shouldTriggerTask(task, now)) {
-                    markFirstSent(task.id)
-                    markLastRemind(task.id)
                     items.add(
                         ReminderItem(
                             id = task.id,
@@ -726,11 +703,6 @@ class ReminderChecker(private val context: Context) {
                 }
 
                 if (triggered) {
-                    // 前台时不标记习惯触发状态，由 Flutter 层全权处理
-                    // 避免原生层"消耗"触发但 Flutter 层因 ±1 分钟窗口错过而无法播放语音
-                    if (!isForeground) {
-                        markHabitTriggered(habit.id)
-                    }
                     val needsRecord = habit.id != "habit_clock_in" && habit.id != "habit_clock_out"
                     val currentCount = if (needsRecord) queryHabitTodayCount(db, habit.id) else 0
 

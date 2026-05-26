@@ -19,8 +19,10 @@ import '../utils/app_localizations.dart';
 /// 添加/编辑任务页面
 class AddTaskScreen extends StatefulWidget {
   final Task? task; // 用于编辑现有任务
+  final DateTime? initialDueTime;
+  final String? parentId; // 父任务ID，用于创建子任务
 
-  const AddTaskScreen({super.key, this.task});
+  const AddTaskScreen({super.key, this.task, this.initialDueTime, this.parentId});
 
   bool get isEditing => task != null;
 
@@ -65,6 +67,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   List<BackendDistribution> _taskDistributions = [];
   final _commentController = TextEditingController();
 
+  // B5: 指派人
+  String? _assigneeUserId;
+  List<BackendTeamMember> _teamMembers = [];
+
   @override
   void initState() {
     super.initState();
@@ -88,17 +94,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       // 初始化语音提醒设置
       _reminderVoiceEnabled = widget.task!.reminderVoiceEnabled;
-      // 如果任务有自定义语音，使用它；否则使用默认值（女声、生动、正常）
-      _reminderVoiceType = widget.task!.reminderVoiceType ?? 'female';
-      _reminderVoiceStyle = widget.task!.reminderVoiceStyle ?? 'lively';
-      _reminderVoiceSpeed = widget.task!.reminderVoiceSpeed ?? 'normal';
+      // 如果任务有自定义语音，使用它；否则为 null（跟随系统默认语音）
+      _reminderVoiceType = widget.task!.reminderVoiceType;
+      _reminderVoiceStyle = widget.task!.reminderVoiceStyle;
+      _reminderVoiceSpeed = widget.task!.reminderVoiceSpeed;
       _reminderCustomVoicePath = widget.task!.reminderCustomVoicePath;
     } else {
-      // 新建任务时，默认启用提醒(15分钟)和语音（女声、生动、正常）
+      // 新建任务时，默认启用提醒(10分钟)，语音跟随系统默认
+      _dueTime = widget.initialDueTime;
       _reminderMinutes = 10;
-      _reminderVoiceType = 'female';
-      _reminderVoiceStyle = 'lively';
-      _reminderVoiceSpeed = 'normal';
+      _reminderVoiceType = null;
+      _reminderVoiceStyle = null;
+      _reminderVoiceSpeed = null;
       // 默认选中"工作"标签
       _selectedTagIds = ['default_work'];
     }
@@ -106,6 +113,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (widget.isEditing) {
       _loadComments();
     }
+    // B5: 加载团队成员用于指派
+    if (widget.isEditing) {
+      _assigneeUserId = widget.task!.assigneeUserId;
+    }
+    _loadTeamMembers();
+  }
+
+  Future<void> _loadTeamMembers() async {
+    if (!BackendApiService.instance.isLoggedIn) return;
+    try {
+      final teams = await BackendApiService.instance.getMyTeams();
+      if (teams.isEmpty) return;
+      final members = await BackendApiService.instance.getTeamMembers(teams.first['id'] as String);
+      if (mounted) setState(() => _teamMembers = members);
+    } catch (_) {}
   }
 
   Future<void> _loadComments() async {
@@ -522,8 +544,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                       _reminderVoiceType = 'custom';
                                     }
                                   } else {
-                                    // 禁用自定义语音，使用默认设置（女声、生动、正常）
-                                    _reminderVoiceType = 'female';
+                                    // 禁用自定义语音，跟随系统默认
+                                    _reminderVoiceType = null;
                                     _reminderCustomVoicePath = null;
                                   }
                                 });
@@ -728,23 +750,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     );
                   }
 
-                  // 区分默认标签和自定义标签
-                  final tagsWithDefault = allTags.map((tag) {
-                    return {
-                      'tag': tag,
-                      'isDefault': defaultTags.any((t) => t.id == tag.id),
-                    };
-                  }).toList();
-
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 默认标签组
-                      if (defaultTags.any(
-                        (t) =>
-                            _selectedTagIds.contains(t.id) ||
-                            !provider.tags.any((pt) => pt.id == t.id),
-                      )) ...[
+                      ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 4,
@@ -787,7 +797,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         const SizedBox(height: 12),
                       ],
                       // 自定义标签组
-                      if (provider.tags.isNotEmpty) ...[
+                      if (provider.tags.any((t) => !defaultTags.any((d) => d.id == t.id))) ...[
                         Padding(
                           padding: const EdgeInsets.only(
                             left: 4,
@@ -806,7 +816,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: provider.tags.map((tag) {
+                          children: provider.tags.where((tag) => !defaultTags.any((d) => d.id == tag.id)).map((tag) {
                             final isSelected = _selectedTagIds.contains(tag.id);
                             return _buildTagChip(tag, isSelected);
                           }).toList(),
@@ -825,6 +835,62 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
+              // B5: 指派人选择
+              if (_teamMembers.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '指派给',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      GestureDetector(
+                        onTap: () => setState(() => _assigneeUserId = null),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _assigneeUserId == null ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                            border: _assigneeUserId == null ? Border.all(color: AppTheme.primaryColor) : null,
+                          ),
+                          child: Text('不指派', style: TextStyle(fontSize: 13, color: _assigneeUserId == null ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
+                        ),
+                      ),
+                      ..._teamMembers.map((m) => GestureDetector(
+                        onTap: () => setState(() => _assigneeUserId = m.userId),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _assigneeUserId == m.userId ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                            border: _assigneeUserId == m.userId ? Border.all(color: AppTheme.primaryColor) : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(radius: 10, backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2), child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?', style: const TextStyle(fontSize: 10))),
+                              const SizedBox(width: 6),
+                              Text(m.displayName, style: TextStyle(fontSize: 13, color: _assigneeUserId == m.userId ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
+                            ],
+                          ),
+                        ),
+                      )),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              // 周期任务
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1055,7 +1121,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   Widget _buildDistributionItem(BackendDistribution d) {
     final task = widget.task!;
-    final currentUserId = BackendApiService.instance.userId;
     final isSender = d.sourceTaskId == task.id;
 
     final statusLabel = {
@@ -1376,17 +1441,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   void _onTitleChanged(String value) {
-    // 简单的AI识别模拟
-    if (value.contains('明天') || value.contains('后天')) {
+    // C9: Use AI service for smarter suggestions
+    final suggestion = AIService().suggestMetadata(value, _contentController.text);
+    final reason = suggestion['reason'] as String? ?? '';
+    if (reason.isNotEmpty) {
       setState(() {
         _aiDetected = true;
-        _aiSuggestion = '检测到时间关键词，建议设置截止时间';
-      });
-    } else if (value.contains('紧急') || value.contains('重要')) {
-      setState(() {
-        _aiDetected = true;
-        _aiSuggestion = '检测到优先级关键词，建议设为高优先级';
-        _priority = TaskPriority.high;
+        _aiSuggestion = 'AI 建议：$reason。点击采纳';
+        if (suggestion['suggestedPriority'] != null && suggestion['suggestedPriority'] != _priority) {
+          _priority = suggestion['suggestedPriority'] as TaskPriority;
+        }
       });
     } else {
       setState(() {
@@ -1513,6 +1577,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_dueTime ?? DateTime.now()),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          );
+        },
       );
 
       if (time != null) {
@@ -1543,11 +1613,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final provider = context.read<TaskProvider>();
 
     // 防御性检查：确保 voiceType 和 customVoicePath 一致
-    // 如果 voiceType 为 'custom' 但路径为空，则回退到默认语音类型
+    // 如果 voiceType 为 'custom' 但路径为空，则回退到系统默认语音
     if (_reminderVoiceType == 'custom' &&
         (_reminderCustomVoicePath == null || _reminderCustomVoicePath!.isEmpty)) {
-      debugPrint('⚠️ 语音类型为自定义但路径为空，保存时回退到女声');
-      _reminderVoiceType = 'female';
+      debugPrint('语音类型为自定义但路径为空，保存时回退到系统默认');
+      _reminderVoiceType = null;
       _reminderCustomVoicePath = null;
     }
 
@@ -1586,6 +1656,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         isRecurring: _isRecurring,
         recurringRule: _recurringRule,
         reminderDismissed: reminderChanged ? false : null,
+        assigneeUserId: _assigneeUserId,
       );
 
       await provider.updateTask(updatedTask);
@@ -1616,6 +1687,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         isRecurring: _isRecurring,
         recurringRule: _isRecurring ? _recurringRule : null,
         sourceType: 'local',
+        parentId: widget.parentId,
+        assigneeUserId: _assigneeUserId,
       );
 
       await provider.addTask(task);
@@ -1719,7 +1792,6 @@ class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> 
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.distribution;
     return Column(
       children: [
         Container(

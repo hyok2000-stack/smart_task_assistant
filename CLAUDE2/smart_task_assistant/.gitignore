@@ -33,6 +33,13 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local release artifacts and one-off maintenance scripts
+OUTPUT/
+*.apk
+fix_*.py
+replace_*.py
+test_*.py
+
 # Symbolication related
 app.*.symbols
 

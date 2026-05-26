@@ -49,6 +49,8 @@ class Task {
   String? teamId; // 所属团队ID
   String? ownerUserId; // 任务所有者ID（后台分配）
   int? version; // 同步版本号，用于冲突检测
+  int? sortOrder; // 排序顺序（置顶=-1，默认=0）
+  String? assigneeUserId; // 被指派人ID
 
   Task({
     required this.id,
@@ -80,6 +82,8 @@ class Task {
     this.teamId,
     this.ownerUserId,
     this.version,
+    this.sortOrder,
+    this.assigneeUserId,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         tagIds = tagIds ?? [],
@@ -193,6 +197,8 @@ class Task {
         teamId: json['team_id'] as String?,
         ownerUserId: json['owner_user_id'] as String?,
         version: json['version'] as int?,
+        sortOrder: json['sort_order'] as int?,
+        assigneeUserId: json['assignee_user_id'] as String?,
       );
     } on FormatException {
       rethrow; // 重新抛出格式异常
@@ -233,6 +239,8 @@ class Task {
       'team_id': teamId,
       'owner_user_id': ownerUserId,
       'version': version,
+      'sort_order': sortOrder,
+      'assignee_user_id': assigneeUserId,
     };
   }
 
@@ -268,6 +276,8 @@ class Task {
     Object? teamId = _sentinel,
     Object? ownerUserId = _sentinel,
     int? version,
+    int? sortOrder,
+    Object? assigneeUserId = _sentinel,
   }) {
     return Task(
       id: id ?? this.id,
@@ -301,6 +311,8 @@ class Task {
       teamId: identical(teamId, _sentinel) ? this.teamId : teamId as String?,
       ownerUserId: identical(ownerUserId, _sentinel) ? this.ownerUserId : ownerUserId as String?,
       version: version ?? this.version,
+      sortOrder: sortOrder ?? this.sortOrder,
+      assigneeUserId: identical(assigneeUserId, _sentinel) ? this.assigneeUserId : assigneeUserId as String?,
     );
   }
 }

@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../models/tag.dart';
 import '../theme/app_theme.dart';
 import 'tag_edit_dialog.dart';
+import 'distribution_status_widget.dart';
 
 /// 任务卡片组件 - 互联网风格设计
 class TaskCard extends StatelessWidget {
@@ -24,6 +25,9 @@ class TaskCard extends StatelessWidget {
   final bool isSelected;
   final ValueChanged<bool>? onSelectionChanged;
   final bool isDistributed;
+  final String? distributionStatus;
+  final bool isPinned;
+  final VoidCallback? onPinToggle;
 
   const TaskCard({
     super.key,
@@ -44,6 +48,9 @@ class TaskCard extends StatelessWidget {
     this.isSelected = false,
     this.onSelectionChanged,
     this.isDistributed = false,
+    this.distributionStatus,
+    this.isPinned = false,
+    this.onPinToggle,
   });
 
   @override
@@ -219,6 +226,13 @@ class TaskCard extends StatelessWidget {
                   size: 14,
                 ),
               ),
+            if (isPinned) ...[
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: onPinToggle,
+                child: Icon(Icons.push_pin, size: 16, color: AppTheme.primaryColor),
+              ),
+            ],
           ],
         ),
       ),
@@ -499,6 +513,9 @@ class TaskCard extends StatelessWidget {
   }
 
   Widget _buildDistributedBadge() {
+    if (distributionStatus != null) {
+      return DistributionStatusWidget(status: distributionStatus!, compact: true);
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

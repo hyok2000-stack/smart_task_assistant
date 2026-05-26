@@ -69,38 +69,11 @@ class ReminderTtsHelper(private val context: Context) {
         ttsWakeLock = null
     }
 
-    /**
-     * 将闹钟流音量调至最大，确保后台语音提醒能被听到
-     * 保存原始音量，播放结束后恢复
-     */
-    private var savedAlarmVolume = -1
-
-    private fun setMaxAlarmVolume() {
-        try {
-            savedAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
-            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            val halfVolume = max / 2
-            if (savedAlarmVolume != halfVolume) {
-                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, halfVolume, 0)
-                Log.d(TAG, "Alarm volume set to half: $savedAlarmVolume -> $halfVolume (max=$max)")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to set alarm volume", e)
-        }
-    }
-
-    private fun restoreAlarmVolume() {
-        if (savedAlarmVolume >= 0) {
-            try {
-                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, savedAlarmVolume, 0)
-                Log.d(TAG, "Alarm volume restored to: $savedAlarmVolume")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to restore alarm volume", e)
-            }
-            savedAlarmVolume = -1
-        }
-    }
     private var audioFocusRequest: AudioFocusRequest? = null
+    private val mediaSpeechAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
     private val alarmSpeechAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ALARM)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -114,22 +87,30 @@ class ReminderTtsHelper(private val context: Context) {
         initTts()
     }
 
+    private var initRetryCount = 0
+
     private fun initTts() {
         initLatch = CountDownLatch(1)
         ttsReady = false
-        tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                val result = tts?.setLanguage(Locale.CHINA)
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.w(TAG, "Chinese language not supported, trying default")
-                    tts?.language = Locale.getDefault()
+        try {
+            tts = TextToSpeech(context.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    val result = tts?.setLanguage(Locale.CHINA)
+                    if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.w(TAG, "Chinese language not supported, trying default")
+                        tts?.language = Locale.getDefault()
+                    }
+                    ttsReady = true
+                    initRetryCount = 0
+                    setupUtteranceListener()
+                    Log.d(TAG, "TTS initialized successfully")
+                } else {
+                    Log.e(TAG, "TTS initialization failed: status=$status, retryCount=$initRetryCount")
                 }
-                ttsReady = true
-                setupUtteranceListener()
-                Log.d(TAG, "TTS initialized successfully")
-            } else {
-                Log.e(TAG, "TTS initialization failed: status=$status")
+                initLatch.countDown()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "TTS constructor exception", e)
             initLatch.countDown()
         }
     }
@@ -138,25 +119,29 @@ class ReminderTtsHelper(private val context: Context) {
      * 重新初始化 TTS 引擎（Doze 模式下引擎可能被挂起，speak 返回 ERROR 时调用）
      */
     private fun reinitTts() {
-        Log.d(TAG, "Reinitializing TTS engine...")
+        initRetryCount++
+        Log.d(TAG, "Reinitializing TTS engine... (retry #$initRetryCount)")
         try {
             tts?.stop()
             tts?.shutdown()
         } catch (_: Exception) {}
         tts = null
         ttsReady = false
+        // shutdown() 是异步的，等待旧引擎完全释放后再创建新实例，
+        // 避免部分 ROM 上 TTS 服务单例冲突导致新引擎初始化失败
+        try { Thread.sleep(1500L) } catch (_: InterruptedException) {}
         initTts()
     }
 
     /**
      * 请求音频焦点（确保后台播报不被静音）
-     * 使用 STREAM_MUSIC（与 Flutter TTS 一致），AUDIOFOCUS_GAIN_TRANSIENT 获取完整焦点
+     * 使用 USAGE_MEDIA / STREAM_MUSIC（与 Flutter TTS 一致）
      */
     private fun requestAudioFocus() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(alarmSpeechAttributes)
+                    .setAudioAttributes(mediaSpeechAttributes)
                     .setOnAudioFocusChangeListener { }
                     .build()
                 audioManager.requestAudioFocus(audioFocusRequest!!)
@@ -164,11 +149,11 @@ class ReminderTtsHelper(private val context: Context) {
                 @Suppress("DEPRECATION")
                 audioManager.requestAudioFocus(
                     null,
-                    AudioManager.STREAM_ALARM,
+                    AudioManager.STREAM_MUSIC,
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
                 )
             }
-            Log.d(TAG, "Audio focus requested (STREAM_ALARM, GAIN_TRANSIENT)")
+            Log.d(TAG, "Audio focus requested (STREAM_MUSIC, GAIN_TRANSIENT)")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to request audio focus", e)
         }
@@ -201,24 +186,22 @@ class ReminderTtsHelper(private val context: Context) {
             override fun onDone(utteranceId: String?) {
                 val text = utteranceTextMap.remove(utteranceId) ?: "?"
                 utteranceStartLatchMap.remove(utteranceId)
-                Log.d(TAG, "TTS onDone: $text")
+                Log.d(TAG, "TTS onDone: $text, pending=${utteranceTextMap.size}")
                 if (utteranceTextMap.isEmpty()) {
                     nextSpeakShouldFlush = true
+                    abandonAudioFocus()
+                    releaseTtsWakeLock()
                 }
-                abandonAudioFocus()
-                restoreAlarmVolume()
-                releaseTtsWakeLock()
             }
             override fun onError(utteranceId: String?) {
                 val text = utteranceTextMap.remove(utteranceId) ?: "?"
                 utteranceStartLatchMap.remove(utteranceId)
-                Log.e(TAG, "TTS onError: $text")
+                Log.e(TAG, "TTS onError: $text, pending=${utteranceTextMap.size}")
                 if (utteranceTextMap.isEmpty()) {
                     nextSpeakShouldFlush = true
+                    abandonAudioFocus()
+                    releaseTtsWakeLock()
                 }
-                abandonAudioFocus()
-                restoreAlarmVolume()
-                releaseTtsWakeLock()
             }
         })
     }
@@ -226,13 +209,20 @@ class ReminderTtsHelper(private val context: Context) {
     private fun waitForInit(): Boolean {
         if (ttsReady) return true
         return try {
-            // 服务重启后 TTS 引擎需要更长时间绑定，分阶段等待
+            // 首次等待：10 秒
             if (initLatch.await(10, TimeUnit.SECONDS) && ttsReady) return true
+            // 重试 1：shutdown + 重新 init
             Log.w(TAG, "TTS not ready after 10s, retrying init...")
             reinitTts()
-            initLatch.await(15, TimeUnit.SECONDS)
+            if (initLatch.await(15, TimeUnit.SECONDS) && ttsReady) return true
+            // 重试 2：再次 reinit（某些 ROM 首次绑定 TTS 服务会失败）
+            if (initRetryCount < 3) {
+                Log.w(TAG, "TTS not ready after 25s, retrying again...")
+                reinitTts()
+                initLatch.await(10, TimeUnit.SECONDS)
+            }
             if (!ttsReady) {
-                Log.e(TAG, "TTS not ready after total 25s wait")
+                Log.e(TAG, "TTS not ready after all retries (total ~35s)")
             }
             ttsReady
         } catch (e: InterruptedException) {
@@ -250,7 +240,7 @@ class ReminderTtsHelper(private val context: Context) {
 
     /**
      * 播放语音提醒
-     * 内部会延迟 1.5 秒等待通知音结束再播放
+     * 调用方（triggerReminder）已做屏幕唤醒 + 5s 延迟，此处不再重复等待
      * @param text 提醒文本
      * @param voiceType male=0.7, female=1.3, neutral=1.0
      * @param voiceStyle gentle=-0.1, lively=+0.1, standard=0.0
@@ -268,59 +258,52 @@ class ReminderTtsHelper(private val context: Context) {
         val acceptedLatch = CountDownLatch(1)
         handler.post {
             try {
-            // 持有 WakeLock 确保 CPU 在整个播放过程中保持唤醒（防止休眠回睡）
-            acquireTtsWakeLock()
-            // 从 Doze 恢复后需要更长延迟让音频系统和 TTS 引擎恢复
-            try { Thread.sleep(3000L) } catch (_: InterruptedException) {}
-            // 将闹钟流音量调至一半
-            setMaxAlarmVolume()
-            // 请求音频焦点，确保后台播报不被静音
-            requestAudioFocus()
+                acquireTtsWakeLock()
+                requestAudioFocus()
 
-            // Custom voice file takes priority
-            if (!customVoicePath.isNullOrBlank()) {
-                val file = File(customVoicePath)
-                if (file.exists()) {
-                    accepted.set(playCustomVoiceFile(file))
+                // Custom voice file takes priority
+                if (!customVoicePath.isNullOrBlank()) {
+                    val file = File(customVoicePath)
+                    if (file.exists()) {
+                        accepted.set(playCustomVoiceFile(file))
+                        return@post
+                    }
+                    Log.w(TAG, "Custom voice file not found: $customVoicePath, falling back to TTS")
+                }
+
+                if (!waitForInit() || tts == null) {
+                    Log.e(TAG, "TTS not ready, cannot speak: ttsReady=$ttsReady, tts=$tts")
+                    playFallbackNotification()
                     return@post
                 }
-                Log.w(TAG, "Custom voice file not found: $customVoicePath, falling back to TTS")
-            }
 
-            if (!waitForInit() || tts == null) {
-                Log.e(TAG, "TTS not ready, cannot speak: ttsReady=$ttsReady, tts=$tts")
-                abandonAudioFocus()
-                playFallbackNotification()
-                return@post
-            }
+                // Calculate pitch (matching Flutter _getPitch())
+                val basePitch = when (voiceType) {
+                    "male" -> 0.7f
+                    "female" -> 1.3f
+                    else -> 1.0f
+                }
+                val styleAdjustment = when (voiceStyle) {
+                    "gentle" -> -0.1f
+                    "lively" -> 0.1f
+                    else -> 0.0f
+                }
+                val pitch = (basePitch + styleAdjustment).coerceIn(0.5f, 2.0f)
 
-            // Calculate pitch (matching Flutter _getPitch())
-            val basePitch = when (voiceType) {
-                "male" -> 0.7f
-                "female" -> 1.3f
-                else -> 1.0f
-            }
-            val styleAdjustment = when (voiceStyle) {
-                "gentle" -> -0.1f
-                "lively" -> 0.1f
-                else -> 0.0f
-            }
-            val pitch = (basePitch + styleAdjustment).coerceIn(0.5f, 2.0f)
-
-            // Calculate speech rate (matching Flutter perceived speed)
-            val rate = when (speed) {
-                "slow" -> 0.8f
-                "fast" -> 1.4f
-                else -> 1.0f
-            }
+                val rate = when (speed) {
+                    "slow" -> 0.8f
+                    "fast" -> 1.4f
+                    else -> 1.0f
+                }
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    tts?.setAudioAttributes(alarmSpeechAttributes)
+                    tts?.setAudioAttributes(mediaSpeechAttributes)
                 }
                 tts?.setPitch(pitch)
                 tts?.setSpeechRate(rate)
                 val speakParams = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, DEFAULT_TTS_VOLUME)
+                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
                 }
 
                 val utteranceId = "reminder_${System.currentTimeMillis()}"
@@ -337,39 +320,32 @@ class ReminderTtsHelper(private val context: Context) {
                 val result = tts?.speak(text, queueMode, speakParams, utteranceId)
                 if (result == TextToSpeech.ERROR) {
                     Log.e(TAG, "TTS speak returned ERROR, reinitializing and retrying...")
-                    reinitTts()
-                    if (waitForInit()) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            tts?.setAudioAttributes(alarmSpeechAttributes)
-                        }
-                        tts?.setPitch(pitch)
-                        tts?.setSpeechRate(rate)
-                        val retryId = "reminder_retry_${System.currentTimeMillis()}"
-                        utteranceTextMap[retryId] = text
-                        val retryStartLatch = CountDownLatch(1)
-                        utteranceStartLatchMap[retryId] = retryStartLatch
-                        val retryResult = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, speakParams, retryId)
-                        if (retryResult == TextToSpeech.ERROR) {
-                            Log.e(TAG, "TTS retry also failed, playing fallback notification sound")
-                            playFallbackNotification()
-                        } else {
-                            accepted.set(retryStartLatch.await(5, TimeUnit.SECONDS))
-                            Log.d(TAG, "TTS retry succeeded: '$text'")
-                        }
-                    } else {
-                        Log.e(TAG, "TTS reinit failed, playing fallback notification sound")
-                        playFallbackNotification()
-                    }
+                    utteranceTextMap.remove(utteranceId)
+                    utteranceStartLatchMap.remove(utteranceId)
+                    accepted.set(doRetrySpeak(text, pitch, rate, speakParams))
                 } else {
-                    accepted.set(startLatch.await(5, TimeUnit.SECONDS))
-                    Log.d(TAG, "TTS speak queued: '$text' (pitch=$pitch, rate=$rate)")
+                    val started = startLatch.await(5, TimeUnit.SECONDS)
+                    if (!started) {
+                        // TTS 引擎可能已被系统杀死但 ttsReady 仍为 true（过期）
+                        // onStart 从未触发 → 引擎无响应 → 重新初始化并重试
+                        Log.w(TAG, "TTS start timed out for '$text', engine likely dead, reinitializing...")
+                        utteranceTextMap.remove(utteranceId)
+                        utteranceStartLatchMap.remove(utteranceId)
+                        accepted.set(doRetrySpeak(text, pitch, rate, speakParams))
+                    } else {
+                        accepted.set(true)
+                        Log.d(TAG, "TTS speak started: '$text' (pitch=$pitch, rate=$rate)")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "TTS speak failed, playing fallback notification sound", e)
                 playFallbackNotification()
-            }
-            finally {
-                releaseTtsWakeLock()
+            } finally {
+                // 仅在没有待播放语音时释放资源（正常流程由 onDone/onError 释放）
+                if (utteranceTextMap.isEmpty()) {
+                    abandonAudioFocus()
+                    releaseTtsWakeLock()
+                }
                 acceptedLatch.countDown()
             }
         }
@@ -382,21 +358,58 @@ class ReminderTtsHelper(private val context: Context) {
         }
     }
 
+    /**
+     * TTS speak 失败或超时后的重试逻辑：重新初始化引擎并重新播放
+     */
+    private fun doRetrySpeak(text: String, pitch: Float, rate: Float, speakParams: Bundle): Boolean {
+        reinitTts()
+        if (!waitForInit() || tts == null) {
+            Log.e(TAG, "TTS reinit failed, playing fallback notification sound")
+            playFallbackNotification()
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            tts?.setAudioAttributes(mediaSpeechAttributes)
+        }
+        tts?.setPitch(pitch)
+        tts?.setSpeechRate(rate)
+        val retryId = "reminder_retry_${System.currentTimeMillis()}"
+        utteranceTextMap[retryId] = text
+        val retryStartLatch = CountDownLatch(1)
+        utteranceStartLatchMap[retryId] = retryStartLatch
+        val retryResult = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, speakParams, retryId)
+        if (retryResult == TextToSpeech.ERROR) {
+            utteranceTextMap.remove(retryId)
+            utteranceStartLatchMap.remove(retryId)
+            Log.e(TAG, "TTS retry also failed, playing fallback notification sound")
+            playFallbackNotification()
+            return false
+        }
+        val retryStarted = retryStartLatch.await(8, TimeUnit.SECONDS)
+        if (!retryStarted) {
+            utteranceTextMap.remove(retryId)
+            utteranceStartLatchMap.remove(retryId)
+            Log.e(TAG, "TTS retry start timed out, playing fallback notification sound")
+            playFallbackNotification()
+            return false
+        }
+        Log.d(TAG, "TTS retry succeeded: '$text'")
+        return true
+    }
+
     private fun playCustomVoiceFile(file: File): Boolean {
         return try {
             val mp = MediaPlayer()
-            mp.setAudioAttributes(alarmSpeechAttributes)
+            mp.setAudioAttributes(mediaSpeechAttributes)
             mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             mp.setDataSource(file.absolutePath)
             mp.setOnCompletionListener {
                 abandonAudioFocus()
-                restoreAlarmVolume()
                 it.release()
             }
             mp.setOnErrorListener { player, _, _ ->
                 Log.e(TAG, "Custom voice playback error")
                 abandonAudioFocus()
-                restoreAlarmVolume()
                 player.release()
                 true
             }
@@ -407,7 +420,6 @@ class ReminderTtsHelper(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play custom voice file", e)
             abandonAudioFocus()
-            restoreAlarmVolume()
             false
         }
     }

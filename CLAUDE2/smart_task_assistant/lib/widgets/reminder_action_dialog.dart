@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../screens/add_task_screen.dart';
 import '../theme/app_theme.dart';
 
 /// 提醒后续操作对话框
 class ReminderActionDialog extends StatelessWidget {
   final Task task;
   /// onAction 回调参数:
-  /// - reminderMinutes: 新的提醒时间（分钟），更新任务的提醒设置
+  /// - reminderMinutes: 新的提前提醒时间（分钟），更新任务的提醒设置
   /// - dismissed: 是否永久关闭提醒
   /// - snoozeMinutes: 稍后提醒的分钟数（临时提醒，不修改任务）
   final Function({int? reminderMinutes, bool dismissed, int? snoozeMinutes}) onAction;
@@ -17,11 +18,11 @@ class ReminderActionDialog extends StatelessWidget {
     required this.onAction,
   });
 
-  // 统一的时间选项（与任务编辑页面一致）
+  // 稍后提醒选项，不修改任务本身的提前提醒设置
   static const List<Map<String, dynamic>> _timeOptions = [
-    {'minutes': 10, 'label': '10分钟'},
-    {'minutes': 30, 'label': '30分钟'},
-    {'minutes': 60, 'label': '1小时'},
+    {'minutes': 10, 'label': '10分钟后'},
+    {'minutes': 30, 'label': '30分钟后'},
+    {'minutes': 60, 'label': '1小时后'},
   ];
 
   @override
@@ -78,37 +79,54 @@ class ReminderActionDialog extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            // 任务标题
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.task_alt_rounded,
-                    color: AppTheme.primaryColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      task.title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+            // 任务标题（点击进入编辑页面）
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AddTaskScreen(task: task)),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.task_alt_rounded,
+                      color: AppTheme.primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.primaryColor,
+                          decorationStyle: TextDecorationStyle.dotted,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    Icon(
+                      Icons.edit_outlined,
+                      color: AppTheme.primaryColor.withOpacity(0.6),
+                      size: 18,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 24),
-            // 统一的时间选择按钮
+            // 稍后提醒按钮
             const Text(
-              '选择时间',
+              '稍后提醒',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -184,8 +202,8 @@ class ReminderActionDialog extends StatelessWidget {
   }) {
     return OutlinedButton(
       onPressed: () {
-        // 选择时间后，更新任务的提醒时间并设置稍后提醒
-        onAction(reminderMinutes: minutes, snoozeMinutes: minutes);
+        // 只设置临时稍后提醒，不修改任务的提前提醒时间
+        onAction(snoozeMinutes: minutes);
         Navigator.pop(context);
       },
       style: OutlinedButton.styleFrom(

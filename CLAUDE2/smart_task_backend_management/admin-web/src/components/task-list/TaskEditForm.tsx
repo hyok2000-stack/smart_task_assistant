@@ -48,7 +48,7 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
   const [startTime, setStartTime] = useState(datetimeLocal(task.startTime));
   const [dueTime, setDueTime] = useState(datetimeLocal(task.dueTime));
   const [completedAt, setCompletedAt] = useState(datetimeLocal(task.completedAt));
-  const [assignee, setAssignee] = useState(task.assignee ?? '');
+  const [assigneeUserId, setAssigneeUserId] = useState(task.assigneeUserId ?? '');
   const [ownerUserId, setOwnerUserId] = useState(task.ownerUserId);
   const [teamId, setTeamId] = useState(task.teamId ?? '');
   const [parentId, setParentId] = useState(task.parentId ?? '');
@@ -110,7 +110,7 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
         startTime: startTime || undefined,
         dueTime: dueTime || undefined,
         completedAt: completedAt || undefined,
-        assignee: assignee.trim() || undefined,
+        assigneeUserId: assigneeUserId || undefined,
         ownerUserId,
         teamId: teamId || undefined,
         parentId: parentId.trim() || undefined,
@@ -194,7 +194,12 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
                 {users.map((u) => <option key={u.id} value={u.id}>{u.nickname}</option>)}
               </select>
             ))}
-            {field('指派人', <input value={assignee} onChange={(e) => setAssignee(e.target.value)} />)}
+            {field('指派人', (
+              <select value={assigneeUserId} onChange={(e) => setAssigneeUserId(e.target.value)}>
+                <option value="">未指派</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.nickname || u.email || u.id}</option>)}
+              </select>
+            ))}
             {field('开始时间', <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} />)}
             {field('截止时间', <input type="datetime-local" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />)}
             {field('完成时间', <input type="datetime-local" value={completedAt} onChange={(e) => setCompletedAt(e.target.value)} />)}

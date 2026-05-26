@@ -3,6 +3,7 @@ package com.smarttask.smart_task_assistant
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
 import android.graphics.Typeface
@@ -171,7 +172,7 @@ class FullScreenReminderActivity : Activity() {
             ).apply { bottomMargin = dp(16) }
         })
 
-        // Task title
+        // Task title (clickable → edit task in Flutter)
         root.addView(TextView(context).apply {
             text = title
             setTextColor(Color.WHITE)
@@ -182,6 +183,7 @@ class FullScreenReminderActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) }
+            setOnClickListener { openTaskEdit(id, "task") }
         })
 
         // Due time
@@ -294,7 +296,7 @@ class FullScreenReminderActivity : Activity() {
         })
         root.addView(iconContainer)
 
-        // Habit title
+        // Habit title (clickable → edit in Flutter)
         root.addView(TextView(context).apply {
             text = title
             setTextColor(Color.WHITE)
@@ -305,6 +307,7 @@ class FullScreenReminderActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) }
+            setOnClickListener { openTaskEdit(id, "habit") }
         })
 
         // Reminder text (voice text or body)
@@ -499,6 +502,32 @@ class FullScreenReminderActivity : Activity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to log habit completion in DB", e)
         }
+    }
+
+    // --- Navigate to Flutter edit page ---
+
+    /**
+     * 点击标题：发送 edit 事件给 Flutter 并跳回 APP
+     */
+    private fun openTaskEdit(id: String, type: String) {
+        // Send edit event to Flutter via bridge
+        val json = JSONObject().apply {
+            put("id", id)
+            put("type", type)
+            put("action", "edit")
+        }
+        ReminderBridge.getInstance().sendEvent(json.toString())
+
+        // Bring Flutter app to foreground
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            launchIntent.putExtra("edit_id", id)
+            launchIntent.putExtra("edit_type", type)
+            startActivity(launchIntent)
+        }
+
+        finish()
     }
 
     // --- Event sending ---

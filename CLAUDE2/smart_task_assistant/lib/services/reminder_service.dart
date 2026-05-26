@@ -65,6 +65,7 @@ class ReminderService {
   // 当前显示的提醒（避免重复弹出）
   String? _currentShowingReminderId;
   String? _currentShowingReminderType; // 'task' or 'habit'
+  static const bool _verboseReminderLogs = false;
 
   /// 初始化提醒服务
   void init(
@@ -83,16 +84,15 @@ class ReminderService {
     debugPrint('TaskProvider 任务数量: ${taskProvider.tasks.length}');
     debugPrint('HabitProvider 习惯数量: ${habitProvider.habits.length}');
 
-    // 打印所有任务的提醒设置
-    for (final task in taskProvider.tasks) {
-      debugPrint('任务: ${task.title}, 提醒分钟: ${task.reminderMinutes}, 截止时间: ${task.dueTime}, 已完成: ${task.isCompleted}');
-    }
+    if (_verboseReminderLogs) {
+      for (final task in taskProvider.tasks) {
+        debugPrint('任务: ${task.title}, 提醒分钟: ${task.reminderMinutes}, 截止时间: ${task.dueTime}, 已完成: ${task.isCompleted}');
+      }
 
-    // 打印所有习惯的提醒设置
-    for (final habit in habitProvider.habits) {
-      debugPrint('习惯: ${habit.title}, 启用: ${habit.isEnabled}, 间隔: ${habit.intervalMinutes}, 固定时间: ${habit.fixedTime}');
+      for (final habit in habitProvider.habits) {
+        debugPrint('习惯: ${habit.title}, 启用: ${habit.isEnabled}, 间隔: ${habit.intervalMinutes}, 固定时间: ${habit.fixedTime}');
+      }
     }
-
     // 更新 HabitService 的习惯列表缓存
     _habitService.updateHabits(habitProvider.habits);
 
@@ -104,70 +104,39 @@ class ReminderService {
 
   /// 播放提醒声音和振动
   void playReminderSound() async {
-    debugPrint('===== 开始播放提醒声音 =====');
-
     if (kIsWeb) {
       playReminderSoundWeb();
-    } else {
-      try {
-        // 先振动提醒（这个比较可靠）
-        if (await Vibration.hasVibrator()) {
-          debugPrint('设备支持振动');
-          // 连续振动三次,每次振动300ms,间隔100ms
-          if (await Vibration.hasAmplitudeControl()) {
-            await Vibration.vibrate(
-                pattern: [0, 300, 100, 300, 100, 300], amplitude: 255);
-            debugPrint('已触发振动（带振幅控制）');
-          } else {
-            await Vibration.vibrate(pattern: [0, 300, 100, 300, 100, 300]);
-            debugPrint('已触发振动（不带振幅控制）');
-          }
+      return;
+    }
+
+    try {
+      if (await Vibration.hasVibrator()) {
+        if (await Vibration.hasAmplitudeControl()) {
+          await Vibration.vibrate(
+            pattern: [0, 300, 100, 300, 100, 300],
+            amplitude: 255,
+          );
         } else {
-          debugPrint('设备不支持振动');
+          await Vibration.vibrate(pattern: [0, 300, 100, 300, 100, 300]);
         }
-
-        // 尝试播放声音
-        bool soundPlayed = false;
-
-        // 方法1：尝试播放Asset文件
-        try {
-          await _audioPlayer.play(AssetSource('sounds/notification.mp3'));
-          soundPlayed = true;
-          debugPrint('✓ 成功播放Asset提示音');
-        } catch (e) {
-          debugPrint('✗ Asset提示音文件不存在: $e');
-
-          // 方法2：尝试播放UrlSource（使用内置提示音）
-          try {
-            // 使用一个简短的提示音URL（来自免费音效库）
-            await _audioPlayer.play(UrlSource(
-                'https://www.soundjay.com/buttons/sounds/button-09a.mp3'));
-            soundPlayed = true;
-            debugPrint('✓ 成功播放网络提示音');
-          } catch (e2) {
-            debugPrint('✗ 网络提示音播放失败: $e2');
-
-            // 方法3：使用系统提示音
-            try {
-              await _audioPlayer.play(DeviceFileSource(
-                  '/system/media/audio/alarms/Alarm_Classic.ogg'));
-              soundPlayed = true;
-              debugPrint('✓ 成功播放系统提示音');
-            } catch (e3) {
-              debugPrint('✗ 系统提示音播放失败: $e3');
-            }
-          }
-        }
-
-        if (!soundPlayed) {
-          debugPrint('⚠ 所有提示音播放方式都失败了，但振动已触发');
-        }
-
-        debugPrint('===== 提醒播放完成 =====');
-      } catch (e) {
-        debugPrint('播放提醒声音时发生错误: $e');
-        debugPrint('===== 提醒播放出错 =====');
       }
+
+      if (await _tryPlayAssetSound()) {
+        return;
+      }
+
+      debugPrint('No bundled reminder sound was available');
+    } catch (e) {
+      debugPrint('Failed to play reminder sound: $e');
+    }
+  }
+
+  Future<bool> _tryPlayAssetSound() async {
+    try {
+      await _audioPlayer.play(AssetSource('sounds/notification.mp3'));
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -220,26 +189,29 @@ class ReminderService {
     }
 
     final now = DateTime.now();
-    debugPrint('');
-    debugPrint('===== _checkReminders 开始检查 (${now.toIso8601String()}) =====');
-    debugPrint('总任务数: ${_taskProvider!.tasks.length}');
-    debugPrint('总习惯数: ${_habitProvider!.habits.length}');
+    if (_verboseReminderLogs) {
+      debugPrint('');
+      debugPrint('===== _checkReminders started (${now.toIso8601String()}) =====');
+      debugPrint('Task count: ${_taskProvider!.tasks.length}');
+      debugPrint('Habit count: ${_habitProvider!.habits.length}');
 
-    // 打印所有任务的提醒状态（调试用）
-    debugPrint('===== 任务提醒状态概览 =====');
-    for (final task in _taskProvider!.tasks) {
-      if (!task.isCompleted &&
-          task.status != TaskStatus.cancelled &&
-          task.dueTime != null &&
-          task.reminderMinutes != null &&
-          !task.reminderDismissed) {
-        final reminderTime = task.dueTime!.subtract(Duration(minutes: task.reminderMinutes!));
-        final isPastDue = now.isAfter(reminderTime);
-        final hasFirstSent = _firstReminderSent.contains(task.id);
-        debugPrint('  ${task.title}: 提醒时间=${reminderTime.toIso8601String()}, 已过提醒=$isPastDue, 首次提醒已发送=$hasFirstSent');
+      for (final task in _taskProvider!.tasks) {
+        if (!task.isCompleted &&
+            task.status != TaskStatus.cancelled &&
+            task.dueTime != null &&
+            task.reminderMinutes != null &&
+            !task.reminderDismissed) {
+          final reminderTime = task.dueTime!.subtract(
+            Duration(minutes: task.reminderMinutes!),
+          );
+          final isPastDue = now.isAfter(reminderTime);
+          final hasFirstSent = _firstReminderSent.contains(task.id);
+          debugPrint(
+            'Reminder candidate: ${task.title}, reminderTime=${reminderTime.toIso8601String()}, pastDue=$isPastDue, firstSent=$hasFirstSent',
+          );
+        }
       }
     }
-    debugPrint('============================');
 
     // 检查任务提醒
     _checkTaskReminders(now);
@@ -339,7 +311,7 @@ class ReminderService {
     if (_lastReminderTime.containsKey(task.id)) {
       final lastTime = _lastReminderTime[task.id]!;
       final interval = task.isOverdue
-          ? Duration(seconds: _overdueReminderIntervalSeconds)
+          ? const Duration(seconds: _overdueReminderIntervalSeconds)
           : const Duration(seconds: _continualReminderIntervalSeconds);
       final nextReminderTime = lastTime.add(interval);
 
@@ -542,16 +514,28 @@ class ReminderService {
 
             // 如果同时传了 snoozeMinutes，设置稍后提醒
             if (snoozeMinutes != null) {
-              _snoozedTasks[task.id] =
+              final snoozeUntil =
                   DateTime.now().add(Duration(minutes: snoozeMinutes));
+              _snoozedTasks[task.id] = snoozeUntil;
+              await _syncNativeSnooze(
+                task.id,
+                snoozeMinutes,
+                snoozeUntil: snoozeUntil,
+              );
               debugPrint('任务 "${task.title}" 提醒时间已修改为 $reminderMinutes 分钟前，$snoozeMinutes 分钟后再次提醒');
             } else {
               debugPrint('任务 "${task.title}" 的提醒时间已修改为 $reminderMinutes 分钟前');
             }
           } else if (snoozeMinutes != null) {
             // 用户选择稍后提醒 - 设置稍后提醒时间（不修改任务）
-            _snoozedTasks[task.id] =
+            final snoozeUntil =
                 DateTime.now().add(Duration(minutes: snoozeMinutes));
+            _snoozedTasks[task.id] = snoozeUntil;
+            await _syncNativeSnooze(
+              task.id,
+              snoozeMinutes,
+              snoozeUntil: snoozeUntil,
+            );
             // 如果任务之前被标记为不再提醒，恢复提醒
             if (task.reminderDismissed) {
               final updatedTask = task.copyWith(reminderDismissed: false);
@@ -562,8 +546,14 @@ class ReminderService {
             debugPrint('任务 "${task.title}" 将在 $snoozeMinutes 分钟后再次提醒');
           } else {
             // 用户只是关闭窗口 - 设置为稍后持续提醒
-            _snoozedTasks[task.id] = DateTime.now().add(
+            final snoozeUntil = DateTime.now().add(
               const Duration(seconds: _continualReminderIntervalSeconds),
+            );
+            _snoozedTasks[task.id] = snoozeUntil;
+            await _syncNativeSnooze(
+              task.id,
+              1,
+              snoozeUntil: snoozeUntil,
             );
             _lastReminderTime.remove(task.id);
             debugPrint(
@@ -680,6 +670,24 @@ class ReminderService {
   void setSnooze(String id, int minutes) {
     _snoozedTasks[id] = DateTime.now().add(Duration(minutes: minutes));
     debugPrint('Reminder snoozed from native layer: $id for $minutes minutes');
+  }
+
+  Future<void> _syncNativeSnooze(
+    String id,
+    int minutes, {
+    DateTime? snoozeUntil,
+  }) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderChannel.invokeMethod('snoozeReminder', {
+        'id': id,
+        'minutes': minutes,
+        if (snoozeUntil != null)
+          'snoozeUntil': snoozeUntil.millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('Failed to sync native snooze: $e');
+    }
   }
 
   /// 从原生层查询屏幕状态（每 5 秒最多查一次，避免频繁调用）

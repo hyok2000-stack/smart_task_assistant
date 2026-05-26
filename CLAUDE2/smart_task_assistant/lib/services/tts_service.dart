@@ -29,6 +29,10 @@ class TTSService {
   // 语音锁：防止 stop→speak 竞态条件
   bool _isSpeaking = false;
 
+  // 引擎健康追踪：检测 TTS 引擎静默失效
+  bool _engineHealthy = true;
+  DateTime? _lastSpeakStartTime;
+
   /// 当前是否正在播放语音
   bool get isPlaying => _isPlaying;
 
@@ -36,7 +40,7 @@ class TTSService {
   StreamSubscription? _audioPlayerCompleteSubscription;
 
   // 外部音量配置（由 SettingsProvider 设置）
-  double _volume = 1.0;
+  double _volume = 1.0; // 跟随系统音量（1.0 = 使用流的满音量，由用户控制实际大小）
 
   /// 设置 TTS 音量 (0.0-1.0)
   set volume(double v) => _volume = v.clamp(0.0, 1.0);
@@ -85,6 +89,16 @@ class TTSService {
 
   // 初始化 TTS
   Future<void> init() async {
+    // 引擎健康检查：如果上次 speak 成功提交但 10 秒内无完成回调，引擎可能已失效
+    if (_isInitialized && !_engineHealthy && _lastSpeakStartTime != null) {
+      final elapsed = DateTime.now().difference(_lastSpeakStartTime!);
+      if (elapsed.inSeconds > 10) {
+        debugPrint('TTS 引擎可能已失效 (${elapsed.inSeconds}s 无完成回调)，强制重新初始化');
+        _isInitialized = false;
+        try { _flutterTts?.stop(); } catch (_) {}
+      }
+    }
+
     if (_isInitialized) return;
 
     try {
@@ -178,7 +192,7 @@ class TTSService {
     debugPrint('中性: ${_neutralVoice?['name'] ?? "未找到"}');
 
     // 如果没有找到专用语音，使用第一个中文语音作为默认
-    if (_maleVoice == null && _femaleVoice == null && _neutralVoice == null) {
+    if (_neutralVoice == null) {
       for (var voice in _availableVoices!) {
         final locale = voice['locale']?.toString() ?? '';
         if (locale.contains('zh') || locale.contains('cn')) {
@@ -187,6 +201,11 @@ class TTSService {
           break;
         }
       }
+    }
+    // 兜底：使用任意可用语音
+    if (_neutralVoice == null && _availableVoices!.isNotEmpty) {
+      _neutralVoice = _availableVoices!.first;
+      debugPrint('兜底使用语音: ${_neutralVoice?['name']}');
     }
   }
 
@@ -281,11 +300,11 @@ class TTSService {
           await Future.delayed(const Duration(milliseconds: 100));
 
           await _flutterTts!.setLanguage('zh-CN');
-          await _flutterTts!.setVolume(_volume);
+          await _flutterTts?.setVolume(_volume);
 
           // 选择语音
           Map<String, String>? selectedVoice;
-          final requestedVoiceType = voiceType ?? 'neutral';
+          final requestedVoiceType = voiceType;
 
           switch (requestedVoiceType) {
             case 'male':
@@ -295,8 +314,11 @@ class TTSService {
               selectedVoice = _femaleVoice ?? _neutralVoice;
               break;
             case 'neutral':
+              selectedVoice = _neutralVoice;
+              break;
+            case null:
             default:
-              // null/neutral → use system default, don't override voice
+              // null 表示跟随系统设置，不调用 setVoice
               selectedVoice = null;
               break;
           }
@@ -312,7 +334,7 @@ class TTSService {
           double speechRate = _getSpeechRate(speed ?? 'normal');
           await _flutterTts!.setSpeechRate(speechRate);
 
-          double pitch = _getPitch(requestedVoiceType, voiceStyle ?? 'standard');
+          double pitch = _getPitch(requestedVoiceType ?? 'neutral', voiceStyle ?? 'standard');
           await _flutterTts!.setPitch(pitch);
 
           debugPrint('TTS 播报: "$text" (attempt=${attempt + 1}, pitch=$pitch, rate=$speechRate)');
@@ -322,6 +344,7 @@ class TTSService {
             debugPrint('TTS 播放完成');
             _isPlaying = false;
             _isSpeaking = false;
+            _engineHealthy = true;
             _playbackCompleter?.complete();
           });
 
@@ -329,6 +352,7 @@ class TTSService {
             debugPrint('TTS 播放错误: $msg');
             _isPlaying = false;
             _isSpeaking = false;
+            _engineHealthy = false;
             _playbackCompleter?.completeError(Exception(msg));
           });
 
@@ -336,7 +360,9 @@ class TTSService {
           debugPrint('TTS speak 返回: $result (attempt=${attempt + 1})');
 
           if (result == 1) {
-            // speak 成功提交
+            // speak 成功提交，标记引擎待确认（完成回调会设 _engineHealthy = true）
+            _lastSpeakStartTime = DateTime.now();
+            _engineHealthy = false;
             return;
           }
 

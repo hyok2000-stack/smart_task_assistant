@@ -8,6 +8,32 @@ import { z } from "zod";
 import { mutateDb, now, publicUser, readDb } from "./db";
 import type { Task, TaskComment, TaskDistribution, User } from "./types";
 
+// === 错误码定义 ===
+const ErrorCode = {
+  AUTH_REQUIRED: "AUTH_REQUIRED",
+  AUTH_EXPIRED: "AUTH_EXPIRED",
+  AUTH_INVALID_CREDENTIALS: "AUTH_INVALID_CREDENTIALS",
+  FORBIDDEN: "FORBIDDEN",
+  INVALID_APP_KEY: "INVALID_APP_KEY",
+  NOT_FOUND: "NOT_FOUND",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  CONFLICT: "CONFLICT",
+  INVITE_CODE_INVALID: "INVITE_CODE_INVALID",
+  INVITE_CODE_EXPIRED: "INVITE_CODE_EXPIRED",
+  INVITE_CODE_EXHAUSTED: "INVITE_CODE_EXHAUSTED",
+  SERVER_ERROR: "SERVER_ERROR",
+} as const;
+
+class AppError extends Error {
+  constructor(public code: string, message: string, public details?: unknown) {
+    super(message);
+  }
+}
+
+function sendError(res: Response, status: number, code: string, message: string, details?: unknown) {
+  return res.status(status).json({ code, message, ...(details ? { details } : {}) });
+}
+
 const app = express();
 const port = Number(process.env.PORT ?? 4100);
 const jwtSecret = process.env.JWT_SECRET ?? "dev-smart-task-secret";
@@ -35,17 +61,17 @@ function signToken(user: User) {
 function auth(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "请先登录" });
+    return sendError(res, 401, ErrorCode.AUTH_REQUIRED, "请先登录");
   }
 
   try {
     const payload = jwt.verify(header.slice(7), jwtSecret) as { sub: string };
     const user = readDb().users.find((item) => item.id === payload.sub && item.status === "active");
-    if (!user) return res.status(401).json({ message: "账号不存在或已停用" });
+    if (!user) return sendError(res, 401, ErrorCode.AUTH_EXPIRED, "账号不存在或已停用");
     req.user = user;
     next();
   } catch {
-    return res.status(401).json({ message: "登录已失效" });
+    return sendError(res, 401, ErrorCode.AUTH_EXPIRED, "登录已失效");
   }
 }
 
@@ -85,7 +111,7 @@ function canSeeTask(user: User, task: Task) {
 function requireAppKey(req: Request, res: Response, next: NextFunction) {
   const key = req.headers["x-app-key"];
   if (key !== APP_KEY) {
-    return res.status(403).json({ message: "无效的客户端标识" });
+    return sendError(res, 403, ErrorCode.INVALID_APP_KEY, "无效的客户端标识");
   }
   next();
 }
@@ -187,14 +213,14 @@ function propagateSenderStatusToRecipient(db: ReturnType<typeof readDb>, sourceT
 function updateDistributionStatusOnTaskChange(db: ReturnType<typeof readDb>, taskId: string, newStatus: string) {
   const distribution = db.distributions.find((d) => d.recipientTaskId === taskId);
   if (!distribution) return;
-  if (distribution.status === "completed" || distribution.status === "failed") return;
+  if (distribution.status === "completed" || distribution.status === "cancelled" || distribution.status === "failed") return;
 
   if (newStatus === "completed") {
     distribution.status = "completed";
   } else if (newStatus === "cancelled") {
-    distribution.status = "failed";
+    distribution.status = "cancelled";
   } else if (newStatus === "in_progress" && (distribution.status === "generated" || distribution.status === "sent" || distribution.status === "received")) {
-    distribution.status = "viewed";
+    distribution.status = "in_progress";
   }
   distribution.updatedAt = now();
 
@@ -236,6 +262,27 @@ function updateDistributionCommentSummary(db: ReturnType<typeof readDb>, taskId:
   related.lastCommentAt = last?.serverCreatedAt;
   related.lastCommentSummary = last ? last.content.slice(0, 80) : undefined;
   related.updatedAt = now();
+}
+
+function enrichDistribution(db: ReturnType<typeof readDb>, distribution: TaskDistribution, userId?: string) {
+  let unreadCommentCount = 0;
+  if (userId && distribution.commentCount > 0 && distribution.lastCommentAt) {
+    const isSender = userId === distribution.senderUserId;
+    const lastRead = isSender ? distribution.senderLastReadCommentAt : distribution.recipientLastReadCommentAt;
+    if (!lastRead || distribution.lastCommentAt > lastRead) {
+      unreadCommentCount = distribution.commentCount;
+    }
+  }
+  return {
+    ...distribution,
+    sourceTaskTitle: db.tasks.find((task) => task.id === distribution.sourceTaskId)?.title,
+    recipientTaskTitle: distribution.recipientTaskId
+      ? db.tasks.find((task) => task.id === distribution.recipientTaskId)?.title
+      : undefined,
+    senderName: db.users.find((u) => u.id === distribution.senderUserId)?.nickname ?? "未知",
+    recipientName: db.users.find((u) => u.id === distribution.recipientUserId)?.nickname ?? "未知",
+    unreadCommentCount,
+  };
 }
 
 app.get("/api/health", (_req, res) => {
@@ -322,33 +369,33 @@ app.post("/api/auth/register", requireAppKey, (req, res) => {
     })
     .parse(req.body);
 
-  if (!body.email && !body.phone) throw new Error("邮箱和手机号至少填写一项");
+  if (!body.email && !body.phone) throw new AppError(ErrorCode.VALIDATION_ERROR, "邮箱和手机号至少填写一项");
 
   // Pre-validate invite code and persist expired status if needed
   const inviteCheck = readDb().inviteCodes.find((item) => item.code === body.inviteCode);
-  if (!inviteCheck) throw new Error("邀请码不存在");
-  if (inviteCheck.status !== "active") throw new Error("邀请码已失效");
+  if (!inviteCheck) throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码不存在");
+  if (inviteCheck.status !== "active") throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码已失效");
   if (inviteCheck.expiresAt && new Date(inviteCheck.expiresAt) < new Date()) {
     mutateDb((db) => {
       const inv = db.inviteCodes.find((i) => i.id === inviteCheck.id);
       if (inv) { inv.status = "expired"; inv.updatedAt = now(); }
     });
-    throw new Error("邀请码已过期");
+    throw new AppError(ErrorCode.INVITE_CODE_EXPIRED, "邀请码已过期");
   }
-  if (inviteCheck.maxUses !== -1 && inviteCheck.usedCount >= inviteCheck.maxUses) throw new Error("邀请码已用完");
+  if (inviteCheck.maxUses !== -1 && inviteCheck.usedCount >= inviteCheck.maxUses) throw new AppError(ErrorCode.INVITE_CODE_EXHAUSTED, "邀请码已用完");
 
   const user = mutateDb((db) => {
     const exists = db.users.some((item) =>
       (body.email && item.email === body.email) || (body.phone && item.phone === body.phone),
     );
-    if (exists) throw new Error("账号已存在");
+    if (exists) throw new AppError(ErrorCode.CONFLICT, "账号已存在");
 
     const invite = db.inviteCodes.find((item) => item.code === body.inviteCode);
-    if (!invite || invite.status !== "active") throw new Error("邀请码无效");
-    if (invite.maxUses !== -1 && invite.usedCount >= invite.maxUses) throw new Error("邀请码已用完");
+    if (!invite || invite.status !== "active") throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码无效");
+    if (invite.maxUses !== -1 && invite.usedCount >= invite.maxUses) throw new AppError(ErrorCode.INVITE_CODE_EXHAUSTED, "邀请码已用完");
 
     const team = db.teams.find((t) => t.id === invite.teamId && t.status === "active");
-    if (!team) throw new Error("关联团队不存在");
+    if (!team) throw new AppError(ErrorCode.NOT_FOUND, "关联团队不存在");
 
     const createdAt = now();
     const nextUser: User = {
@@ -398,7 +445,7 @@ app.post("/api/users", auth, (req: AuthedRequest, res) => {
     const exists = db.users.some((item) =>
       (body.email && item.email === body.email) || (body.phone && item.phone === body.phone),
     );
-    if (exists) throw new Error("账号已存在");
+    if (exists) throw new AppError(ErrorCode.CONFLICT, "账号已存在");
 
     const createdAt = now();
     const nextUser: User = {
@@ -441,7 +488,7 @@ app.post("/api/auth/login", requireAppKey, (req, res) => {
   const body = z.object({ account: z.string().min(1), password: z.string().min(1) }).parse(req.body);
   const user = readDb().users.find((item) => item.email === body.account || item.phone === body.account);
   if (!user || !bcrypt.compareSync(body.password, user.passwordHash)) {
-    return res.status(401).json({ message: "账号或密码错误" });
+    return sendError(res, 401, ErrorCode.AUTH_INVALID_CREDENTIALS, "账号或密码错误");
   }
   res.json({ token: signToken(user), user: publicUser(user) });
 });
@@ -462,7 +509,7 @@ app.patch("/api/users/:userId", auth, (req: AuthedRequest, res) => {
 
   const user = mutateDb((db) => {
     const found = db.users.find((u) => u.id === req.params.userId);
-    if (!found) throw new Error("用户不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "用户不存在");
 
     if (body.nickname !== undefined) found.nickname = body.nickname;
     if (body.phone !== undefined) found.phone = body.phone;
@@ -481,7 +528,7 @@ app.patch("/api/users/:userId", auth, (req: AuthedRequest, res) => {
 
 app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
   if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
-    return res.status(403).json({ message: "无权操作" });
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
   }
   const body = z.object({
     title: z.string().min(1).optional(),
@@ -505,11 +552,13 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
     reminderVoiceStyle: z.string().optional(),
     reminderVoiceSpeed: z.string().optional(),
     reminderCustomVoicePath: z.string().optional(),
+    sortOrder: z.number().int().optional(),
+    assigneeUserId: z.string().optional(),
   }).parse(req.body);
 
   const task = mutateDb((db) => {
     const found = db.tasks.find((t) => t.id === req.params.taskId);
-    if (!found) throw new Error("任务不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
     if (body.title !== undefined) found.title = body.title;
     if (body.content !== undefined) found.content = body.content;
     if (body.status !== undefined) {
@@ -549,6 +598,8 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
     if (body.reminderVoiceStyle !== undefined) found.reminderVoiceStyle = body.reminderVoiceStyle || undefined;
     if (body.reminderVoiceSpeed !== undefined) found.reminderVoiceSpeed = body.reminderVoiceSpeed || undefined;
     if (body.reminderCustomVoicePath !== undefined) found.reminderCustomVoicePath = body.reminderCustomVoicePath || undefined;
+    if (body.sortOrder !== undefined) found.sortOrder = body.sortOrder;
+    if (body.assigneeUserId !== undefined) found.assigneeUserId = body.assigneeUserId || undefined;
     found.version++;
     found.updatedAt = now();
     return found;
@@ -578,12 +629,70 @@ app.get("/api/admin/overview", auth, (req: AuthedRequest, res) => {
     members: db.teamMembers,
     devices: db.devices,
     tasks: db.tasks.filter((task) => canSeeTask(req.user!, task) && !task.deletedAt).slice(0, 200),
-    distributions: db.distributions,
+    distributions: db.distributions.map((distribution) => enrichDistribution(db, distribution, req.user!.id)),
     comments: db.comments,
     syncLogs: db.syncLogs.slice(0, 50),
     operationLogs: db.operationLogs.slice(0, 50),
     inviteCodes: db.inviteCodes,
   });
+});
+
+app.get("/api/admin/tasks/export", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
+  const db = readDb();
+  const tasks = db.tasks.filter((t) => !t.deletedAt);
+  const header = "ID,标题,状态,优先级,负责人,截止时间,创建时间,更新时间";
+  const rows = tasks.map((t) => {
+    const statusMap: Record<string, string> = { pending: "待处理", in_progress: "进行中", completed: "已完成", cancelled: "已取消" };
+    const prioMap: Record<string, string> = { low: "低", medium: "中", high: "高" };
+    const assignee = t.assigneeUserId ? db.users.find((u) => u.id === t.assigneeUserId)?.nickname ?? "" : t.assignee ?? "";
+    return [t.id, `"${t.title.replace(/"/g, '""')}"`, statusMap[t.status] ?? t.status, prioMap[t.priority] ?? t.priority, assignee, t.dueTime ?? "", t.createdAt, t.updatedAt].join(",");
+  });
+  const csv = [header, ...rows].join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=tasks-export.csv");
+  res.send("﻿" + csv);
+});
+
+app.post("/api/admin/tasks/batch-delete", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
+  const body = z.object({
+    taskIds: z.array(z.string().min(1)).optional(),
+    query: z.object({
+      status: z.string().optional(),
+      priority: z.string().optional(),
+      source: z.string().optional(),
+      ownerUserId: z.string().optional(),
+      teamId: z.string().optional(),
+      search: z.string().optional(),
+    }).optional(),
+  }).parse(req.body);
+
+  const deleted = mutateDb((db) => {
+    let count = 0;
+    const timestamp = now();
+    let targets: Task[];
+
+    if (body.taskIds?.length) {
+      targets = db.tasks.filter((t) => body.taskIds!.includes(t.id) && !t.deletedAt);
+    } else {
+      targets = db.tasks.filter((t) => !t.deletedAt && canSeeTask(req.user!, t) && taskMatchesAdminQuery(t, { query: body.query ?? {} } as any));
+    }
+
+    for (const task of targets) {
+      task.deletedAt = timestamp;
+      task.updatedAt = timestamp;
+      task.version = (task.version ?? 0) + 1;
+      count++;
+    }
+    return count;
+  });
+  logOperation("task.batch_delete", req.user!.id, "task", `${deleted} tasks`);
+  res.json({ deleted });
 });
 
 app.get("/api/admin/tasks", auth, (req: AuthedRequest, res) => {
@@ -599,6 +708,61 @@ app.get("/api/admin/tasks", auth, (req: AuthedRequest, res) => {
 
   res.json({
     tasks,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
+});
+
+app.get("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const task = db.tasks.find((t) => t.id === req.params.taskId);
+  if (!task || task.deletedAt) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
+  if (!canSeeTask(req.user!, task)) throw new AppError(ErrorCode.FORBIDDEN, "无权查看此任务");
+
+  const comments = db.comments
+    .filter((c) => c.taskId === task.id && c.status === "active")
+    .sort((a, b) => a.serverCreatedAt.localeCompare(b.serverCreatedAt))
+    .map((c) => ({ ...c, authorName: db.users.find((u) => u.id === c.authorUserId)?.nickname ?? "未知" }));
+
+  const distributions = db.distributions
+    .filter((d) => d.sourceTaskId === task.id || d.recipientTaskId === task.id)
+    .map((d) => enrichDistribution(db, d, req.user!.id));
+
+  const statusLogs = db.statusChangeLogs
+    .filter((l) => l.taskId === task.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((l) => ({ ...l, changedByName: db.users.find((u) => u.id === l.changedByUserId)?.nickname ?? "未知" }));
+
+  const syncLogs = db.syncLogs
+    .filter((l) => l.taskId === task.id)
+    .slice(0, 50);
+
+  const taskWithAssignee = {
+    ...task,
+    assigneeName: task.assigneeUserId ? (db.users.find((u) => u.id === task.assigneeUserId)?.nickname ?? null) : null,
+  };
+  res.json({ task: taskWithAssignee, comments, distributions, statusLogs, syncLogs });
+});
+
+app.get("/api/admin/distributions", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const { page, pageSize } = parsePageQuery(req);
+  let matched = db.distributions;
+
+  const status = typeof req.query.status === "string" ? req.query.status : "";
+  const teamId = typeof req.query.teamId === "string" ? req.query.teamId : "";
+  if (status) matched = matched.filter((d) => d.status === status);
+  if (teamId) matched = matched.filter((d) => d.teamId === teamId);
+
+  matched = [...matched].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const total = matched.length;
+  const start = (page - 1) * pageSize;
+  const distributions = matched.slice(start, start + pageSize).map((d) => enrichDistribution(db, d, req.user!.id));
+
+  res.json({
+    distributions,
     page,
     pageSize,
     total,
@@ -627,7 +791,7 @@ app.post("/api/invite-codes", auth, (req: AuthedRequest, res) => {
 
   const inviteCode = mutateDb((db) => {
     const team = db.teams.find((t) => t.id === body.teamId && t.status === "active");
-    if (!team) throw new Error("团队不存在");
+    if (!team) throw new AppError(ErrorCode.NOT_FOUND, "团队不存在");
 
     const timestamp = now();
     const code = generateInviteCode();
@@ -654,7 +818,7 @@ app.post("/api/invite-codes", auth, (req: AuthedRequest, res) => {
 app.post("/api/invite-codes/:id/disable", auth, (req: AuthedRequest, res) => {
   const inviteCode = mutateDb((db) => {
     const found = db.inviteCodes.find((item) => item.id === req.params.id);
-    if (!found) throw new Error("邀请码不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "邀请码不存在");
     found.status = "disabled";
     found.updatedAt = now();
     return found;
@@ -728,14 +892,14 @@ app.post("/api/teams/:teamId/members", auth, (req: AuthedRequest, res) => {
 
   const member = mutateDb((db) => {
     const team = db.teams.find((t) => t.id === req.params.teamId && t.status === "active");
-    if (!team) throw new Error("团队不存在");
+    if (!team) throw new AppError(ErrorCode.NOT_FOUND, "团队不存在");
     const user = db.users.find((u) => u.id === body.userId && u.status === "active");
-    if (!user) throw new Error("用户不存在");
+    if (!user) throw new AppError(ErrorCode.NOT_FOUND, "用户不存在");
     const existing = db.teamMembers.find(
       (m) => m.teamId === req.params.teamId && m.userId === body.userId,
     );
     if (existing) {
-      if (existing.status === "active") throw new Error("该用户已是团队成员");
+      if (existing.status === "active") throw new AppError(ErrorCode.CONFLICT, "该用户已是团队成员");
       existing.status = "active";
       existing.role = body.role;
       existing.updatedAt = now();
@@ -764,7 +928,7 @@ app.delete("/api/teams/:teamId/members/:userId", auth, (req: AuthedRequest, res)
     const found = db.teamMembers.find(
       (m) => m.teamId === req.params.teamId && m.userId === req.params.userId && m.status === "active",
     );
-    if (!found) throw new Error("成员不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "成员不存在");
     found.status = "left";
     found.updatedAt = now();
     return found;
@@ -820,7 +984,7 @@ app.post("/api/devices/heartbeat", auth, (req: AuthedRequest, res) => {
   const heartbeatAt = now();
   const device = mutateDb((db) => {
     const found = db.devices.find((item) => item.id === body.deviceId && item.userId === req.user!.id);
-    if (!found) throw new Error("设备不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "设备不存在");
     found.onlineStatus = "online";
     found.lastHeartbeatAt = heartbeatAt;
     found.updatedAt = heartbeatAt;
@@ -834,10 +998,18 @@ app.get("/api/tasks", auth, (req: AuthedRequest, res) => {
   res.json({ tasks });
 });
 
+app.get("/api/tasks/:taskId", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const task = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
+  if (!task || !canSeeTask(req.user!, task)) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
+  res.json({ task });
+});
+
 app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
   const body = z
     .object({
       deviceId: z.string().optional(),
+      force: z.boolean().optional(),
       tasks: z.array(
         z.object({
           id: z.string().min(1),
@@ -867,6 +1039,8 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
           sourceDistributionId: z.string().optional(),
           teamId: z.string().optional(),
           version: z.number().int().nonnegative().default(1),
+          sortOrder: z.number().int().optional(),
+          assigneeUserId: z.string().optional(),
           updatedAt: z.string().optional(),
           deletedAt: z.string().optional(),
         }),
@@ -874,6 +1048,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
     })
     .parse(req.body);
 
+  const conflicts: Array<{ taskId: string; serverVersion: Task; clientVersion: Task }> = [];
   const saved = mutateDb((db) => {
     const result: Task[] = [];
     for (const incoming of body.tasks) {
@@ -891,8 +1066,35 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         db.tasks.push(nextTask);
         result.push(nextTask);
       } else if (incoming.version != null && incoming.version < existing.version) {
-        // Client has stale version — skip, client will get latest from pull
-        result.push(existing);
+        // 检查数据是否完全一致，一致则跳过冲突
+        const merged = { ...existing, ...incoming };
+        const fieldsToCompare = ["title", "content", "status", "priority", "startTime", "dueTime", "completedAt", "assignee", "parentId", "isRecurring", "recurringRule", "tagIds", "reminderMinutes", "reminderDismissed", "assigneeUserId", "sortOrder"] as const;
+        const isIdentical = fieldsToCompare.every((f) => JSON.stringify(existing[f]) === JSON.stringify(merged[f]));
+        if (isIdentical) {
+          // 数据一致，静默接受服务器版本（同步 version 号）
+          result.push(existing);
+        } else if (body.force) {
+          // Force push: overwrite server version
+          const prevStatus = existing.status;
+          Object.assign(existing, incoming, { updatedAt: timestamp, version: existing.version + 1 });
+          if (incoming.status && prevStatus !== incoming.status) {
+            recordStatusChange(db, existing.id, {
+              previousStatus: prevStatus,
+              newStatus: incoming.status,
+              changedByUserId: req.user!.id,
+              source: existing.sourceType === "team_distribution" ? "recipient" : "sender",
+            });
+          }
+          result.push(existing);
+        } else {
+          // Report conflict
+          conflicts.push({
+            taskId: existing.id,
+            serverVersion: { ...existing },
+            clientVersion: { ...existing, ...incoming },
+          });
+          result.push(existing);
+        }
       } else if (timestamp >= existing.updatedAt) {
         const prevStatus = existing.status;
         Object.assign(existing, incoming, { updatedAt: timestamp, version: Math.max(existing.version + 1, incoming.version) });
@@ -927,7 +1129,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
     }
     return result;
   });
-  res.json({ tasks: saved });
+  res.json({ tasks: saved, conflicts });
 });
 
 app.get("/api/tasks/sync/pull", auth, (req: AuthedRequest, res) => {
@@ -949,6 +1151,76 @@ app.get("/api/tasks/sync/pull", auth, (req: AuthedRequest, res) => {
   res.json({ tasks, comments, serverTime: now() });
 });
 
+app.patch("/api/tasks/batch", auth, (req: AuthedRequest, res) => {
+  const body = z.object({
+    taskIds: z.array(z.string().min(1)).min(1),
+    status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+    priority: z.enum(["low", "medium", "high"]).optional(),
+    tagIds: z.array(z.string()).optional(),
+    assigneeUserId: z.string().optional(),
+  }).parse(req.body);
+
+  const updated = mutateDb((db) => {
+    const result: Task[] = [];
+    const timestamp = now();
+    for (const id of body.taskIds) {
+      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id);
+      if (!task) continue;
+      if (body.status) {
+        const prev = task.status;
+        task.status = body.status;
+        if (prev !== body.status) {
+          recordStatusChange(db, task.id, {
+            previousStatus: prev,
+            newStatus: body.status,
+            changedByUserId: req.user!.id,
+            source: task.sourceType === "team_distribution" ? "recipient" : "sender",
+          });
+          updateDistributionStatusOnTaskChange(db, task.id, body.status);
+          propagateSenderStatusToRecipient(db, task.id, body.status, req.user!.id);
+        }
+      }
+      if (body.priority) task.priority = body.priority;
+      if (body.tagIds) task.tagIds = body.tagIds;
+      if (body.assigneeUserId !== undefined) task.assigneeUserId = body.assigneeUserId;
+      task.updatedAt = timestamp;
+      task.version = (task.version ?? 0) + 1;
+      result.push(task);
+    }
+    return result;
+  });
+  res.json({ updated: updated.length });
+});
+
+app.delete("/api/tasks/batch", auth, (req: AuthedRequest, res) => {
+  const body = z.object({
+    taskIds: z.array(z.string().min(1)).min(1),
+  }).parse(req.body);
+
+  const deleted = mutateDb((db) => {
+    let count = 0;
+    const timestamp = now();
+    for (const id of body.taskIds) {
+      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id);
+      if (!task) continue;
+      task.deletedAt = timestamp;
+      task.updatedAt = timestamp;
+      task.version = (task.version ?? 0) + 1;
+      db.syncLogs.unshift({
+        id: randomUUID(),
+        userId: req.user!.id,
+        taskId: id,
+        operationType: "delete",
+        status: "success",
+        createdAt: timestamp,
+      });
+      count++;
+    }
+    return count;
+  });
+  res.json({ deleted });
+});
+
 app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
   const body = z
     .object({
@@ -961,10 +1233,10 @@ app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
 
   const distribution = mutateDb((db) => {
     const sourceTask = db.tasks.find((task) => task.id === body.sourceTaskId && task.ownerUserId === req.user!.id);
-    if (!sourceTask) throw new Error("原任务不存在或无权分发");
+    if (!sourceTask) throw new AppError(ErrorCode.NOT_FOUND, "原任务不存在或无权分发");
     const senderInTeam = db.teamMembers.some((item) => item.teamId === body.teamId && item.userId === req.user!.id && item.status === "active");
     const recipientInTeam = db.teamMembers.some((item) => item.teamId === body.teamId && item.userId === body.recipientUserId && item.status === "active");
-    if (!senderInTeam || !recipientInTeam) throw new Error("只能向同一团队成员分发任务");
+    if (!senderInTeam || !recipientInTeam) throw new AppError(ErrorCode.FORBIDDEN, "只能向同一团队成员分发任务");
 
     const timestamp = now();
     const distributionId = randomUUID();
@@ -1013,10 +1285,10 @@ app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
 });
 
 app.post("/api/distributions/:id/ack", auth, (req: AuthedRequest, res) => {
-  const body = z.object({ status: z.enum(["received", "viewed", "completed", "failed"]) }).parse(req.body);
+  const body = z.object({ status: z.enum(["received", "viewed", "in_progress", "completed", "cancelled", "failed"]) }).parse(req.body);
   const distribution = mutateDb((db) => {
     const found = db.distributions.find((item) => item.id === req.params.id);
-    if (!found || found.recipientUserId !== req.user!.id) throw new Error("分发记录不存在或无权操作");
+    if (!found || found.recipientUserId !== req.user!.id) throw new AppError(ErrorCode.NOT_FOUND, "分发记录不存在或无权操作");
     found.status = body.status;
     found.updatedAt = now();
     return found;
@@ -1032,11 +1304,7 @@ app.get("/api/distributions", auth, (req: AuthedRequest, res) => {
       item.recipientUserId === req.user!.id ||
       (req.user!.role === "team_admin" && requireTeamMember(req.user!.id, item.teamId)),
   );
-  const distributions = filtered.map((d) => ({
-    ...d,
-    senderName: db.users.find((u) => u.id === d.senderUserId)?.nickname ?? "未知",
-    recipientName: db.users.find((u) => u.id === d.recipientUserId)?.nickname ?? "未知",
-  }));
+  const distributions = filtered.map((d) => enrichDistribution(db, d, req.user!.id));
   res.json({ distributions });
 });
 
@@ -1049,13 +1317,11 @@ app.get("/api/distributions/by-task/:taskId", auth, (req: AuthedRequest, res) =>
       (req.user!.role === "system_admin") ||
       (req.user!.role === "team_admin" && requireTeamMember(req.user!.id, d.teamId)),
   );
-  if (!isAuthorized) return res.status(403).json({ message: "无权查看此任务的分发记录" });
+  if (!isAuthorized) return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看此任务的分发记录");
   const distributions = filtered.map((d) => {
     const recipientTask = d.recipientTaskId ? db.tasks.find((t) => t.id === d.recipientTaskId) : undefined;
     return {
-      ...d,
-      senderName: db.users.find((u) => u.id === d.senderUserId)?.nickname ?? "未知",
-      recipientName: db.users.find((u) => u.id === d.recipientUserId)?.nickname ?? "未知",
+      ...enrichDistribution(db, d, req.user!.id),
       recipientTaskStatus: recipientTask?.status,
     };
   });
@@ -1065,9 +1331,9 @@ app.get("/api/distributions/by-task/:taskId", auth, (req: AuthedRequest, res) =>
 app.get("/api/distributions/:distributionId/recipient-comments", auth, (req: AuthedRequest, res) => {
   const db = readDb();
   const distribution = db.distributions.find((d) => d.id === req.params.distributionId);
-  if (!distribution) return res.status(404).json({ message: "分发记录不存在" });
+  if (!distribution) return sendError(res, 404, ErrorCode.NOT_FOUND, "分发记录不存在");
   if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamMember(req.user!.id, distribution.teamId))) {
-    return res.status(403).json({ message: "无权查看" });
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看");
   }
   const relatedTaskIds = [distribution.sourceTaskId, distribution.recipientTaskId].filter(Boolean) as string[];
   const comments = db.comments
@@ -1083,9 +1349,9 @@ app.get("/api/distributions/:distributionId/recipient-comments", auth, (req: Aut
 app.get("/api/distributions/:distributionId/status-logs", auth, (req: AuthedRequest, res) => {
   const db = readDb();
   const distribution = db.distributions.find((d) => d.id === req.params.distributionId);
-  if (!distribution) return res.status(404).json({ message: "分发记录不存在" });
+  if (!distribution) return sendError(res, 404, ErrorCode.NOT_FOUND, "分发记录不存在");
   if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamMember(req.user!.id, distribution.teamId))) {
-    return res.status(403).json({ message: "无权查看" });
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看");
   }
   const taskIds = new Set([distribution.sourceTaskId, distribution.recipientTaskId].filter(Boolean) as string[]);
   const logs = db.statusChangeLogs
@@ -1096,6 +1362,123 @@ app.get("/api/distributions/:distributionId/status-logs", auth, (req: AuthedRequ
       changedByName: db.users.find((u) => u.id === l.changedByUserId)?.nickname ?? "未知",
     }));
   res.json({ logs });
+});
+
+app.post("/api/distributions/:id/mark-comments-read", auth, (req: AuthedRequest, res) => {
+  const distribution = mutateDb((db) => {
+    const found = db.distributions.find((d) => d.id === req.params.id);
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "分发记录不存在");
+    if (found.senderUserId !== req.user!.id && found.recipientUserId !== req.user!.id) {
+      throw new AppError(ErrorCode.FORBIDDEN, "无权操作");
+    }
+    const timestamp = now();
+    if (found.senderUserId === req.user!.id) {
+      found.senderLastReadCommentAt = timestamp;
+    } else {
+      found.recipientLastReadCommentAt = timestamp;
+    }
+    found.updatedAt = timestamp;
+    return found;
+  });
+  res.json({ ok: true });
+});
+
+// Notifications
+app.get("/api/notifications", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const notifications = (db.notifications ?? [])
+    .filter((n) => n.userId === req.user!.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 50)
+    .map((n) => ({
+      ...n,
+      fromUserName: db.users.find((u) => u.id === n.fromUserId)?.nickname ?? "未知",
+      taskTitle: db.tasks.find((t) => t.id === n.taskId)?.title ?? "未知任务",
+    }));
+  res.json({ notifications });
+});
+
+app.get("/api/notifications/unread-count", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const count = (db.notifications ?? []).filter((n) => n.userId === req.user!.id && !n.read).length;
+  res.json({ count });
+});
+
+app.post("/api/notifications/:id/read", auth, (req: AuthedRequest, res) => {
+  mutateDb((db) => {
+    const found = (db.notifications ?? []).find((n) => n.id === req.params.id && n.userId === req.user!.id);
+    if (found) found.read = true;
+    return found;
+  });
+  res.json({ ok: true });
+});
+
+app.post("/api/notifications/read-all", auth, (req: AuthedRequest, res) => {
+  mutateDb((db) => {
+    for (const n of db.notifications ?? []) {
+      if (n.userId === req.user!.id) n.read = true;
+    }
+    return null;
+  });
+  res.json({ ok: true });
+});
+
+// Activity feed
+app.get("/api/activity", auth, (req: AuthedRequest, res) => {
+  const db = readDb();
+  const logs = db.operationLogs
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 100)
+    .map((l) => ({
+      ...l,
+      nickname: l.operatorUserId ? db.users.find((u) => u.id === l.operatorUserId)?.nickname ?? "系统" : "系统",
+      taskTitle: l.targetType === "task" && l.targetId
+        ? (Array.isArray(l.targetId) ? l.targetId.map((id: string) => db.tasks.find((t) => t.id === id)?.title ?? id).join(", ") : db.tasks.find((t) => t.id === l.targetId)?.title ?? String(l.targetId))
+        : undefined,
+    }));
+  res.json({ logs });
+});
+
+// Reports
+app.get("/api/reports/summary", auth, (req: AuthedRequest, res) => {
+  const period = typeof req.query.period === "string" ? req.query.period : "weekly";
+  const db = readDb();
+  const now_ = now();
+  let since: string;
+  if (period === "daily") {
+    since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  } else if (period === "monthly") {
+    since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  } else {
+    since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  }
+
+  const tasks = db.tasks.filter((t) => t.ownerUserId === req.user!.id && !t.deletedAt);
+  const recent = tasks.filter((t) => t.createdAt >= since || (t.updatedAt >= since));
+
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.status === "completed").length;
+  const inProgressTasks = tasks.filter((t) => t.status === "in_progress").length;
+  const overdueTasks = tasks.filter((t) => t.status !== "completed" && t.dueTime && t.dueTime < now_).length;
+  const recentlyCompleted = recent.filter((t) => t.status === "completed" && t.completedAt && t.completedAt >= since).length;
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const tasksByPriority = {
+    high: tasks.filter((t) => t.priority === "high").length,
+    medium: tasks.filter((t) => t.priority === "medium").length,
+    low: tasks.filter((t) => t.priority === "low").length,
+  };
+
+  res.json({
+    period,
+    totalTasks,
+    completedTasks,
+    inProgressTasks,
+    overdueTasks,
+    recentlyCompleted,
+    completionRate,
+    tasksByPriority,
+  });
 });
 
 app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
@@ -1110,8 +1493,8 @@ app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
 
   const comment = mutateDb((db) => {
     const task = db.tasks.find((item) => item.id === req.params.taskId && !item.deletedAt);
-    if (!task) throw new Error("任务尚未同步到后台，请先同步任务后再评论");
-    if (!canSeeTask(req.user!, task)) throw new Error("无权评论该任务");
+    if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务尚未同步到后台，请先同步任务后再评论");
+    if (!canSeeTask(req.user!, task)) throw new AppError(ErrorCode.FORBIDDEN, "无权评论该任务");
     const operationId = body.operationId ?? randomUUID();
     const existingByOperation = db.comments.find((item) => item.operationId === operationId);
     if (existingByOperation) return existingByOperation;
@@ -1161,6 +1544,31 @@ app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
       status: "success",
       createdAt: timestamp,
     });
+    // Generate @mention notifications
+    const mentionRegex = /@(\S+)/g;
+    let match: RegExpExecArray | null;
+    const mentionedNames = new Set<string>();
+    while ((match = mentionRegex.exec(body.content)) !== null) {
+      mentionedNames.add(match[1]);
+    }
+    for (const name of mentionedNames) {
+      const mentionedUser = db.users.find((u) => u.nickname === name);
+      if (mentionedUser && mentionedUser.id !== req.user!.id) {
+        if (!db.notifications) (db as any).notifications = [];
+        db.notifications.push({
+          id: randomUUID(),
+          userId: mentionedUser.id,
+          type: "mention",
+          taskId: task.id,
+          commentId: nextComment.id,
+          fromUserId: req.user!.id,
+          title: `${req.user!.nickname} 在任务中@了你`,
+          body: body.content.substring(0, 100),
+          read: false,
+          createdAt: timestamp,
+        });
+      }
+    }
     return nextComment;
   });
 
@@ -1171,7 +1579,7 @@ app.delete("/api/tasks/:taskId/comments/:commentId", auth, (req: AuthedRequest, 
   const body = z.object({ operationId: z.string().optional() }).parse(req.body ?? {});
   const comment = mutateDb((db) => {
     const found = db.comments.find((item) => item.id === req.params.commentId && item.taskId === req.params.taskId);
-    if (!found || found.authorUserId !== req.user!.id) throw new Error("评论不存在或无权删除");
+    if (!found || found.authorUserId !== req.user!.id) throw new AppError(ErrorCode.NOT_FOUND, "评论不存在或无权删除");
     found.status = "deleted";
     found.deletedAt = now();
     found.updatedAt = found.deletedAt;
@@ -1185,7 +1593,7 @@ app.delete("/api/tasks/:taskId/comments/:commentId", auth, (req: AuthedRequest, 
 // Admin: add comment to any task
 app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
   if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
-    return res.status(403).json({ message: "无权操作" });
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
   }
   const body = z.object({
     content: z.string().min(1).max(1000),
@@ -1193,11 +1601,11 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
   }).parse(req.body);
   const comment = mutateDb((db) => {
     const task = db.tasks.find((t) => t.id === req.params.taskId);
-    if (!task) throw new Error("任务不存在");
+    if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
     // If authorUserId specified, verify it exists
     const effectiveAuthorId = body.authorUserId ?? req.user!.id;
     if (body.authorUserId && !db.users.find((u) => u.id === body.authorUserId)) {
-      throw new Error("指定用户不存在");
+      throw new AppError(ErrorCode.NOT_FOUND, "指定用户不存在");
     }
     const timestamp = now();
     const c: TaskComment = {
@@ -1224,11 +1632,11 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
 // Admin: delete any comment
 app.delete("/api/admin/comments/:commentId", auth, (req: AuthedRequest, res) => {
   if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
-    return res.status(403).json({ message: "无权操作" });
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
   }
   const comment = mutateDb((db) => {
     const found = db.comments.find((c) => c.id === req.params.commentId);
-    if (!found) throw new Error("评论不存在");
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "评论不存在");
     found.status = "deleted";
     found.deletedAt = now();
     found.updatedAt = found.deletedAt;
@@ -1310,8 +1718,22 @@ app.get("/api/comments/sync/pull", auth, (req: AuthedRequest, res) => {
 });
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof AppError) {
+    const statusMap: Record<string, number> = {
+      AUTH_REQUIRED: 401, AUTH_EXPIRED: 401, AUTH_INVALID_CREDENTIALS: 401,
+      FORBIDDEN: 403, INVALID_APP_KEY: 403,
+      NOT_FOUND: 404,
+      VALIDATION_ERROR: 400, CONFLICT: 409,
+      INVITE_CODE_INVALID: 400, INVITE_CODE_EXPIRED: 400, INVITE_CODE_EXHAUSTED: 400,
+    };
+    const status = statusMap[err.code] ?? 500;
+    return sendError(res, status, err.code, err.message, err.details);
+  }
+  if (err instanceof z.ZodError) {
+    return sendError(res, 400, ErrorCode.VALIDATION_ERROR, "参数校验失败", err.issues);
+  }
   const message = err instanceof Error ? err.message : "服务器异常";
-  res.status(400).json({ message });
+  sendError(res, 500, ErrorCode.SERVER_ERROR, message);
 });
 
 app.listen(port, () => {

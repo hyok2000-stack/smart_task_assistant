@@ -55,6 +55,11 @@ class AppLocalizations {
   String get viewAll => isZh ? '查看全部' : 'View All';
   String get completed => isZh ? '已完成' : 'Completed';
   String get noTasks => isZh ? '暂无任务' : 'No tasks';
+  String get allTasksCompleted =>
+      isZh ? '今日任务全部完成！' : 'All today\'s tasks completed!';
+  String completedTasksMsg(int count) => isZh
+      ? '已完成 $count 项任务，干得漂亮！'
+      : '$count tasks completed. Great job!';
   String get addTaskHint =>
       isZh ? '点击右下角按钮添加新任务' : 'Tap the button below to add a new task';
   String get aiSuggestion => isZh ? 'AI 智能建议' : 'AI Suggestion';

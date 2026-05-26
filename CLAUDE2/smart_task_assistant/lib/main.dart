@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, EventChannel;
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'providers/task_provider.dart';
@@ -10,6 +11,7 @@ import 'providers/settings_provider.dart';
 import 'providers/habit_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
+import 'screens/add_task_screen.dart';
 import 'services/reminder_service.dart';
 import 'services/tts_service.dart';
 import 'services/clipboard_monitor_service.dart';
@@ -75,6 +77,7 @@ final AppSettings appSettings = AppSettings();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  initializeDateFormatting();
 
   // 创建 Provider 实例
   final taskProvider = TaskProvider();
@@ -174,16 +177,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         break;
       case AppLifecycleState.detached:
         // 应用即将被终止 - 重置所有单例连接
+        _notifyNativeBackground();
+        widget.reminderService.isAppForeground = false;
         debugPrint('应用即将被终止，重置所有单例连接');
         _resetAllConnections();
         break;
       case AppLifecycleState.inactive:
-        // 应用处于非活动状态
-        debugPrint('应用处于非活动状态');
+        // 部分 Android 机型自然熄屏只会先进入 inactive/hidden，不一定立刻 paused。
+        // 提前交给原生提醒服务接管，避免熄屏后 Flutter 层跳过检查而原生仍以为在前台。
+        _notifyNativeBackground();
+        widget.reminderService.isAppForeground = false;
+        debugPrint('应用处于非活动状态，提醒交给原生服务接管');
         break;
       case AppLifecycleState.hidden:
         // 应用被隐藏
-        debugPrint('应用被隐藏');
+        _notifyNativeBackground();
+        widget.reminderService.isAppForeground = false;
+        debugPrint('应用被隐藏，提醒交给原生服务接管');
         break;
     }
   }
@@ -278,6 +288,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _clearNativeReminderState(id);
         }
         break;
+      case 'edit':
+        if (type == 'task') {
+          // 导航到任务编辑页
+          final task = widget.taskProvider.tasks
+              .where((t) => t.id == id)
+              .firstOrNull;
+          if (task != null) {
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(
+                builder: (_) => AddTaskScreen(task: task),
+              ),
+            );
+          }
+        }
+        break;
     }
   }
 
@@ -299,23 +324,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// 重新加载数据，并强制重置数据库连接
   Future<void> _reloadDataWithReset() async {
-    debugPrint('开始重新加载数据（强制重置数据库连接）');
+    debugPrint('Reloading data with database reset');
     setState(() {
       _isLoading = true;
       _error = null;
     });
-
-    // 强制重置数据库连接
+    await _loadData(resetDatabase: true);
+  }
+  Future<void> _loadData({bool resetDatabase = false}) async {
     try {
-      debugPrint('正在重置数据库连接...');
-      await widget.taskProvider.resetDatabaseConnection();
-      debugPrint('数据库连接已重置');
-    } catch (e) {
-      debugPrint('重置数据库连接失败: $e');
-    }
+      if (resetDatabase) {
+        try {
+          await widget.taskProvider.resetDatabaseConnection();
+        } catch (e) {
+          debugPrint('Failed to reset database connection: $e');
+        }
+      }
 
-    // 执行实际的数据加载
-    try {
       debugPrint('===== _loadData 开始 =====');
 
       // 先加载设置（包括 AI 配置）
@@ -342,82 +367,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('===== TTSService 预初始化完成 =====');
 
       // 数据加载完成后初始化提醒服务
-      widget.reminderService.init(widget.taskProvider, widget.habitProvider, navigatorKey);
+      widget.reminderService.init(
+        widget.taskProvider,
+        widget.habitProvider,
+        navigatorKey,
+      );
 
       // 启动原生提醒服务（Android）
-      _startNativeReminderService();
-
-      // 初始化剪贴板监视服务，默认开启
-      clipboardMonitorService.init(navigatorKey, (content) {
-        _showQuickAddWithContent(content);
-      });
-      // 默认启用剪贴板监视
-      clipboardMonitorService.setEnabled(true);
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        debugPrint('===== setState 完成，_isLoading = false =====');
-      }
-    } catch (e) {
-      debugPrint('加载数据失败: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _error = e.toString();
-        });
-      }
-    }
-  }
-
-  Future<void> _reloadData() async {
-    // 避免重复加载
-    if (_isLoading) {
-      debugPrint('正在加载数据中，跳过重复加载');
-      return;
-    }
-
-    debugPrint('开始重新加载数据');
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    await _loadData();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      debugPrint('===== _loadData 开始 =====');
-
-      // 先加载设置（包括 AI 配置）
-      await widget.settingsProvider.loadSettings();
-      debugPrint('===== settingsProvider.loadSettings 完成 =====');
-
-      // 同步 AI 配置到 AIService
-      await widget.settingsProvider.syncAIConfig();
-      debugPrint('===== settingsProvider.syncAIConfig 完成 =====');
-
-      await widget.taskProvider.loadData();
-      debugPrint('===== taskProvider.loadData 完成 =====');
-      debugPrint('任务数: ${widget.taskProvider.tasks.length}');
-      debugPrint('isLoading: ${widget.taskProvider.isLoading}');
-
-      // 加载习惯数据
-      await widget.habitProvider.loadData();
-      debugPrint('===== habitProvider.loadData 完成 =====');
-      debugPrint('习惯数: ${widget.habitProvider.habits.length}');
-
-      // 预初始化 TTS 引擎（避免首次播报时延迟）
-      await TTSService().init();
-      TTSService().volume = widget.settingsProvider.ttsVolume;
-      debugPrint('===== TTSService 预初始化完成 =====');
-
-      // 数据加载完成后初始化提醒服务
-      widget.reminderService.init(widget.taskProvider, widget.habitProvider, navigatorKey);
-
-      // 启动原生提醒服务（Android）
-      _startNativeReminderService();
+      await _startNativeReminderService();
 
       // 初始化剪贴板监视服务，默认开启
       clipboardMonitorService.init(navigatorKey, (content) {
@@ -488,94 +445,101 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Widget _buildHome() {
     if (_isLoading) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-            ),
-            child: const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 24),
-                  Text(
-                    '加载中...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildLoadingPage();
     }
 
     if (_error != null) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-            ),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 64, color: Colors.white70),
-                    const SizedBox(height: 24),
-                    const Text(
-                      '加载失败',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 14),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _isLoading = true;
-                          _error = null;
-                        });
-                        _loadData();
-                      },
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildErrorPage();
     }
 
     return const HomeScreen();
+  }
+
+  Widget _buildLoadingPage() {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 24),
+              Text(
+                '加载中...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorPage() {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+          ),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  '加载失败',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _isLoading = true;
+                      _error = null;
+                    });
+                    _loadData();
+                  },
+                  child: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

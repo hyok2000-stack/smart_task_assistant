@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/task.dart';
+import '../models/sync_queue_item.dart';
 import '../models/tag.dart';
 import '../database/storage_service.dart';
 import '../database/database_helper.dart';
 import '../services/backend_api_service.dart';
+import '../services/sync_queue_service.dart';
 import '../services/task_comment_service.dart';
 
 // 条件导入：文件操作
@@ -46,6 +48,7 @@ class TaskProvider extends ChangeNotifier {
   int _pendingBackendSyncCount = 0;
   Set<String> _distributedTaskIds = {};
   List<BackendDistribution> _distributions = [];
+  List<ConflictInfo> _conflicts = [];
 
   // 缓存的筛选列表
   List<Task> _cachedCompletedTasks = [];
@@ -57,6 +60,9 @@ class TaskProvider extends ChangeNotifier {
   TaskPriority? _filterPriority;
   String? _filterTagId;
   String _searchQuery = '';
+  DateTime? _filterDateFrom;
+  DateTime? _filterDateTo;
+  List<String> _recentSearches = [];
 
   // Getters
   List<Task> get tasks => _tasks;
@@ -74,6 +80,9 @@ class TaskProvider extends ChangeNotifier {
   bool get isBackendLoggedIn => _backend.isLoggedIn;
   Set<String> get distributedTaskIds => _distributedTaskIds;
   List<BackendDistribution> get distributions => _distributions;
+  List<SyncQueueItem> get syncQueue => SyncQueueService.instance.items;
+  List<ConflictInfo> get conflicts => _conflicts;
+  bool get hasConflicts => _conflicts.isNotEmpty;
   TaskStatus? get filterStatus => _filterStatus;
   TaskPriority? get filterPriority => _filterPriority;
   String? get filterTagId => _filterTagId;
@@ -108,10 +117,75 @@ class TaskProvider extends ChangeNotifier {
           .toList();
     }
 
+    if (_filterDateFrom != null || _filterDateTo != null) {
+      result = result.where((t) {
+        final dt = t.dueTime ?? t.startTime;
+        if (dt == null) return false;
+        if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!)) return false;
+        if (_filterDateTo != null && dt.isAfter(_filterDateTo!)) return false;
+        return true;
+      }).toList();
+    }
+
     return result;
   }
 
-  /// 统计数据
+  /// 排序后的任务列表（置顶在前，然后按 sortOrder，再按 createdAt）
+  List<Task> get sortedTasks {
+    return List.of(_tasks)..sort((a, b) {
+      final aOrder = a.sortOrder ?? 0;
+      final bOrder = b.sortOrder ?? 0;
+      if (aOrder < 0 && bOrder >= 0) return -1;
+      if (bOrder < 0 && aOrder >= 0) return 1;
+      final orderCmp = aOrder.compareTo(bOrder);
+      if (orderCmp != 0) return orderCmp;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+  }
+
+  bool isPinned(String taskId) {
+    final t = _tasks.where((t) => t.id == taskId);
+    return t.isNotEmpty && (t.first.sortOrder ?? 0) < 0;
+  }
+
+  Future<void> pinTask(String id) async {
+    final index = _tasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    _tasks[index] = _tasks[index].copyWith(sortOrder: -1);
+    await _storage.updateTask(_tasks[index]);
+    _syncTaskSilently(_tasks[index]);
+    _refreshTaskLists();
+    notifyListeners();
+  }
+
+  Future<void> unpinTask(String id) async {
+    final index = _tasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    _tasks[index] = _tasks[index].copyWith(sortOrder: 0);
+    await _storage.updateTask(_tasks[index]);
+    _syncTaskSilently(_tasks[index]);
+    _refreshTaskLists();
+    notifyListeners();
+  }
+
+  Future<void> reorderTasks(int oldIndex, int newIndex) async {
+    if (oldIndex == newIndex) return;
+    final list = List.of(_tasks);
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex > oldIndex ? newIndex - 1 : newIndex, item);
+    for (int i = 0; i < list.length; i++) {
+      final order = (list[i].sortOrder ?? 0) < 0 ? -1 : i;
+      if (list[i].sortOrder != order) {
+        final idx = _tasks.indexWhere((t) => t.id == list[i].id);
+        if (idx != -1) {
+          _tasks[idx] = _tasks[idx].copyWith(sortOrder: order);
+          await _storage.updateTask(_tasks[idx]);
+          _syncTaskSilently(_tasks[idx]);
+        }
+      }
+    }
+    notifyListeners();
+  }
   Map<String, int> get stats {
     final total = _tasks.length;
     final completed = _tasks.where((t) => t.isCompleted).length;
@@ -608,7 +682,39 @@ class TaskProvider extends ChangeNotifier {
   /// 设置搜索关键词
   void setSearchQuery(String query) {
     _searchQuery = query;
+    if (query.trim().isNotEmpty) _addRecentSearch(query.trim());
     notifyListeners();
+  }
+
+  void setFilterDateRange(DateTime? from, DateTime? to) {
+    _filterDateFrom = from;
+    _filterDateTo = to;
+    notifyListeners();
+  }
+
+  DateTime? get filterDateFrom => _filterDateFrom;
+  DateTime? get filterDateTo => _filterDateTo;
+  List<String> get recentSearches => _recentSearches;
+
+  void _addRecentSearch(String query) {
+    _recentSearches = [query, ..._recentSearches.where((s) => s != query)].take(10).toList();
+    _saveRecentSearches();
+  }
+
+  void clearRecentSearches() {
+    _recentSearches = [];
+    _saveRecentSearches();
+    notifyListeners();
+  }
+
+  Future<void> _saveRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('recentSearches', _recentSearches);
+  }
+
+  Future<void> _loadRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    _recentSearches = prefs.getStringList('recentSearches') ?? [];
   }
 
   /// 清除所有筛选
@@ -896,6 +1002,9 @@ class TaskProvider extends ChangeNotifier {
     _setBackendSyncing(true);
 
     try {
+      // 先处理重试队列
+      await SyncQueueService.instance.retryAll();
+
       // 先 pull：获取远端最新数据（包括 admin 修改的），更新本地
       final lastSyncAt = await _backend.getLastSyncAt();
       final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
@@ -928,9 +1037,13 @@ class TaskProvider extends ChangeNotifier {
       }
 
       // 后 push：本地数据已同步到最新，再推送不会覆盖远端修改
-      await _backend.pushTasks(List.of(_tasks));
+      final pushConflicts = await _backend.pushTasks(List.of(_tasks));
+      _conflicts = pushConflicts;
       await _syncPendingComments();
       _pendingBackendSyncCount = 0;
+
+      // Auto-ack distributions as "received" for current user
+      await _ackReceivedDistributions();
 
       _lastBackendSyncAt = DateTime.now();
       _backendSyncError = null;
@@ -953,6 +1066,10 @@ class TaskProvider extends ChangeNotifier {
   }
 
   Future<void> _syncTaskSilently(Task task, {bool deleted = false}) async {
+    final pushPayload = _backend.taskToBackendJson(
+      task,
+      deletedAt: deleted ? DateTime.now().toIso8601String() : null,
+    );
     try {
       await _backend.init();
       if (!_backend.isLoggedIn || _isSyncRunning) return;
@@ -962,13 +1079,120 @@ class TaskProvider extends ChangeNotifier {
       _backendSyncError = null;
       await _saveBackendSyncState();
       notifyListeners();
+    } on BackendError catch (e) {
+      _pendingBackendSyncCount++;
+      _backendSyncError = e.message;
+      await SyncQueueService.instance.enqueue(
+        type: deleted ? 'task_delete' : 'task_push',
+        payload: pushPayload,
+        error: e.message,
+        errorCode: e.code,
+      );
+      await _saveBackendSyncState();
+      notifyListeners();
+      debugPrint('后台任务同步失败，已加入重试队列: $e');
     } catch (e) {
       _pendingBackendSyncCount++;
       _backendSyncError = e.toString();
+      await SyncQueueService.instance.enqueue(
+        type: deleted ? 'task_delete' : 'task_push',
+        payload: pushPayload,
+        error: e.toString(),
+      );
       await _saveBackendSyncState();
       notifyListeners();
-      debugPrint('后台任务同步失败，已保留本地数据: $e');
+      debugPrint('后台任务同步失败，已加入重试队列: $e');
     }
+  }
+
+  /// 解决冲突：keepLocal 强制推送本地版本，keepServer 接受服务器版本
+  Future<void> resolveConflict(String taskId, {bool keepLocal = true}) async {
+    final conflict = _conflicts.firstWhere((c) => c.taskId == taskId);
+    if (keepLocal) {
+      final payload = Map<String, dynamic>.from(conflict.clientVersion);
+      payload['updatedAt'] = DateTime.now().toIso8601String();
+      await _backend.forcePushTasks([payload]);
+    } else {
+      final serverData = conflict.serverVersion;
+      final index = _tasks.indexWhere((t) => t.id == taskId);
+      if (index != -1) {
+        final remoteTask = _taskFromBackendJson(serverData);
+        await _storage.updateTask(remoteTask);
+        _tasks[index] = remoteTask;
+        _refreshTaskLists();
+      }
+    }
+    _conflicts.removeWhere((c) => c.taskId == taskId);
+    notifyListeners();
+  }
+
+  // Batch operations
+  Future<void> batchUpdateTasks(List<String> ids, {TaskStatus? status, String? tagId, bool addTag = true}) async {
+    for (final id in ids) {
+      final index = _tasks.indexWhere((t) => t.id == id);
+      if (index == -1) continue;
+      var task = _tasks[index];
+      final wasCompleted = task.status == TaskStatus.completed;
+      if (status != null) {
+        task = task.copyWith(status: status);
+        if (status == TaskStatus.completed) {
+          task = task.copyWith(completedAt: DateTime.now());
+        }
+      }
+      if (tagId != null) {
+        final tags = List<String>.from(task.tagIds);
+        if (addTag && !tags.contains(tagId)) {
+          tags.add(tagId);
+        } else if (!addTag) {
+          tags.remove(tagId);
+        }
+        task = task.copyWith(tagIds: tags);
+      }
+      _tasks[index] = task;
+      await _storage.updateTask(task);
+      _syncTaskSilently(task);
+      // 周期任务批量完成时创建下一期
+      if (!wasCompleted && task.status == TaskStatus.completed && task.isRecurring) {
+        await _createRecurringTask(task);
+      }
+    }
+    _refreshTaskLists();
+    notifyListeners();
+  }
+
+  Future<void> batchDeleteTasks(List<String> ids) async {
+    final toDelete = ids.where((id) => _tasks.any((t) => t.id == id)).toList();
+    for (final id in toDelete) {
+      _syncTaskSilently(Task(id: id, title: ''), deleted: true);
+    }
+    for (final id in toDelete) {
+      final index = _tasks.indexWhere((t) => t.id == id);
+      if (index != -1) {
+        await _storage.deleteTask(id);
+        _tasks.removeAt(index);
+      }
+    }
+    _refreshTaskLists();
+    notifyListeners();
+  }
+
+  // Subtask helpers
+  Map<String, List<Task>> get subtasksByParentId {
+    final map = <String, List<Task>>{};
+    for (final t in _tasks) {
+      if (t.parentId != null) {
+        (map[t.parentId!] ??= []).add(t);
+      }
+    }
+    return map;
+  }
+
+  int subtaskCompletedCount(String parentId) {
+    return _tasks.where((t) => t.parentId == parentId && t.isCompleted).length;
+  }
+
+  Task _taskFromBackendJson(Map<String, dynamic> json) {
+    return BackendApiService.instance.taskFromBackendJson(json);
   }
 
   Future<int> _syncPendingComments() async {
@@ -984,7 +1208,28 @@ class TaskProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> _ackReceivedDistributions() async {
+    final userId = _backend.userId;
+    if (userId == null) return;
+    for (final d in _distributions) {
+      if (d.recipientUserId == userId &&
+          (d.status == 'generated' || d.status == 'sent')) {
+        try {
+          await _backend.ackDistribution(d.id, status: 'received');
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> ackDistributionViewed(String distributionId) async {
+    try {
+      await _backend.ackDistribution(distributionId, status: 'viewed');
+    } catch (_) {}
+  }
+
   Future<void> _loadBackendSyncState() async {
+    await SyncQueueService.instance.load();
+    await _loadRecentSearches();
     final prefs = await SharedPreferences.getInstance();
     _pendingBackendSyncCount = prefs.getInt('backend.pendingSyncCount') ?? 0;
     _backendSyncError = prefs.getString('backend.syncError');

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/task.dart';
@@ -19,6 +20,11 @@ import 'add_task_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
 import 'habit_screen.dart';
+import 'calendar_screen.dart';
+import '../widgets/distribution_status_widget.dart';
+import '../widgets/conflict_resolution_dialog.dart';
+import '../widgets/subtask_list.dart';
+import '../widgets/activity_feed_dialog.dart';
 
 /// 主页面 - 互联网风格设计
 class HomeScreen extends StatefulWidget {
@@ -32,8 +38,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _currentIndex = 0;
   String? _selectedFilter;
   String? _selectedTagId; // 标签筛选，null=全部
+  bool _isBatchMode = false;
+  final Set<String> _selectedTaskIds = {};
   late AnimationController _fabAnimationController;
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
+  int _unreadNotificationCount = 0;
 
   // 时间和天气相关
   Timer? _timeTimer;
@@ -57,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // 强制刷新天气信息（不使用缓存，以获取最新位置）
     _forceRefreshWeather();
+    _loadUnreadCount();
   }
 
   @override
@@ -154,8 +164,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       case 2:
         return const HabitScreen();
       case 3:
-        return const StatsScreen();
+        return const CalendarScreen();
       case 4:
+        return const StatsScreen();
+      case 5:
         return const SettingsScreen();
       default:
         return _buildTodayPage();
@@ -250,11 +262,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             const SizedBox(width: 12),
                             _buildHeaderButton(
+                              Icons.timeline_rounded,
+                              () => _showActivityFeed(),
+                            ),
+                            const SizedBox(width: 12),
+                            _buildHeaderButton(
                               Icons.notifications_none_rounded,
-                              () => _showNotifications(),
-                              badge: provider.overdueTasks.isNotEmpty
-                                  ? '${provider.overdueTasks.length}'
-                                  : null,
+                              () => _showNotificationCenter(),
+                              badge: _unreadNotificationCount > 0
+                                  ? '$_unreadNotificationCount'
+                                  : (provider.overdueTasks.isNotEmpty
+                                      ? '${provider.overdueTasks.length}'
+                                      : null),
                             ),
                           ],
                         ),
@@ -265,6 +284,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildWeatherCard(),
                     const SizedBox(height: 12),
                     _buildBackendSyncBanner(provider),
+                    const SizedBox(height: 8),
+                    // D12: Offline indicator
+                    StreamBuilder<List<ConnectivityResult>>(
+                      stream: Connectivity().onConnectivityChanged,
+                      initialData: const [ConnectivityResult.wifi],
+                      builder: (context, snapshot) {
+                        final results = snapshot.data ?? [ConnectivityResult.wifi];
+                        final isOffline = results.contains(ConnectivityResult.none);
+                        if (!isOffline) return const SizedBox.shrink();
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.wifi_off_rounded, size: 16, color: Colors.orange.shade700),
+                              const SizedBox(width: 8),
+                              Text('当前离线，恢复连接后自动同步', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 12),
                     // 进度卡片 - 紧凑版
                     _buildProgressCard(provider),
@@ -412,51 +457,78 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ? SliverToBoxAdapter(
                     child: provider.todayTasks.isEmpty
                         ? _buildEmptyState()
-                        : const SizedBox.shrink(), // 如果只有已完成任务，不显示空状态
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final uncompletedTasks = provider.todayTasks
-                              .where((t) => !t.isCompleted)
-                              .toList();
-                          // Note: todayTasks uncompleted filter is specific to today view,
-                          // not replaceable by cached activeTasks (which is all tasks)
-                          final task = uncompletedTasks[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: TaskCard(
-                              task: task,
-                              onTap: () => _showTaskDetail(task),
-                              isDistributed: provider.distributedTaskIds.contains(task.id),
-                              onComplete: () =>
-                                  _completeTask(task.id, provider),
-                              onDelete: () => _deleteTask(task.id, provider),
-                              onStart: () => _startTask(task.id, provider),
-                              onStatusChange: (status) =>
-                                  _changeTaskStatus(task.id, status, provider),
-                              onPriorityChange: (priority) =>
-                                  _changeTaskPriority(
-                                      task.id, priority, provider),
-                              onDueTimeTap: () => _editDueTime(task, provider),
-                              onReminderTap: () =>
-                                  _editReminder(task, provider),
-                              onRecurringTap: () =>
-                                  _editRecurring(task, provider),
-                              availableTags: _getAllTags(provider),
-                              onTagsChanged: (tagIds) =>
-                                  _updateTaskTags(task.id, tagIds, provider),
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 32),
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 20),
+                                Icon(Icons.emoji_events_rounded,
+                                    size: 56,
+                                    color: AppTheme.primaryColor.withOpacity(0.6)),
+                                const SizedBox(height: 12),
+                                Text(
+                                  l.allTasksCompleted,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  l.completedTasksMsg(
+                                      provider.todayTasks.length),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.textHintColor,
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                        childCount: provider.todayTasks
-                            .where((t) => !t.isCompleted)
-                            .length, // todayTasks-specific, not cacheable
+                          ),
+                  )
+                : Builder(builder: (context) {
+                    final uncompletedTasks = provider.todayTasks
+                        .where((t) => !t.isCompleted)
+                        .toList();
+                    return SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final task = uncompletedTasks[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: TaskCard(
+                                task: task,
+                                onTap: () => _showTaskDetail(task),
+                                isDistributed: provider.distributedTaskIds.contains(task.id),
+                                onComplete: () =>
+                                    _completeTask(task.id, provider),
+                                onDelete: () => _deleteTask(task.id, provider),
+                                onStart: () => _startTask(task.id, provider),
+                                onStatusChange: (status) =>
+                                    _changeTaskStatus(task.id, status, provider),
+                                onPriorityChange: (priority) =>
+                                    _changeTaskPriority(
+                                        task.id, priority, provider),
+                                onDueTimeTap: () => _editDueTime(task, provider),
+                                onReminderTap: () =>
+                                    _editReminder(task, provider),
+                                onRecurringTap: () =>
+                                    _editRecurring(task, provider),
+                                availableTags: _getAllTags(provider),
+                                onTagsChanged: (tagIds) =>
+                                    _updateTaskTags(task.id, tagIds, provider),
+                              ),
+                            );
+                          },
+                          childCount: uncompletedTasks.length,
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
             // 已完成任务分组（从全部任务中获取已完成任务，不受 todayTasks 过滤限制）
             if (provider.completedTasks.isNotEmpty)
               SliverToBoxAdapter(
@@ -601,51 +673,147 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         },
                       ),
                       const SizedBox(height: 8),
+                      // Date range filter + batch mode toggle
+                      Row(
+                        children: [
+                          _buildDateRangeChip('起始', provider.filterDateFrom, (dt) {
+                            provider.setFilterDateRange(dt, provider.filterDateTo);
+                          }),
+                          const SizedBox(width: 8),
+                          _buildDateRangeChip('截止', provider.filterDateTo, (dt) {
+                            provider.setFilterDateRange(provider.filterDateFrom, dt);
+                          }),
+                          if (provider.filterDateFrom != null || provider.filterDateTo != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: GestureDetector(
+                                onTap: () => provider.setFilterDateRange(null, null),
+                                child: Icon(Icons.clear, size: 16, color: Colors.grey[400]),
+                              ),
+                            ),
+                          const Spacer(),
+                          // Recent searches
+                          if (provider.recentSearches.isNotEmpty && provider.searchQuery.isEmpty)
+                            GestureDetector(
+                              onTap: () => _showRecentSearches(provider),
+                              child: Icon(Icons.history, size: 20, color: Colors.grey[400]),
+                            ),
+                          const SizedBox(width: 8),
+                          // Batch mode toggle
+                          GestureDetector(
+                            onTap: () => setState(() {
+                              _isBatchMode = !_isBatchMode;
+                              if (!_isBatchMode) _selectedTaskIds.clear();
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _isBatchMode ? AppTheme.primaryColor : Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.checklist, size: 16,
+                                    color: _isBatchMode ? Colors.white : Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text('批量',
+                                    style: TextStyle(fontSize: 12,
+                                      color: _isBatchMode ? Colors.white : Colors.grey[600])),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                     ],
                   ),
                 ),
               ),
+              // Batch mode toolbar
+              if (_isBatchMode)
+                SliverToBoxAdapter(
+                  child: _buildBatchToolbar(provider),
+                ),
               _getFilteredTaskList(provider).isEmpty
                   ? SliverToBoxAdapter(
                       child: _buildEmptyState(isWhite: true),
                     )
-                  : SliverPadding(
+                  : Builder(builder: (context) {
+                      final filteredTasks = _getFilteredTaskList(provider);
+                      return SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            final task = _getFilteredTaskList(provider)[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: TaskCard(
-                                task: task,
-                                onTap: () => _showTaskDetail(task),
-                                isDistributed: provider.distributedTaskIds.contains(task.id),
-                                onComplete: () =>
-                                    _completeTask(task.id, provider),
-                                onDelete: () => _deleteTask(task.id, provider),
-                                onStart: () => _startTask(task.id, provider),
-                                onStatusChange: (status) => _changeTaskStatus(
-                                    task.id, status, provider),
-                                onPriorityChange: (priority) =>
-                                    _changeTaskPriority(
-                                        task.id, priority, provider),
-                                onDueTimeTap: () =>
-                                    _editDueTime(task, provider),
-                                onReminderTap: () =>
-                                    _editReminder(task, provider),
-                                onRecurringTap: () =>
-                                    _editRecurring(task, provider),
-                                availableTags: _getAllTags(provider),
-                                onTagsChanged: (tagIds) =>
-                                    _updateTaskTags(task.id, tagIds, provider),
-                              ),
+                            final task = filteredTasks[index];
+                            if (task.parentId != null) return const SizedBox.shrink();
+                            final subtasks = provider.subtasksByParentId[task.id] ?? [];
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: TaskCard(
+                                    task: task,
+                                    onTap: _isBatchMode
+                                        ? () => setState(() {
+                                              if (_selectedTaskIds.contains(task.id)) {
+                                                _selectedTaskIds.remove(task.id);
+                                              } else {
+                                                _selectedTaskIds.add(task.id);
+                                              }
+                                            })
+                                        : () => _showTaskDetail(task),
+                                    isDistributed: provider.distributedTaskIds.contains(task.id),
+                                    isPinned: provider.isPinned(task.id),
+                                    onPinToggle: () => provider.isPinned(task.id)
+                                        ? provider.unpinTask(task.id)
+                                        : provider.pinTask(task.id),
+                                    selectable: _isBatchMode,
+                                    isSelected: _selectedTaskIds.contains(task.id),
+                                    onSelectionChanged: (v) => setState(() {
+                                      if (v) {
+                                        _selectedTaskIds.add(task.id);
+                                      } else {
+                                        _selectedTaskIds.remove(task.id);
+                                      }
+                                    }),
+                                    onComplete: () => _completeTask(task.id, provider),
+                                    onDelete: () => _deleteTask(task.id, provider),
+                                    onStart: () => _startTask(task.id, provider),
+                                    onStatusChange: (status) => _changeTaskStatus(task.id, status, provider),
+                                    onPriorityChange: (priority) => _changeTaskPriority(task.id, priority, provider),
+                                    onDueTimeTap: () => _editDueTime(task, provider),
+                                    onReminderTap: () => _editReminder(task, provider),
+                                    onRecurringTap: () => _editRecurring(task, provider),
+                                    availableTags: _getAllTags(provider),
+                                    onTagsChanged: (tagIds) => _updateTaskTags(task.id, tagIds, provider),
+                                  ),
+                                ),
+                                if (subtasks.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: SubtaskList(
+                                      parentTask: task,
+                                      subtasks: subtasks,
+                                      onSubtaskTap: (t) => _showTaskDetail(t),
+                                      onAddSubtask: () {
+                                        Navigator.push(context, MaterialPageRoute(
+                                          builder: (_) => AddTaskScreen(parentId: task.id),
+                                        ));
+                                      },
+                                    ),
+                                  ),
+                              ],
                             );
                           },
-                          childCount: _getFilteredTaskList(provider).length,
+                          childCount: filteredTasks.length,
                         ),
                       ),
-                    ),
+                    );
+                  }),
               const SliverToBoxAdapter(
                 child: SizedBox(height: 100),
               ),
@@ -751,6 +919,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('同步完成，更新 $count 个任务')),
                 );
+                if (provider.hasConflicts) {
+                  await showConflictDialogIfNeeded(context);
+                }
               } catch (e) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -758,7 +929,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 );
               }
             }
-          : () => setState(() => _currentIndex = 4),
+          : () => setState(() => _currentIndex = 5),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -977,16 +1148,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildNavItem(0, Icons.today_rounded, l.navToday),
               _buildNavItem(1, Icons.list_rounded, l.navAll),
               _buildNavItem(2, Icons.event_repeat_rounded, '习惯'),
-              _buildNavItem(3, Icons.bar_chart_rounded, l.navStats),
-              _buildNavItem(4, Icons.settings_rounded, l.navSettings),
+              _buildNavItem(3, Icons.calendar_month_rounded, '日历'),
+              _buildNavItem(4, Icons.bar_chart_rounded, l.navStats),
+              _buildNavItem(5, Icons.settings_rounded, l.navSettings),
             ],
           ),
         ),
@@ -997,7 +1169,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () {
+        if (_currentIndex != index) {
+          _selectedFilter = null;
+          _selectedTagId = null;
+        }
+        setState(() => _currentIndex = index);
+      },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -1780,6 +1958,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             l.createTime,
                             _formatDateTime(task.createdAt!),
                           ),
+                        if (task.assigneeUserId != null && task.assigneeUserId!.isNotEmpty)
+                          _buildAssigneeRow(task),
                         const SizedBox(height: 24),
                         _buildStatusSelector(task),
                         const SizedBox(height: 24),
@@ -2054,6 +2234,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             final time = await showTimePicker(
                               context: context,
                               initialTime: selectedTime,
+                              builder: (context, child) {
+                                return MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                  child: child!,
+                                );
+                              },
                             );
                             if (time != null) {
                               selectedTime = time;
@@ -2083,7 +2269,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             provider.updateTask(updatedTask);
                             Navigator.pop(context);
                           },
-                          child: Text(l.noReminder),
+                          child: const Text('清除截止时间'),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -2749,17 +2935,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  statusText,
-                  style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w600),
-                ),
-              ),
+              DistributionStatusWidget(status: d.status, compact: true),
             ],
           ),
           if (taskStatusText.isNotEmpty) ...[
@@ -2798,6 +2974,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if (d.unreadCommentCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${d.unreadCommentCount}条新评论',
+                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    const SizedBox(width: 4),
                     Icon(Icons.chevron_right, size: 16, color: AppTheme.textHintColor),
                   ],
                 ),
@@ -2830,8 +3019,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _tryAckViewed(BackendDistribution d) {
+    final userId = BackendApiService.instance.userId;
+    if (userId != null && d.recipientUserId == userId && d.status == 'received') {
+      context.read<TaskProvider>().ackDistributionViewed(d.id);
+    }
+  }
+
   void _showRecipientCommentsDialog(BackendDistribution d) {
     final currentUserId = BackendApiService.instance.userId;
+    _tryAckViewed(d);
+    BackendApiService.instance.markCommentsRead(d.id);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2912,6 +3110,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _showStatusTimelineDialog(BackendDistribution d) {
+    _tryAckViewed(d);
     final statusLabels = {
       'pending': '待处理',
       'in_progress': '进行中',
@@ -3431,5 +3630,433 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     return tasks;
+  }
+
+  // ---- Notification & Activity helpers (B6, B7) ----
+
+  Future<void> _loadUnreadCount() async {
+    final count = await BackendApiService.instance.getUnreadNotificationCount();
+    if (mounted) setState(() => _unreadNotificationCount = count);
+  }
+
+  void _showActivityFeed() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const ActivityFeedDialog(),
+    );
+  }
+
+  void _showNotificationCenter() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.notifications_active_rounded, color: AppTheme.primaryColor, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('通知中心', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () async {
+                        await BackendApiService.instance.markAllNotificationsRead();
+                        _loadUnreadCount();
+                        Navigator.pop(context);
+                      },
+                      child: const Text('全部已读'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: BackendApiService.instance.getNotifications(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor));
+                    }
+                    final notifications = snapshot.data ?? [];
+                    if (notifications.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey.shade400),
+                            const SizedBox(height: 12),
+                            Text('暂无通知', style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
+                          ],
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: notifications.length,
+                      separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
+                      itemBuilder: (context, index) {
+                        final n = notifications[index];
+                        final read = n['read'] as bool? ?? false;
+                        final title = n['title'] as String? ?? '';
+                        final body = n['body'] as String? ?? '';
+                        final createdAt = n['createdAt'] as String? ?? '';
+                        final type = n['type'] as String? ?? '';
+                        return ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: (read ? Colors.grey : AppTheme.primaryColor).withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              type == 'mention' ? Icons.alternate_email_rounded
+                                  : type == 'assignment' ? Icons.person_pin_rounded
+                                  : type == 'distribution' ? Icons.send_rounded
+                                  : Icons.info_outline,
+                              size: 18,
+                              color: read ? Colors.grey : AppTheme.primaryColor,
+                            ),
+                          ),
+                          title: Text(title, style: TextStyle(fontWeight: read ? FontWeight.normal : FontWeight.w600, fontSize: 14)),
+                          subtitle: Text(body, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                          trailing: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: read ? Colors.transparent : AppTheme.primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          onTap: () async {
+                            if (!read) {
+                              await BackendApiService.instance.markNotificationRead(n['id'] as String);
+                              _loadUnreadCount();
+                            }
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ---- Task Assignment (B5) ----
+
+  Widget _buildAssigneeRow(Task task) {
+    return FutureBuilder<String>(
+      future: _resolveUserName(task.assigneeUserId!),
+      builder: (context, snapshot) {
+        final name = snapshot.data ?? '加载中...';
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.person_outline_rounded, size: 18, color: AppTheme.textSecondaryColor),
+              const SizedBox(width: 8),
+              Text('指派给', style: TextStyle(fontSize: 13, color: AppTheme.textSecondaryColor)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.person_rounded, size: 14, color: AppTheme.primaryColor),
+                    const SizedBox(width: 4),
+                    Text(name, style: TextStyle(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                onPressed: () => _showAssignTaskDialog(task),
+                tooltip: '更改指派',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String> _resolveUserName(String userId) async {
+    try {
+      final teams = await BackendApiService.instance.getMyTeams();
+      if (teams.isEmpty) return userId;
+      final members = await BackendApiService.instance.getTeamMembers(teams.first['id'] as String);
+      final match = members.where((m) => m.userId == userId).firstOrNull;
+      return match?.displayName ?? userId;
+    } catch (_) {
+      return userId;
+    }
+  }
+
+  void _showAssignTaskDialog(Task task) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_add_rounded, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    const Text('指派任务', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              FutureBuilder<Map<String, dynamic>?>(
+                future: _loadTeamAndMembers(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator(color: AppTheme.primaryColor)),
+                    );
+                  }
+                  final data = snapshot.data;
+                  if (data == null) {
+                    return const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text('未加入团队，无法指派', style: TextStyle(color: AppTheme.textSecondaryColor)),
+                    );
+                  }
+                  final members = data['members'] as List<BackendTeamMember>;
+                  final currentUserId = BackendApiService.instance.userId;
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: members.length,
+                    itemBuilder: (context, index) {
+                      final m = members[index];
+                      final isCurrentAssignee = task.assigneeUserId == m.userId;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: isCurrentAssignee ? AppTheme.primaryColor : Colors.grey.shade300,
+                          child: Text(
+                            m.displayName.isNotEmpty ? m.displayName[0] : '?',
+                            style: TextStyle(color: isCurrentAssignee ? Colors.white : Colors.grey.shade700, fontSize: 14),
+                          ),
+                        ),
+                        title: Text(m.displayName),
+                        subtitle: m.userId == currentUserId ? const Text('（自己）', style: TextStyle(fontSize: 11)) : null,
+                        trailing: isCurrentAssignee
+                            ? const Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                            : null,
+                        onTap: () {
+                          final provider = context.read<TaskProvider>();
+                          provider.updateTask(task.copyWith(assigneeUserId: m.userId));
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDateRangeChip(String label, DateTime? value, ValueChanged<DateTime?> onChanged) {
+    final hasValue = value != null;
+    return GestureDetector(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: value ?? DateTime.now(),
+          firstDate: DateTime(2024),
+          lastDate: DateTime(2027),
+        );
+        onChanged(picked);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: hasValue ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: hasValue ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.date_range, size: 14, color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
+            const SizedBox(width: 4),
+            Text(
+              hasValue ? '${value.month}/${value.day}' : label,
+              style: TextStyle(fontSize: 12, color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRecentSearches(TaskProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('最近搜索', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+                TextButton(
+                  onPressed: () {
+                    provider.clearRecentSearches();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('清除'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: provider.recentSearches.map((s) => ActionChip(
+                label: Text(s, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                onPressed: () {
+                  provider.setSearchQuery(s);
+                  Navigator.pop(context);
+                },
+              )).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchToolbar(TaskProvider provider) {
+    final allTasks = _getFilteredTaskList(provider)
+        .where((t) => t.parentId == null)
+        .toList();
+    final allSelected = allTasks.isNotEmpty && allTasks.every((t) => _selectedTaskIds.contains(t.id));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      color: AppTheme.primaryColor.withValues(alpha: 0.06),
+      child: Row(
+        children: [
+          Checkbox(
+            value: allSelected,
+            onChanged: (v) => setState(() {
+              if (v == true) {
+                _selectedTaskIds.addAll(allTasks.map((t) => t.id));
+              } else {
+                _selectedTaskIds.clear();
+              }
+            }),
+          ),
+          Text('已选 ${_selectedTaskIds.length} 项', style: const TextStyle(fontSize: 13)),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.check_circle_outline, size: 20),
+            tooltip: '标记完成',
+            onPressed: _selectedTaskIds.isEmpty ? null : () async {
+              await provider.batchUpdateTasks(_selectedTaskIds.toList(), status: TaskStatus.completed);
+              setState(() { _selectedTaskIds.clear(); });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.play_circle_outline, size: 20),
+            tooltip: '开始进行',
+            onPressed: _selectedTaskIds.isEmpty ? null : () async {
+              await provider.batchUpdateTasks(_selectedTaskIds.toList(), status: TaskStatus.inProgress);
+              setState(() { _selectedTaskIds.clear(); });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: '批量删除',
+            onPressed: _selectedTaskIds.isEmpty ? null : () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('确认删除'),
+                  content: Text('确定要删除选中的 ${_selectedTaskIds.length} 个任务吗？'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(_, false), child: const Text('取消')),
+                    TextButton(onPressed: () => Navigator.pop(_, true), child: const Text('删除')),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await provider.batchDeleteTasks(_selectedTaskIds.toList());
+                setState(() { _selectedTaskIds.clear(); });
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

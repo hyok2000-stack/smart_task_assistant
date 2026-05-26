@@ -10,7 +10,9 @@ export type DistributionStatus =
   | "received"
   | "generated"
   | "viewed"
+  | "in_progress"
   | "completed"
+  | "cancelled"
   | "failed";
 export type SyncStatus = "success" | "failed" | "pending";
 export type OperationType =
@@ -95,6 +97,8 @@ export interface Task {
   sourceTaskId?: string;
   sourceDistributionId?: string;
   version: number;
+  sortOrder?: number;
+  assigneeUserId?: string;
   deletedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -112,6 +116,10 @@ export interface TaskDistribution {
   commentCount: number;
   lastCommentAt?: string;
   lastCommentSummary?: string;
+  sourceTaskTitle?: string;
+  recipientTaskTitle?: string;
+  senderLastReadCommentAt?: string;
+  recipientLastReadCommentAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -189,4 +197,18 @@ export interface DatabaseShape {
   operationLogs: OperationLog[];
   inviteCodes: InviteCode[];
   statusChangeLogs: TaskStatusChangeLog[];
+  notifications: AppNotification[];
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: "mention" | "assignment" | "distribution" | "status_change";
+  taskId: string;
+  commentId?: string;
+  fromUserId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
 }

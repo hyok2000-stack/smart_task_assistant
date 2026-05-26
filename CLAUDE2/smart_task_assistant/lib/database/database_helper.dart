@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 12, // 更新版本号为 12（添加 version 字段用于同步冲突检测）
+      version: 13, // 添加 sort_order 和 assignee_user_id 字段
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -98,7 +98,9 @@ class DatabaseHelper {
         source_distribution_id TEXT,
         team_id TEXT,
         owner_user_id TEXT,
-        version INTEGER
+        version INTEGER,
+        sort_order INTEGER DEFAULT 0,
+        assignee_user_id TEXT
       )
     ''');
 
@@ -534,6 +536,23 @@ class DatabaseHelper {
         debugPrint('列 version 已存在: $e');
       }
       debugPrint('同步 version 字段添加成功');
+    }
+
+    // 版本12 -> 版本13: 添加 sort_order 和 assignee_user_id
+    if (oldVersion < 13) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN sort_order INTEGER DEFAULT 0');
+      } catch (e) {
+        debugPrint('列 sort_order 已存在: $e');
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN assignee_user_id TEXT');
+      } catch (e) {
+        debugPrint('列 assignee_user_id 已存在: $e');
+      }
+      debugPrint('sort_order / assignee_user_id 字段添加成功');
     }
 
     // 确保性能索引存在（不升级 schema version）

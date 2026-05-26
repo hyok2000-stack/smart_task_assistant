@@ -4,6 +4,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/task.dart';
+import 'secure_storage_service.dart';
+
+class BackendError implements Exception {
+  final String code;
+  final String message;
+  final dynamic details;
+
+  const BackendError({required this.code, required this.message, this.details});
+
+  factory BackendError.fromJson(Map<String, dynamic> json) {
+    return BackendError(
+      code: json['code'] as String? ?? 'SERVER_ERROR',
+      message: json['message'] as String? ?? '后台请求失败',
+      details: json['details'],
+    );
+  }
+
+  @override
+  String toString() => message;
+}
+
+class ConflictInfo {
+  final String taskId;
+  final Map<String, dynamic> serverVersion;
+  final Map<String, dynamic> clientVersion;
+
+  const ConflictInfo({
+    required this.taskId,
+    required this.serverVersion,
+    required this.clientVersion,
+  });
+
+  factory ConflictInfo.fromJson(Map<String, dynamic> json) {
+    return ConflictInfo(
+      taskId: json['taskId'] as String,
+      serverVersion: Map<String, dynamic>.from(json['serverVersion'] as Map),
+      clientVersion: Map<String, dynamic>.from(json['clientVersion'] as Map),
+    );
+  }
+}
 
 class BackendSession {
   final String token;
@@ -134,6 +174,7 @@ class BackendDistribution {
   final String? recipientName;
   final String? senderName;
   final String? recipientTaskStatus;
+  final int unreadCommentCount;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -151,6 +192,7 @@ class BackendDistribution {
     this.recipientName,
     this.senderName,
     this.recipientTaskStatus,
+    this.unreadCommentCount = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -170,6 +212,7 @@ class BackendDistribution {
       recipientName: json['recipientName'] as String?,
       senderName: json['senderName'] as String?,
       recipientTaskStatus: json['recipientTaskStatus'] as String?,
+      unreadCommentCount: json['unreadCommentCount'] as int? ?? 0,
       createdAt: _parseDateStatic(json['createdAt']),
       updatedAt: _parseDateStatic(json['updatedAt']),
     );
@@ -248,7 +291,10 @@ class BackendApiService {
     _nickname = prefs.getString(_nicknameKey);
     _baseUrl = prefs.getString(_baseUrlKey) ?? defaultBaseUrl;
     _account = prefs.getString(_accountKey);
-    _password = prefs.getString(_passwordKey);
+    _password = await SecureStorageService.instance.readPassword();
+    if (prefs.containsKey(_passwordKey)) {
+      await prefs.remove(_passwordKey);
+    }
     _deviceId = prefs.getString(_deviceIdKey);
   }
 
@@ -300,10 +346,12 @@ class BackendApiService {
     await prefs.setString(_userIdKey, session.userId);
     await prefs.setString(_nicknameKey, session.nickname);
     await prefs.setString(_accountKey, account);
+    await prefs.remove(_passwordKey);
+
     if (rememberPassword) {
-      await prefs.setString(_passwordKey, password);
+      await SecureStorageService.instance.writePassword(password);
     } else {
-      await prefs.remove(_passwordKey);
+      await SecureStorageService.instance.deletePassword();
     }
 
     return session;
@@ -355,6 +403,7 @@ class BackendApiService {
     await prefs.setString(_tokenKey, session.token);
     await prefs.setString(_userIdKey, session.userId);
     await prefs.setString(_nicknameKey, session.nickname);
+    await prefs.remove(_passwordKey);
 
     return session;
   }
@@ -363,10 +412,13 @@ class BackendApiService {
     _token = null;
     _userId = null;
     _nickname = null;
+    _password = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userIdKey);
     await prefs.remove(_nicknameKey);
+    await prefs.remove(_passwordKey);
+    await SecureStorageService.instance.deletePassword();
   }
 
   Future<void> bindDevice({
@@ -449,14 +501,14 @@ class BackendApiService {
     );
   }
 
-  Future<void> pushTask(Task task, {bool deleted = false}) async {
-    if (!isLoggedIn) return;
-    await _request(
+  Future<List<ConflictInfo>> pushTask(Task task, {bool deleted = false}) async {
+    if (!isLoggedIn) return [];
+    final response = await _request(
       () => _dio.post<Map<String, dynamic>>(
         '$baseUrl/tasks/sync/push',
         data: {
           'tasks': [
-            _taskToBackendJson(
+            taskToBackendJson(
               task,
               deletedAt: deleted ? DateTime.now().toIso8601String() : null,
             ),
@@ -465,14 +517,15 @@ class BackendApiService {
         options: _authOptions(),
       ),
     );
+    return _parseConflicts(response.data);
   }
 
   /// 批量推送任务到服务端
-  Future<void> pushTasks(List<Task> tasks, {List<String>? deletedIds}) async {
-    if (!isLoggedIn || (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty))) return;
+  Future<List<ConflictInfo>> pushTasks(List<Task> tasks, {List<String>? deletedIds}) async {
+    if (!isLoggedIn || (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty))) return [];
     final items = <Map<String, dynamic>>[];
     for (final task in tasks) {
-      items.add(_taskToBackendJson(task));
+      items.add(taskToBackendJson(task));
     }
     if (deletedIds != null) {
       final now = DateTime.now().toIso8601String();
@@ -480,18 +533,56 @@ class BackendApiService {
         items.add({'id': id, 'deletedAt': now, 'updatedAt': now});
       }
     }
-    // 分批推送，每批最多 50 条
+    final allConflicts = <ConflictInfo>[];
     const batchSize = 50;
     for (var i = 0; i < items.length; i += batchSize) {
       final batch = items.sublist(i, i + batchSize > items.length ? items.length : i + batchSize);
-      await _request(
+      final response = await _request(
         () => _dio.post<Map<String, dynamic>>(
           '$baseUrl/tasks/sync/push',
           data: {'tasks': batch},
           options: _authOptions(),
         ),
       );
+      allConflicts.addAll(_parseConflicts(response.data));
     }
+    return allConflicts;
+  }
+
+  /// 推送原始任务数据（用于重试队列）
+  Future<void> pushRawTasks(List<Map<String, dynamic>> rawTasks) async {
+    if (!isLoggedIn || rawTasks.isEmpty) return;
+    await _request(
+      () => _dio.post<Map<String, dynamic>>(
+        '$baseUrl/tasks/sync/push',
+        data: {'tasks': rawTasks},
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  /// 强制推送（覆盖服务器版本）
+  Future<void> forcePushTasks(List<Map<String, dynamic>> rawTasks) async {
+    if (!isLoggedIn || rawTasks.isEmpty) return;
+    await _request(
+      () => _dio.post<Map<String, dynamic>>(
+        '$baseUrl/tasks/sync/push',
+        data: {'force': true, 'tasks': rawTasks},
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  /// 获取单个任务
+  Future<Map<String, dynamic>?> fetchTask(String taskId) async {
+    if (!isLoggedIn) return null;
+    final response = await _request(
+      () => _dio.get<Map<String, dynamic>>(
+        '$baseUrl/tasks/$taskId',
+        options: _authOptions(),
+      ),
+    );
+    return response.data?['task'] as Map<String, dynamic>?;
   }
 
   /// 拉取远端任务（后端同时返回 comments，一并返回以减少请求）
@@ -520,7 +611,7 @@ class BackendApiService {
         continue;
       }
       final localMatch = localTasks?.where((t) => t.id == jsonMap['id']).firstOrNull;
-      activeTasks.add(_taskFromBackendJson(jsonMap, localTask: localMatch));
+      activeTasks.add(taskFromBackendJson(jsonMap, localTask: localMatch));
     }
 
     final comments = commentsJson
@@ -608,6 +699,16 @@ class BackendApiService {
     );
   }
 
+  Future<void> markCommentsRead(String distributionId) async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.post<Map<String, dynamic>>(
+        '$baseUrl/distributions/$distributionId/mark-comments-read',
+        options: _authOptions(),
+      ),
+    );
+  }
+
   Future<BackendTaskComment> addComment({
     required String taskId,
     required String content,
@@ -662,6 +763,148 @@ class BackendApiService {
     );
   }
 
+  // ---- Notifications ----
+
+  Future<List<Map<String, dynamic>>> getNotifications() async {
+    if (!isLoggedIn) return [];
+    final response = await _request(
+      () => _dio.get<Map<String, dynamic>>(
+        '$baseUrl/notifications',
+        options: _authOptions(),
+      ),
+    );
+    final list = response.data?['notifications'] as List? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    if (!isLoggedIn) return 0;
+    try {
+      final response = await _request(
+        () => _dio.get<Map<String, dynamic>>(
+          '$baseUrl/notifications/unread-count',
+          options: _authOptions(),
+        ),
+      );
+      return response.data?['count'] as int? ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.post<Map<String, dynamic>>(
+        '$baseUrl/notifications/$notificationId/read',
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.post<Map<String, dynamic>>(
+        '$baseUrl/notifications/read-all',
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  // ---- Activity ----
+
+  Future<List<Map<String, dynamic>>> getActivityFeed() async {
+    if (!isLoggedIn) return [];
+    final response = await _request(
+      () => _dio.get<Map<String, dynamic>>(
+        '$baseUrl/activity',
+        options: _authOptions(),
+      ),
+    );
+    final list = response.data?['activities'] as List? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  // ---- Reports ----
+
+  Future<Map<String, dynamic>?> getReportSummary({String period = 'weekly'}) async {
+    if (!isLoggedIn) return null;
+    try {
+      final response = await _request(
+        () => _dio.get<Map<String, dynamic>>(
+          '$baseUrl/reports/summary',
+          queryParameters: {'period': period},
+          options: _authOptions(),
+        ),
+      );
+      return response.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ---- Batch Operations ----
+
+  Future<void> batchUpdateTasks({
+    required List<String> taskIds,
+    String? status,
+    List<String>? tagIds,
+    String? priority,
+  }) async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.patch<Map<String, dynamic>>(
+        '$baseUrl/tasks/batch',
+        data: _withoutNulls({
+          'taskIds': taskIds,
+          'status': status,
+          'tagIds': tagIds,
+          'priority': priority,
+        }),
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  Future<void> batchDeleteTasks(List<String> taskIds) async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.delete<Map<String, dynamic>>(
+        '$baseUrl/tasks/batch',
+        data: {'taskIds': taskIds},
+        options: _authOptions(),
+      ),
+    );
+  }
+
+  // ---- Export ----
+
+  Future<String?> exportTasksCsv() async {
+    if (!isLoggedIn) return null;
+    try {
+      final response = await _request(
+        () => _dio.get<String>(
+          '$baseUrl/admin/tasks/export',
+          options: _authOptions().copyWith(
+            responseType: ResponseType.plain,
+          ),
+        ),
+      );
+      return response.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<ConflictInfo> _parseConflicts(Map<String, dynamic>? data) {
+    final raw = data?['conflicts'] as List?;
+    if (raw == null || raw.isEmpty) return [];
+    return raw
+        .map((e) => ConflictInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Options _authOptions() {
     return Options(headers: {
       'Authorization': 'Bearer $_token',
@@ -669,7 +912,7 @@ class BackendApiService {
     });
   }
 
-  Map<String, dynamic> _taskToBackendJson(Task task, {String? deletedAt}) {
+  Map<String, dynamic> taskToBackendJson(Task task, {String? deletedAt}) {
     return _withoutNulls({
       'id': task.id,
       'title': task.title,
@@ -703,6 +946,8 @@ class BackendApiService {
       'teamId': task.teamId,
       'ownerUserId': task.ownerUserId,
       'version': task.version ?? 1,
+      'sortOrder': task.sortOrder,
+      'assigneeUserId': task.assigneeUserId,
       'updatedAt': task.updatedAt.toIso8601String(),
       'deletedAt': deletedAt,
     });
@@ -719,17 +964,20 @@ class BackendApiService {
       return await action();
     } on DioException catch (e) {
       final data = e.response?.data;
+      if (data is Map<String, dynamic> && data['code'] != null) {
+        throw BackendError.fromJson(data);
+      }
       if (data is Map && data['message'] != null) {
-        throw Exception(data['message']);
+        throw BackendError(code: 'SERVER_ERROR', message: data['message'] as String);
       }
       if (data is String && data.isNotEmpty) {
-        throw Exception(data);
+        throw BackendError(code: 'SERVER_ERROR', message: data);
       }
-      throw Exception(e.message ?? '后台请求失败');
+      throw BackendError(code: 'SERVER_ERROR', message: e.message ?? '后台请求失败');
     }
   }
 
-  Task _taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
+  Task taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
     final sourceType = (json['sourceType'] as String?) ?? localTask?.sourceType;
     final task = Task(
       id: json['id'] as String,
@@ -759,6 +1007,8 @@ class BackendApiService {
       teamId: (json['teamId'] as String?) ?? localTask?.teamId,
       ownerUserId: (json['ownerUserId'] as String?) ?? localTask?.ownerUserId,
       version: (json['version'] as int?) ?? localTask?.version,
+      sortOrder: json['sortOrder'] as int?,
+      assigneeUserId: json['assigneeUserId'] as String?,
       createdAt: _parseDate(json['createdAt']) ?? localTask?.createdAt ?? DateTime.now(),
       updatedAt: _parseDate(json['updatedAt']) ?? DateTime.now(),
     );

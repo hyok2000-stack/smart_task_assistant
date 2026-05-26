@@ -192,6 +192,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDueTime ?? now),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          );
+        },
       );
 
       if (time != null) {
@@ -238,6 +244,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
         reminderVoiceType: 'female',
         reminderVoiceStyle: 'lively',
         reminderVoiceSpeed: 'normal',
+        sourceType: 'local',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );

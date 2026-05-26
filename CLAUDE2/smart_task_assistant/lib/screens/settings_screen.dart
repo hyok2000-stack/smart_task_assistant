@@ -12,8 +12,11 @@ import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 import '../widgets/tag_management_dialog.dart';
 import '../services/ai_service.dart';
+import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
+import '../services/export_service.dart';
 import '../database/storage_service.dart';
+import 'sync_center_screen.dart';
 
 // 条件导入：文件操作（Web和移动端）
 import '../utils/platform_file_stub.dart'
@@ -28,7 +31,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   bool _isTestingConnection = false;
   String? _testConnectionResult;
   bool _testConnectionSuccess = false;
@@ -39,21 +43,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _apiBaseController = TextEditingController();
   final TextEditingController _apiModelController = TextEditingController();
+  final TextEditingController _backendBaseUrlController =
+      TextEditingController();
+  final TextEditingController _backendAccountController =
+      TextEditingController();
+  final TextEditingController _backendPasswordController =
+      TextEditingController();
+  final TextEditingController _registerNicknameController =
+      TextEditingController();
+  final TextEditingController _registerPhoneController =
+      TextEditingController();
+  final TextEditingController _registerPasswordController =
+      TextEditingController();
+  final TextEditingController _registerEmailController =
+      TextEditingController();
+  final TextEditingController _registerInviteCodeController =
+      TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettingsToControllers();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshReminderPermissionState();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _localLLMAddressController.dispose();
     _localLLMModelController.dispose();
     _apiKeyController.dispose();
     _apiBaseController.dispose();
     _apiModelController.dispose();
+    _backendBaseUrlController.dispose();
+    _backendAccountController.dispose();
+    _backendPasswordController.dispose();
+    _registerNicknameController.dispose();
+    _registerPhoneController.dispose();
+    _registerPasswordController.dispose();
+    _registerEmailController.dispose();
+    _registerInviteCodeController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshReminderPermissionState();
+    }
+  }
+
+  Future<void> _refreshReminderPermissionState() async {
+    if (!Platform.isAndroid) return;
+    await Future.wait([
+      _checkReminderServiceRunning(),
+      _checkFullScreenPermission(),
+      _checkNotificationPermission(),
+      _checkExactAlarmPermission(),
+      _checkBatteryOptimization(),
+    ]);
+    if (mounted) setState(() {});
   }
 
   void _loadSettingsToControllers() {
@@ -63,6 +115,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _apiKeyController.text = settings.apiKey;
     _apiBaseController.text = settings.apiBase;
     _apiModelController.text = settings.apiModel;
+    BackendApiService.instance.init().then((_) {
+      if (!mounted) return;
+      final backend = BackendApiService.instance;
+      _backendBaseUrlController.text = backend.baseUrl;
+      _backendAccountController.text =
+          backend.account ?? _backendAccountController.text;
+      _backendPasswordController.text =
+          backend.password ?? _backendPasswordController.text;
+      setState(() {});
+    });
   }
 
   @override
@@ -95,6 +157,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 32),
           _buildSectionHeader('数据'),
           _buildDataManagement(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('云同步'),
+          _buildBackendSyncSettings(context),
           const SizedBox(height: 32),
           _buildSectionHeader('设置管理'),
           _buildSettingsManagement(context),
@@ -308,60 +373,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 原生提醒服务设置（仅 Android）
   Widget _buildReminderServiceSettings(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _checkReminderServiceRunning(),
-      builder: (context, snapshot) {
-        final isRunning = snapshot.data ?? false;
-        return Column(
-          children: [
-            _buildListTile(
-              icon: Icons.alarm_outlined,
-              title: '后台提醒服务',
-              subtitle: isRunning ? '正在运行' : '关闭后应用不在后台时无法收到提醒',
-              trailing: Switch(
-                value: isRunning,
-                onChanged: (value) async {
-                  try {
-                    const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-                    if (value) {
-                      await channel.invokeMethod('startService');
-                    } else {
-                      await channel.invokeMethod('stopService');
-                    }
-                  } catch (_) {}
-                  if (mounted) setState(() {});
-                },
-                activeColor: AppTheme.primaryColor,
-              ),
-            ),
-            _buildDivider(),
-            _buildListTile(
-              icon: Icons.screen_lock_portrait_outlined,
-              title: '锁屏弹出权限',
-              subtitle: '允许在锁屏界面显示全屏提醒',
-              trailing: Switch(
-                value: _hasFullScreenPermission,
-                onChanged: (value) async {
-                  // 无论开启/关闭，都引导到系统设置页面
-                  await _requestFullScreenPermission();
-                  // 返回后重新检查权限状态
-                  await _checkFullScreenPermission();
-                  if (mounted) setState(() {});
-                },
-                activeColor: AppTheme.primaryColor,
-              ),
-            ),
-            _buildDivider(),
-            _buildBatteryOptimizationTile(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        _buildListTile(
+          icon: Icons.alarm_outlined,
+          title: '后台提醒服务',
+          subtitle: _isReminderServiceRunning ? '正在运行' : '关闭后应用不在后台时无法收到提醒',
+          trailing: Switch(
+            value: _isReminderServiceRunning,
+            onChanged: (value) async {
+              try {
+                const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+                if (value) {
+                  await channel.invokeMethod('startService');
+                } else {
+                  await channel.invokeMethod('stopService');
+                }
+              } catch (_) {}
+              await _checkReminderServiceRunning();
+              if (mounted) setState(() {});
+            },
+            activeColor: AppTheme.primaryColor,
+          ),
+        ),
+        _buildDivider(),
+        _buildListTile(
+          icon: Icons.screen_lock_portrait_outlined,
+          title: '锁屏弹出权限',
+          subtitle: _hasFullScreenPermission
+              ? '已允许，锁屏时可以显示全屏提醒'
+              : '未允许，点击前往系统设置开启',
+          trailing: _buildPermissionStatusTrailing(_hasFullScreenPermission),
+          onTap: () => _requestFullScreenPermission(),
+        ),
+        _buildDivider(),
+        _buildNotificationPermissionTile(),
+        _buildDivider(),
+        _buildExactAlarmPermissionTile(),
+        _buildDivider(),
+        _buildBatteryOptimizationTile(),
+      ],
     );
   }
 
+  bool _isReminderServiceRunning = false;
   bool _isBatteryOptimized = true;
+  bool _notificationsEnabled = true;
+  bool _canScheduleExactAlarms = true;
 
   Future<void> _checkBatteryOptimization() async {
     if (!Platform.isAndroid) return;
@@ -374,46 +433,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildBatteryOptimizationTile() {
-    return FutureBuilder<void>(
-      future: _checkBatteryOptimization(),
-      builder: (context, _) {
-        return _buildListTile(
-          icon: Icons.battery_alert_outlined,
-          title: '电池优化',
-          subtitle: _isBatteryOptimized
-              ? '未豁免，后台服务可能被系统杀死'
-              : '已豁免，后台服务可正常运行',
-          trailing: Switch(
-            value: !_isBatteryOptimized,
-            onChanged: (value) async {
-              if (value) {
-                try {
-                  const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-                  await channel.invokeMethod('requestIgnoreBatteryOptimization');
-                } catch (_) {}
-              }
-              // 返回后重新检查
-              await _checkBatteryOptimization();
-              if (mounted) setState(() {});
-            },
-            activeColor: AppTheme.primaryColor,
-          ),
-        );
+    return _buildListTile(
+      icon: Icons.battery_alert_outlined,
+      title: '电池优化',
+      subtitle: _isBatteryOptimized
+          ? '未豁免，点击申请忽略电池优化'
+          : '已豁免，后台服务可正常运行',
+      trailing: _buildPermissionStatusTrailing(!_isBatteryOptimized),
+      onTap: () async {
+        if (!_isBatteryOptimized) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('已豁免电池优化，后台服务可正常运行'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+          return;
+        }
+        try {
+          const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+          await channel.invokeMethod('requestIgnoreBatteryOptimization');
+        } catch (_) {}
+        // didChangeAppLifecycleState will refresh when user returns
       },
+    );
+  }
+
+  Widget _buildNotificationPermissionTile() {
+    return _buildListTile(
+      icon: Icons.notifications_active_outlined,
+      title: '通知权限',
+      subtitle: _notificationsEnabled
+          ? '已允许，任务提醒可以正常显示通知'
+          : '未允许，锁屏或休眠时可能收不到提醒',
+      trailing: _buildPermissionStatusTrailing(_notificationsEnabled),
+      onTap: () async {
+        await _openNotificationSettings();
+        await _refreshReminderPermissionState();
+      },
+    );
+  }
+
+  Widget _buildExactAlarmPermissionTile() {
+    return _buildListTile(
+      icon: Icons.alarm_on_outlined,
+      title: '精确闹钟权限',
+      subtitle: _canScheduleExactAlarms
+          ? '已允许，休眠时可按计划唤醒检查提醒'
+          : '未允许，手机休眠后提醒可能明显延迟',
+      trailing: _buildPermissionStatusTrailing(_canScheduleExactAlarms),
+      onTap: () async {
+        await _openExactAlarmSettings();
+        await _refreshReminderPermissionState();
+      },
+    );
+  }
+
+  Widget _buildPermissionStatusTrailing(bool allowed) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          allowed ? Icons.check_circle_outline : Icons.error_outline,
+          color: allowed ? Colors.green : Colors.orange,
+          size: 20,
+        ),
+        const SizedBox(width: 8),
+        Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+      ],
     );
   }
 
   bool _hasFullScreenPermission = false;
 
-  Future<bool> _checkReminderServiceRunning() async {
-    if (!Platform.isAndroid) return false;
+  Future<void> _checkReminderServiceRunning() async {
+    if (!Platform.isAndroid) return;
     try {
       const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-      // 同时检查锁屏权限
-      await _checkFullScreenPermission();
-      return await channel.invokeMethod('isServiceRunning') ?? false;
+      _isReminderServiceRunning = await channel.invokeMethod('isServiceRunning') ?? false;
     } catch (_) {
-      return false;
+      _isReminderServiceRunning = false;
     }
   }
 
@@ -433,14 +534,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
       final granted = await channel.invokeMethod('requestFullScreenPermission');
       _hasFullScreenPermission = granted == true;
-      if (mounted && !_hasFullScreenPermission) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('请在系统设置中开启全屏通知权限'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+      if (mounted) {
+        if (_hasFullScreenPermission) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('锁屏弹出权限已开启'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('请在系统设置中开启全屏通知权限'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
+    } catch (_) {}
+  }
+
+  Future<void> _checkNotificationPermission() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _notificationsEnabled =
+          await channel.invokeMethod('areNotificationsEnabled') ?? true;
+    } catch (_) {
+      _notificationsEnabled = true;
+    }
+  }
+
+  Future<void> _openNotificationSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      await channel.invokeMethod('openNotificationSettings');
+    } catch (_) {}
+  }
+
+  Future<void> _checkExactAlarmPermission() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _canScheduleExactAlarms =
+          await channel.invokeMethod('canScheduleExactAlarms') ?? true;
+    } catch (_) {
+      _canScheduleExactAlarms = true;
+    }
+  }
+
+  Future<void> _openExactAlarmSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      await channel.invokeMethod('openExactAlarmSettings');
     } catch (_) {}
   }
 
@@ -590,6 +738,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _buildDivider(),
           _buildListTile(
+            icon: Icons.table_chart_outlined,
+            title: '导出 CSV',
+            subtitle: '以 CSV 格式分享任务列表',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () async {
+              final taskProvider = context.read<TaskProvider>();
+              await ExportService.instance.exportAndShare(taskProvider.tasks);
+            },
+          ),
+          _buildDivider(),
+          _buildListTile(
             icon: Icons.file_upload_outlined,
             title: l.importData,
             subtitle: '导入任务数据',
@@ -625,6 +784,192 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildBackendSyncSettings(BuildContext context) {
+    final backend = BackendApiService.instance;
+    final taskProvider = context.watch<TaskProvider>();
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildBackendSyncStatusPanel(context, backend, taskProvider),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.cloud_outlined,
+            title: backend.isLoggedIn ? '已登录：${backend.nickname}' : '登录后台同步',
+            subtitle: backend.isLoggedIn
+                ? '地址：${backend.baseUrl}'
+                : '配置后台地址、账号和密码',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _showBackendLoginDialog(context),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.sync_outlined,
+            title: taskProvider.isBackendSyncing ? '正在同步任务' : '立即同步任务',
+            subtitle: _backendSyncSubtitle(taskProvider),
+            trailing: taskProvider.isBackendSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: taskProvider.isBackendSyncing ? null : () => _syncBackendTasks(context),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.sync_problem_outlined,
+            title: '同步中心',
+            subtitle: '查看同步状态、失败记录和重试队列',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SyncCenterScreen()),
+            ),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.group_outlined,
+            title: '团队管理',
+            subtitle: '创建或查看团队',
+            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () => _showTeamDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackendSyncStatusPanel(
+    BuildContext context,
+    BackendApiService backend,
+    TaskProvider taskProvider,
+  ) {
+    final loggedIn = taskProvider.isBackendLoggedIn;
+    final error = taskProvider.backendSyncError;
+    final pendingCount = taskProvider.pendingBackendSyncCount;
+
+    Color color;
+    IconData icon;
+    String title;
+    if (!loggedIn) {
+      color = AppTheme.textHintColor;
+      icon = Icons.cloud_off_outlined;
+      title = '云同步未登录';
+    } else if (taskProvider.isBackendSyncing) {
+      color = AppTheme.infoColor;
+      icon = Icons.sync_rounded;
+      title = '正在同步';
+    } else if (error != null && error.isNotEmpty) {
+      color = AppTheme.errorColor;
+      icon = Icons.error_outline;
+      title = '同步需要处理';
+    } else {
+      color = AppTheme.successColor;
+      icon = Icons.cloud_done_outlined;
+      title = '云同步正常';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.22)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildSyncInfoRow('登录状态', loggedIn ? '已登录：${backend.nickname ?? '-'}' : '未登录'),
+            _buildSyncInfoRow('后台地址', backend.baseUrl),
+            _buildSyncInfoRow(
+              '最后同步',
+              taskProvider.lastBackendSyncAt == null
+                  ? '尚未完成同步'
+                  : _formatDateTime(taskProvider.lastBackendSyncAt!),
+            ),
+            _buildSyncInfoRow('待重试变更', '$pendingCount 个'),
+            if (error != null && error.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '最近错误：$error',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.errorColor,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSyncInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 78,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: AppTheme.textHintColor),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.textSecondaryColor,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _backendSyncSubtitle(TaskProvider taskProvider) {
+    if (!taskProvider.isBackendLoggedIn) {
+      return '请先登录后台同步';
+    }
+    if (taskProvider.isBackendSyncing) {
+      return '正在与后台交换任务和评论';
+    }
+    final error = taskProvider.backendSyncError;
+    if (error != null && error.isNotEmpty) {
+      final pending = taskProvider.pendingBackendSyncCount;
+      return pending > 0 ? '有 $pending 个变更待重试' : '上次同步失败，点此重试';
+    }
+    return taskProvider.lastBackendSyncAt == null
+        ? '从后台拉取新增任务，保持本地优先'
+        : '最后同步 ${_formatDateTime(taskProvider.lastBackendSyncAt!)}';
   }
 
   Widget _buildAboutSection(BuildContext context) {
@@ -681,6 +1026,434 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildDivider() {
     return const Divider(height: 1, thickness: 0.5, indent: 68, endIndent: 0);
+  }
+
+  void _showBackendLoginDialog(BuildContext context) {
+    final backend = BackendApiService.instance;
+    if (_backendBaseUrlController.text.isEmpty) {
+      _backendBaseUrlController.text = backend.baseUrl;
+    }
+    var isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('后台同步登录'),
+            content: SizedBox(
+              width: MediaQuery.of(context).size.width > 420
+                  ? 420
+                  : MediaQuery.of(context).size.width * 0.9,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _backendBaseUrlController,
+                    decoration: const InputDecoration(
+                      labelText: '后台地址',
+                      hintText: 'http://localhost:4100/api',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _backendAccountController,
+                    decoration: const InputDecoration(labelText: '账号'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _backendPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: '密码'),
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: isLoading ? null : () {
+                        Navigator.pop(context);
+                        _showRegisterDialog(context);
+                      },
+                      child: const Text('没有账号？注册新账号'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (backend.isLoggedIn)
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          await backend.logout();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已退出后台登录')),
+                          );
+                        },
+                  child: const Text('退出登录'),
+                ),
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(context),
+                child: const Text('关闭'),
+              ),
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        setDialogState(() => isLoading = true);
+                        try {
+                          final session = await backend.login(
+                            account: _backendAccountController.text.trim(),
+                            password: _backendPasswordController.text,
+                            baseUrl: _backendBaseUrlController.text.trim(),
+                            rememberPassword: true,
+                          );
+                          await backend.bindDevice(
+                            deviceName: kIsWeb ? 'Web APP' : Platform.localHostname,
+                            platform: kIsWeb ? 'web' : Platform.operatingSystem,
+                          );
+                          final syncedCount =
+                              await context.read<TaskProvider>().syncAllWithBackend();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '已登录：${session.nickname}，同步 $syncedCount 个云端变更',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('登录失败：$e')),
+                          );
+                        } finally {
+                          if (mounted) {
+                            setDialogState(() => isLoading = false);
+                          }
+                        }
+                      },
+                child: Text(isLoading ? '登录中...' : '登录'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRegisterDialog(BuildContext context) {
+    final backend = BackendApiService.instance;
+    if (_backendBaseUrlController.text.isEmpty) {
+      _backendBaseUrlController.text = backend.baseUrl;
+    }
+    var isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('注册账号'),
+            content: SizedBox(
+              width: MediaQuery.of(context).size.width > 420
+                  ? 420
+                  : MediaQuery.of(context).size.width * 0.9,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _backendBaseUrlController,
+                      decoration: const InputDecoration(
+                        labelText: '后台地址',
+                        hintText: 'http://localhost:4100/api',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _registerNicknameController,
+                      decoration: const InputDecoration(
+                        labelText: '昵称 *',
+                        hintText: '输入昵称',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _registerPhoneController,
+                      decoration: const InputDecoration(
+                        labelText: '手机号（可选）',
+                        hintText: '13800000000',
+                      ),
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _registerEmailController,
+                      decoration: const InputDecoration(
+                        labelText: '邮箱（可选）',
+                        hintText: 'user@example.com',
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _registerPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: '密码 *',
+                        hintText: '至少6位',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _registerInviteCodeController,
+                      decoration: const InputDecoration(
+                        labelText: '邀请码 *',
+                        hintText: 'TEAM-XXXXXX',
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () {
+                  Navigator.pop(context);
+                  _showBackendLoginDialog(context);
+                },
+                child: const Text('返回登录'),
+              ),
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final nickname = _registerNicknameController.text.trim();
+                        final password = _registerPasswordController.text;
+                        final inviteCode = _registerInviteCodeController.text.trim();
+
+                        if (nickname.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请输入昵称')),
+                          );
+                          return;
+                        }
+                        if (password.length < 6) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('密码至少6位')),
+                          );
+                          return;
+                        }
+                        if (inviteCode.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请输入邀请码')),
+                          );
+                          return;
+                        }
+                        final regPhone = _registerPhoneController.text.trim();
+                        final regEmail = _registerEmailController.text.trim();
+                        if (regPhone.isEmpty && regEmail.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('手机号和邮箱至少填写一项')),
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isLoading = true);
+                        try {
+                          final session = await backend.register(
+                            nickname: nickname,
+                            password: password,
+                            inviteCode: inviteCode,
+                            phone: _registerPhoneController.text.trim().isNotEmpty
+                                ? _registerPhoneController.text.trim()
+                                : null,
+                            email: _registerEmailController.text.trim().isNotEmpty
+                                ? _registerEmailController.text.trim()
+                                : null,
+                            baseUrl: _backendBaseUrlController.text.trim(),
+                          );
+                          await backend.bindDevice(
+                            deviceName: kIsWeb ? 'Web APP' : Platform.localHostname,
+                            platform: kIsWeb ? 'web' : Platform.operatingSystem,
+                          );
+                          final syncedCount =
+                              await context.read<TaskProvider>().syncAllWithBackend();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '注册成功：${session.nickname}，同步 $syncedCount 个云端变更',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('注册失败：$e')),
+                          );
+                        } finally {
+                          setDialogState(() => isLoading = false);
+                        }
+                      },
+                child: Text(isLoading ? '注册中...' : '注册'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showTeamDialog(BuildContext context) {
+    final backend = BackendApiService.instance;
+    if (!backend.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录后台同步')),
+      );
+      return;
+    }
+    final nameController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.55,
+          maxChildSize: 0.8,
+          minChildSize: 0.3,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('团队管理', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  // 已加入的团队
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: backend.getMyTeams(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final teams = snapshot.data ?? [];
+                      if (teams.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('暂未加入任何团队', style: TextStyle(color: Colors.grey)),
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('已加入的团队', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          ...teams.map((team) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.group, color: AppTheme.primaryColor),
+                            title: Text(team['name'] as String, style: const TextStyle(fontWeight: FontWeight.w500)),
+                            subtitle: Text('ID: ${(team['id'] as String).substring(0, 8)}...'),
+                          )),
+                        ],
+                      );
+                    },
+                  ),
+                  const Divider(height: 24),
+                  // 创建新团队
+                  const Text('创建新团队', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            hintText: '输入团队名称',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final name = nameController.text.trim();
+                          if (name.isEmpty) return;
+                          try {
+                            await backend.createTeam(name: name);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('团队「$name」创建成功')),
+                              );
+                              Navigator.pop(context);
+                              setState(() {});
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('创建失败：$e')),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        child: const Text('创建'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _syncBackendTasks(BuildContext context) async {
+    try {
+      final taskProvider = context.read<TaskProvider>();
+      final count = await taskProvider.syncFromBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('同步完成，新增 $count 个任务')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('同步失败：$e')),
+      );
+    }
   }
 
   void _showAISettingsDialog(BuildContext context, SettingsProvider settings) {

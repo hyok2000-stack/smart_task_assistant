@@ -10,13 +10,17 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
-async function apiFetch(path: string, options: RequestInit, token: string) {
+export async function apiFetch(path: string, options: RequestInit, token: string) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { ...authHeaders(token), ...options.headers },
   });
   const data = await readJson(response, `${API_BASE}${path}`);
-  if (!response.ok) throw new Error(data.message ?? '请求失败');
+  if (!response.ok) {
+    const err = new Error(data.message ?? '请求失败');
+    (err as any).code = data.code;
+    throw err;
+  }
   return data;
 }
 
@@ -27,7 +31,11 @@ export async function login(account: string, password: string): Promise<{ token:
     body: JSON.stringify({ account, password }),
   });
   const data = await readJson(response, `${API_BASE}/auth/login`);
-  if (!response.ok) throw new Error(data.message ?? '登录失败');
+  if (!response.ok) {
+    const err = new Error(data.message ?? '登录失败');
+    (err as any).code = data.code;
+    throw err;
+  }
   return data;
 }
 
@@ -66,6 +74,33 @@ export async function loadAdminTasks(token: string, query: TaskQuery) {
     pageSize: number;
     total: number;
     totalPages: number;
+  }>;
+}
+
+export async function loadAdminDistributions(token: string, query?: { page?: number; pageSize?: number; status?: string; teamId?: string }) {
+  const params = new URLSearchParams();
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value));
+    });
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/admin/distributions${suffix}`, {}, token) as Promise<{
+    distributions: any[];
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  }>;
+}
+
+export async function loadAdminTaskDetail(token: string, taskId: string) {
+  return apiFetch(`/admin/tasks/${taskId}`, {}, token) as Promise<{
+    task: Task;
+    comments: any[];
+    distributions: any[];
+    statusLogs: any[];
+    syncLogs: any[];
   }>;
 }
 
@@ -110,6 +145,7 @@ export function taskToPushPayload(form: TaskFormData): Partial<Task> {
     startTime: form.startTime || undefined,
     dueTime: form.dueTime || undefined,
     assignee: form.assignee || undefined,
+    assigneeUserId: (form as any).assigneeUserId || undefined,
     isRecurring: form.isRecurring || undefined,
     recurringRule: form.isRecurring ? form.recurringRule : undefined,
     tagIds: form.tagIds.length > 0 ? form.tagIds : undefined,
