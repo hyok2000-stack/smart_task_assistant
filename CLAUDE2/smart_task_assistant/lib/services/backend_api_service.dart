@@ -978,6 +978,21 @@ class BackendApiService {
   }
 
   Map<String, dynamic> taskToBackendJson(Task task, {String? deletedAt}) {
+    // ★ 分发任务只推送 status 相关字段，避免跨用户内容覆盖
+    final isDistribution = task.sourceType == 'team_distribution';
+    if (isDistribution && deletedAt == null) {
+      return _withoutNulls({
+        'id': task.id,
+        'status': _statusToBackend(task.status),
+        'completedAt': task.completedAt?.toIso8601String(),
+        'sourceType': task.sourceType,
+        'sourceTaskId': task.sourceTaskId,
+        'sourceDistributionId': task.sourceDistributionId,
+        'teamId': task.teamId,
+        'version': task.version ?? 1,
+        'updatedAt': task.updatedAt.toIso8601String(),
+      });
+    }
     return _withoutNulls({
       'id': task.id,
       'title': task.title,
@@ -1068,6 +1083,17 @@ class BackendApiService {
   }
 
   Task taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
+    // ★ 分发任务的 status-only 响应：缺少 title 表示后端只返回了状态字段
+    // 保留本地所有内容字段，只更新 status / completedAt / version / updatedAt
+    final isStatusOnly = !json.containsKey('title') && localTask != null;
+    if (isStatusOnly) {
+      return localTask.copyWith(
+        status: json.containsKey('status') ? _statusFromBackend(json['status'] as String?) : null,
+        completedAt: json.containsKey('completedAt') ? _parseDateField(json['completedAt']) : localTask.completedAt,
+        version: json.containsKey('version') ? (json['version'] as num?)?.toInt() : localTask.version,
+        updatedAt: json.containsKey('updatedAt') ? _parseDateField(json['updatedAt']) ?? localTask.updatedAt : localTask.updatedAt,
+      );
+    }
     final sourceType = json.containsKey('sourceType') ? (json['sourceType'] as String?) : (localTask?.sourceType);
     final task = Task(
       id: json['id'] as String,

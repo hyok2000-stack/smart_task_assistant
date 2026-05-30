@@ -1193,8 +1193,39 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         };
         db.tasks.push(nextTask);
         result.push(nextTask);
+      } else if (existing.sourceType === "team_distribution") {
+        // ★ 分发任务：跨用户只同步 status + completedAt，其他字段各管各的
+        const prevStatus = existing.status;
+        const statusChanged = incoming.status && incoming.status !== prevStatus;
+        if (statusChanged) {
+          existing.status = incoming.status as any;
+          if (incoming.status === "completed") existing.completedAt = incoming.completedAt || now();
+          else existing.completedAt = incoming.completedAt;
+          existing.version++;
+          existing.updatedAt = timestamp;
+          recordStatusChange(db, existing.id, {
+            previousStatus: prevStatus,
+            newStatus: incoming.status!,
+            changedByUserId: req.user!.id,
+            source: "recipient",
+          });
+          updateDistributionStatusOnTaskChange(db, existing.id, incoming.status!);
+        } else {
+          // 状态没变，只同步 version 和 updatedAt
+          existing.updatedAt = timestamp;
+        }
+        result.push(existing);
+        db.syncLogs.unshift({
+          id: randomUUID(),
+          userId: req.user!.id,
+          deviceId: body.deviceId,
+          taskId: incoming.id,
+          operationType: statusChanged ? "status_update" : "update",
+          status: "success",
+          createdAt: now(),
+        });
       } else if (incoming.version != null && incoming.version <= existing.version) {
-        // 检查数据是否完全一致，一致则跳过冲突
+        // 检查数据是否完全一致，一致则跳过冲突（仅本地任务）
         const merged = { ...existing, ...incoming };
         const fieldsToCompare = ["title", "content", "status", "priority", "startTime", "dueTime", "completedAt", "assignee", "parentId", "isRecurring", "recurringRule", "tagIds", "reminderMinutes", "reminderDismissed", "assigneeUserId", "sortOrder"] as const;
         const isIdentical = fieldsToCompare.every((f) => JSON.stringify(existing[f]) === JSON.stringify(merged[f]));
@@ -1310,6 +1341,15 @@ app.get("/api/tasks/sync/pull", auth, (req: AuthedRequest, res) => {
     .map((task) => {
       if (task.deletedAt) {
         return { id: task.id, updatedAt: task.updatedAt, deletedAt: task.deletedAt, deleted: true as const };
+      }
+      // ★ 分发任务且不属于自己 → 只返回 status 相关字段，避免跨用户内容覆盖
+      if (task.sourceType === "team_distribution" && task.ownerUserId !== req.user!.id) {
+        return {
+          id: task.id, status: task.status, completedAt: task.completedAt,
+          updatedAt: task.updatedAt, version: task.version, deleted: false as const,
+          sourceType: task.sourceType, sourceTaskId: task.sourceTaskId,
+          sourceDistributionId: task.sourceDistributionId,
+        };
       }
       return { ...task, deleted: false as const };
     });
