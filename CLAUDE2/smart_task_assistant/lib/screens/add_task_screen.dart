@@ -197,6 +197,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          if (widget.isEditing)
+            TextButton(
+              onPressed: _isProcessing ? null : _confirmDelete,
+              child: Text(l.delete, style: const TextStyle(color: Colors.red)),
+            ),
           TextButton(
             onPressed: _isProcessing ? null : _saveTask,
             child: Text(l.save),
@@ -1599,6 +1604,39 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
+  void _confirmDelete() {
+    final l = context.l;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.confirmDelete),
+        content: Text(l.confirmDeleteHint),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isProcessing = true);
+              try {
+                await context.read<TaskProvider>().deleteTask(widget.task!.id);
+                if (mounted) Navigator.pop(context);
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${l.delete}: $e')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isProcessing = false);
+              }
+            },
+            child: Text(l.delete, style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _saveTask() async {
     final l = context.l;
     if (_titleController.text.trim().isEmpty) {
@@ -1610,6 +1648,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     setState(() => _isProcessing = true);
 
+    try {
     final provider = context.read<TaskProvider>();
 
     // 防御性检查：确保 voiceType 和 customVoicePath 一致
@@ -1696,6 +1735,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       if (mounted) {
         Navigator.pop(context);
       }
+    }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 

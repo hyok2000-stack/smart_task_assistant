@@ -465,7 +465,6 @@ class ReminderForegroundService : Service() {
 
         val screenOn = isScreenOn()
         // 屏幕关闭时，亮屏唤醒音频硬件 + 等待系统恢复
-        // 不仅限于语音提醒 — 通知声音也需要音频硬件就绪
         if (!screenOn) {
             try {
                 val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -481,7 +480,7 @@ class ReminderForegroundService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "Screen wake failed", e)
             }
-            // 等待音频子系统和通知系统从 Doze 恢复
+            // 等待音频子系统从 Doze 恢复（深度休眠需要更久）
             try { Thread.sleep(5000L) } catch (_: InterruptedException) {}
         }
 
@@ -491,24 +490,46 @@ class ReminderForegroundService : Service() {
         }
 
         // 振动：由 Vibrator 服务直接触发（Doze 模式可靠）
-        // 声音：由通知系统播放（postSilentNotification 使用 IMPORTANCE_HIGH + USAGE_ALARM）
-        // 不使用 MediaPlayer 播放通知音 — MediaPlayer 在 Doze 下可能因音频硬件未恢复而失败
         if (item.vibrationEnabled) {
             audioHelper?.playVibration()
         }
 
-        // Play voice with delay (TTS or custom voice file)
         val hasVoiceContent = item.voiceEnabled &&
             (!item.voiceText.isNullOrBlank() || !item.customVoicePath.isNullOrBlank() || !item.title.isNullOrBlank())
-        Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent, voiceText=${item.voiceText}, customPath=${item.customVoicePath}")
+        Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent")
         var voiceAccepted = !hasVoiceContent
 
-        // 不弹全屏界面，只发一条静默通知保持前台服务
-        if (!uiAlreadyShowing) {
-            postSilentNotification(item)
+        // ====== 声音策略 ======
+        // 有语音时：先响一下（~800ms 预热音频硬件），然后停掉再播 TTS 语音。
+        //   TTS 失败时再响完整铃声兜底。
+        // 无语音时：直接播放完整铃声。
+        // MediaPlayer + USAGE_ALARM 是 Doze 模式下最可靠的音频输出方式，
+        // 不依赖通知系统（国产 ROM 会静默通知声音）。
+        var soundMp: android.media.MediaPlayer? = null
+        if (item.soundEnabled) {
+            soundMp = audioHelper?.playReminderSound()
         }
 
+        // 发静默通知（仅视觉展示，声音由 MediaPlayer 处理）
+        if (!uiAlreadyShowing) {
+            postSilentNotification(item, playSound = false)
+        }
+
+        // TTS 语音播报
         if (hasVoiceContent) {
+            // 有语音时：响 800ms 后停掉铃声，让语音接管
+            if (soundMp != null) {
+                try { Thread.sleep(800L) } catch (_: InterruptedException) {}
+                try {
+                    soundMp.stop()
+                    soundMp.release()
+                    soundMp = null
+                    Log.d(TAG, "Sound stopped after warm-up, starting voice")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to stop sound", e)
+                }
+            }
+
             val speakText = when {
                 !item.voiceText.isNullOrBlank() -> item.voiceText
                 item.type == "task" -> {
@@ -533,6 +554,12 @@ class ReminderForegroundService : Service() {
                 customVoicePath = effectiveCustomVoicePath
             ) ?: false
             Log.d(TAG, "Voice accepted for '${item.title}': $voiceAccepted")
+
+            // 语音失败时：补响完整铃声兜底（确保用户至少能听到声音提醒）
+            if (!voiceAccepted && item.soundEnabled) {
+                Log.w(TAG, "Voice failed for '${item.title}', playing full alarm sound as fallback")
+                audioHelper?.playReminderSound()
+            }
         }
 
         // Send event to Flutter
@@ -586,40 +613,12 @@ class ReminderForegroundService : Service() {
      * 发送提醒通知（带声音），使用通知系统播放声音（Doze 模式下最可靠）
      * 通知系统有系统级权限，MediaPlayer 在 Doze 下可能因音频硬件未恢复而静默失败
      */
-    private fun postSilentNotification(item: ReminderChecker.ReminderItem) {
+    private fun postSilentNotification(item: ReminderChecker.ReminderItem, playSound: Boolean = true) {
         try {
             val nm = getSystemService(NotificationManager::class.java)
+            val channelId = if (playSound && item.soundEnabled) "reminder_alarm_v2" else "reminder_silent_v2"
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // 删除旧通道（旧通道创建时 setSound(null)，Android 不允许修改已创建通道的声音设置）
-                nm.deleteNotificationChannel("reminder_voice_only")
-
-                val alarmAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-                val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                val channel = NotificationChannel(
-                    "reminder_alarm_v2",
-                    "任务提醒",
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "任务和习惯提醒通知（闹钟级别）"
-                    if (soundUri != null && item.soundEnabled) {
-                        setSound(soundUri, alarmAttributes)
-                    } else {
-                        setSound(null, null)
-                    }
-                    // 振动由 Vibrator 服务直接控制，通知通道不重复振动
-                    enableVibration(false)
-                    setShowBadge(false)
-                    setBypassDnd(true)
-                }
-                nm.createNotificationChannel(channel)
-            }
-
-            val notification = NotificationCompat.Builder(this, "reminder_alarm_v2")
+            val notification = NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(item.title ?: "任务提醒")
                 .setContentText(item.body ?: "")
@@ -747,7 +746,10 @@ class ReminderForegroundService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val nm = getSystemService(NotificationManager::class.java)
+
+            // 前台服务常驻通道
+            val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "提醒服务",
                 NotificationManager.IMPORTANCE_LOW
@@ -757,8 +759,41 @@ class ReminderForegroundService : Service() {
                 setSound(null, null)
                 enableVibration(false)
             }
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            nm.createNotificationChannel(serviceChannel)
+
+            // 带铃声的提醒通道（无语音时使用）
+            val alarmAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val alarmChannel = NotificationChannel(
+                "reminder_alarm_v2",
+                "任务提醒",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "任务和习惯提醒通知（闹钟级别）"
+                if (soundUri != null) setSound(soundUri, alarmAttributes) else setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                setBypassDnd(true)
+            }
+            nm.createNotificationChannel(alarmChannel)
+
+            // 静音通道（有语音播报时使用）
+            val silentChannel = NotificationChannel(
+                "reminder_silent_v2",
+                "语音提醒",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "语音播报时不重复播铃声"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                setBypassDnd(true)
+            }
+            nm.createNotificationChannel(silentChannel)
         }
     }
 

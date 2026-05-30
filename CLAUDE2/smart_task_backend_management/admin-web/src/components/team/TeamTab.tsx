@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import type { Overview, TeamMemberInfo } from '../../types';
 import { addTeamMember, createTeam, getTeamMembers, removeTeamMember } from '../../api';
 
@@ -17,6 +17,7 @@ export default function TeamTab({ overview, token, onRefresh }: TeamTabProps) {
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+  const fetchingTeamId = useRef<string | null>(null);
 
   const userName = (id: string) => overview.users.find((u) => u.id === id)?.nickname ?? id;
 
@@ -45,11 +46,16 @@ export default function TeamTab({ overview, token, onRefresh }: TeamTabProps) {
     }
     setExpandedTeamId(teamId);
     setShowAddMember(false);
+    fetchingTeamId.current = teamId;
     try {
       const data = await getTeamMembers(token, teamId);
-      setTeamMembers(data.members);
+      if (fetchingTeamId.current === teamId) {
+        setTeamMembers(data.members);
+      }
     } catch {
-      setTeamMembers([]);
+      if (fetchingTeamId.current === teamId) {
+        setTeamMembers([]);
+      }
     }
   }
 
@@ -74,6 +80,8 @@ export default function TeamTab({ overview, token, onRefresh }: TeamTabProps) {
 
   async function handleRemoveMember(userId: string) {
     if (!expandedTeamId) return;
+    const memberName = teamMembers.find((m) => m.userId === userId)?.displayName ?? userId;
+    if (!confirm(`确认移除成员 ${memberName}？`)) return;
     setError('');
     try {
       await removeTeamMember(token, expandedTeamId, userId);
@@ -197,8 +205,6 @@ export default function TeamTab({ overview, token, onRefresh }: TeamTabProps) {
 
                           <div className="member-list">
                             {teamMembers.length === 0 ? (
-                              <span className="detail-label">加载中...</span>
-                            ) : teamMembers.length === 0 ? (
                               <span className="detail-label">暂无成员</span>
                             ) : (
                               teamMembers.map((m) => (

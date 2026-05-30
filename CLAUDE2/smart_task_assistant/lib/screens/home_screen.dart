@@ -44,6 +44,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
   int _unreadNotificationCount = 0;
 
+  // Cached futures for FutureBuilders (prevents rebuild from re-triggering)
+  final Map<String, Future<List<TaskComment>>> _commentsFutureCache = {};
+  final Map<String, Future<List<BackendDistribution>>> _distributionsFutureCache = {};
+  final Map<String, Future<List<BackendTaskComment>>> _recipientCommentsFutureCache = {};
+
   // 时间和天气相关
   Timer? _timeTimer;
   final ValueNotifier<String> _currentTimeNotifier = ValueNotifier('');
@@ -1034,7 +1039,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isSelected = _selectedTagId == tagId;
     Color? tagColor;
     if (colorHex != null) {
-      tagColor = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
+      try {
+        tagColor = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
+      } catch (_) {
+        tagColor = Colors.grey;
+      }
     }
 
     return GestureDetector(
@@ -2144,8 +2153,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _changeTaskPriority(
       String taskId, TaskPriority newPriority, TaskProvider provider) {
     final l = context.l;
-    final task = provider.tasks.firstWhere((t) => t.id == taskId,
-        orElse: () => throw Exception('Task not found'));
+    final taskIndex = provider.tasks.indexWhere((t) => t.id == taskId);
+    if (taskIndex == -1) return;
+    final task = provider.tasks[taskIndex];
     final updatedTask = task.copyWith(priority: newPriority);
     provider.updateTask(updatedTask);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2491,8 +2501,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _updateTaskTags(
       String taskId, List<String> tagIds, TaskProvider provider) {
-    final task = provider.tasks.firstWhere((t) => t.id == taskId,
-        orElse: () => throw Exception('Task not found'));
+    final taskIndex = provider.tasks.indexWhere((t) => t.id == taskId);
+    if (taskIndex == -1) return;
+    final task = provider.tasks[taskIndex];
     final updatedTask = task.copyWith(tagIds: tagIds);
     provider.updateTask(updatedTask);
   }
@@ -2509,7 +2520,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildTaskCommentsSection(Task task) {
     final currentUserId = BackendApiService.instance.userId;
     return FutureBuilder<List<TaskComment>>(
-      future: TaskCommentService.instance.getComments(task.id),
+      future: _commentsFutureCache.putIfAbsent(task.id, () => TaskCommentService.instance.getComments(task.id)),
       builder: (context, snapshot) {
         final allComments = snapshot.data ?? [];
         final comments = allComments.where((c) => c.authorUserId == currentUserId).toList();
@@ -2643,6 +2654,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 if (!mounted) return;
                 Navigator.pop(context);
                 Navigator.pop(context);
+                _commentsFutureCache.remove(task.id);
                 _showTaskDetail(task);
               } catch (e) {
                 if (!mounted) return;
@@ -2769,6 +2781,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         : remarkController.text.trim(),
                                   );
                                   if (!mounted) return;
+                                  _distributionsFutureCache.remove(task.id);
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -2852,7 +2865,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildDistributionStatusSection(Task task) {
     if (!BackendApiService.instance.isLoggedIn) return const SizedBox.shrink();
     return FutureBuilder<List<BackendDistribution>>(
-      future: BackendApiService.instance.getDistributionsForTask(task.id),
+      future: _distributionsFutureCache.putIfAbsent(task.id, () => BackendApiService.instance.getDistributionsForTask(task.id)),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
@@ -3057,7 +3070,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               Expanded(
                 child: FutureBuilder<List<BackendTaskComment>>(
-                  future: BackendApiService.instance.getRecipientComments(d.id),
+                  future: _recipientCommentsFutureCache.putIfAbsent(d.id, () => BackendApiService.instance.getRecipientComments(d.id)),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -3348,8 +3361,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _completeTask(String id, TaskProvider provider) {
     final l = context.l;
-    final task = provider.tasks.firstWhere((t) => t.id == id,
-        orElse: () => throw Exception('Task not found'));
+    final taskIndex = provider.tasks.indexWhere((t) => t.id == id);
+    if (taskIndex == -1) return;
+    final task = provider.tasks[taskIndex];
     provider.updateTaskStatus(id, TaskStatus.completed);
 
     if (task.isRecurring) {
@@ -3597,16 +3611,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// 获取包含默认标签的完整标签列表
   List<Tag> _getAllTags(TaskProvider provider) {
     // 默认标签
-    final defaultTags = [
-      Tag(id: 'default_work', name: '工作', color: '#3B82F6', isDefault: true),
-      Tag(
-          id: 'default_personal',
-          name: '个人',
-          color: '#10B981',
-          isDefault: true),
-      Tag(id: 'default_urgent', name: '紧急', color: '#EF4444', isDefault: true),
-      Tag(id: 'default_study', name: '学习', color: '#8B5CF6', isDefault: true),
-    ];
+    final defaultTags = Tag.getDefaultTags();
 
     // 合并默认标签和自定义标签（去重）
     final allTags = [...defaultTags];
@@ -3701,8 +3706,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               const Divider(height: 1),
               Expanded(
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: BackendApiService.instance.getNotifications(),
+                child: Builder(builder: (context) {
+                  final notifFuture = BackendApiService.instance.getNotifications();
+                  return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: notifFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor));
@@ -3767,7 +3774,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       },
                     );
                   },
-                ),
+                    );
+                }),
               ),
             ],
           ),
@@ -3779,8 +3787,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ---- Task Assignment (B5) ----
 
   Widget _buildAssigneeRow(Task task) {
+    final nameFuture = _resolveUserName(task.assigneeUserId!);
     return FutureBuilder<String>(
-      future: _resolveUserName(task.assigneeUserId!),
+      future: nameFuture,
       builder: (context, snapshot) {
         final name = snapshot.data ?? '加载中...';
         return Padding(
@@ -3821,13 +3830,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  static final Map<String, String> _userNameCache = {};
+
   Future<String> _resolveUserName(String userId) async {
+    if (_userNameCache.containsKey(userId)) return _userNameCache[userId]!;
     try {
       final teams = await BackendApiService.instance.getMyTeams();
       if (teams.isEmpty) return userId;
       final members = await BackendApiService.instance.getTeamMembers(teams.first['id'] as String);
-      final match = members.where((m) => m.userId == userId).firstOrNull;
-      return match?.displayName ?? userId;
+      for (final m in members) {
+        _userNameCache[m.userId] = m.displayName;
+      }
+      return _userNameCache[userId] ?? userId;
     } catch (_) {
       return userId;
     }

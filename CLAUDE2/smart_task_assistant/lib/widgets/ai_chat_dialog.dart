@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../services/ai_service.dart';
 import '../models/task_suggestion.dart';
 import '../models/task.dart';
@@ -1071,7 +1072,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                 onPressed: () {
                   final provider = Provider.of<TaskProvider>(context, listen: false);
                   final task = Task(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    id: const Uuid().v4(),
                     title: parsed.title,
                     content: parsed.content,
                     priority: parsed.priority,

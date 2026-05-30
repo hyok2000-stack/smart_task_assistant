@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { TaskFormData, User } from '../../types';
+import type { Task, TaskFormData, User } from '../../types';
 import { pushTasks, taskToPushPayload } from '../../api';
 
 const TAGS = [
@@ -73,7 +73,7 @@ export default function TaskCreateForm({ token, users, onSuccess, onCancel }: Ta
     setSubmitting(true);
     setError('');
     try {
-      await pushTasks(token, [taskToPushPayload(form) as any]);
+      await pushTasks(token, [taskToPushPayload(form)]);
       onSuccess();
     } catch (err: any) {
       setError(err.message ?? '创建失败');
@@ -106,7 +106,7 @@ export default function TaskCreateForm({ token, users, onSuccess, onCancel }: Ta
           </div>
           <div className="form-field">
             <label>状态</label>
-            <select value={form.status} onChange={(e) => update('status', e.target.value as any)}>
+            <select value={form.status} onChange={(e) => update('status', e.target.value as Task['status'])}>
               <option value="pending">待处理</option>
               <option value="in_progress">进行中</option>
               <option value="completed">已完成</option>
@@ -131,8 +131,8 @@ export default function TaskCreateForm({ token, users, onSuccess, onCancel }: Ta
           <div className="form-field">
             <label>指派人</label>
             <select
-              value={(form as any).assigneeUserId ?? ''}
-              onChange={(e) => update('assigneeUserId' as any, e.target.value)}
+              value={form.assigneeUserId ?? ''}
+              onChange={(e) => update('assigneeUserId', e.target.value)}
             >
               <option value="">未指派</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.nickname || u.email || u.id}</option>)}

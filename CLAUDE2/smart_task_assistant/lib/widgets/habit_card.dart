@@ -6,6 +6,8 @@ import '../services/habit_service.dart';
 
 /// 习惯卡片
 class HabitCard extends StatelessWidget {
+  static final HabitService _habitService = HabitService();
+
   final Habit habit;
   final VoidCallback? onRecord;
   final VoidCallback? onSettings;
@@ -24,9 +26,8 @@ class HabitCard extends StatelessWidget {
     final completed = provider.todayProgress[habit.id] ?? 0;
 
     // 计算下次提醒时间（启用的习惯）
-    final habitService = HabitService();
     final nextReminderTime = habit.isEnabled
-        ? habitService.calculateNextTriggerTime(habit)
+        ? _habitService.calculateNextTriggerTime(habit)
         : null;
 
     return Container(

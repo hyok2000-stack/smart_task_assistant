@@ -43,6 +43,7 @@ class TaskProvider extends ChangeNotifier {
   String? _error;
   bool _isBackendSyncing = false;
   bool _isSyncRunning = false;
+  bool _suppressNotify = false;
   DateTime? _lastBackendSyncAt;
   String? _backendSyncError;
   int _pendingBackendSyncCount = 0;
@@ -122,7 +123,7 @@ class TaskProvider extends ChangeNotifier {
         final dt = t.dueTime ?? t.startTime;
         if (dt == null) return false;
         if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!)) return false;
-        if (_filterDateTo != null && dt.isAfter(_filterDateTo!)) return false;
+        if (_filterDateTo != null && dt.isAfter(_filterDateTo!.add(const Duration(days: 1)))) return false;
         return true;
       }).toList();
     }
@@ -168,20 +169,20 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> reorderTasks(int oldIndex, int newIndex) async {
+  Future<void> reorderTasks(int oldIndex, int newIndex, {List<Task>? displayTasks}) async {
     if (oldIndex == newIndex) return;
-    final list = List.of(_tasks);
+    final source = displayTasks ?? _tasks;
+    final list = List.of(source);
     final item = list.removeAt(oldIndex);
     list.insert(newIndex > oldIndex ? newIndex - 1 : newIndex, item);
+    int nonPinnedIndex = 0;
     for (int i = 0; i < list.length; i++) {
-      final order = (list[i].sortOrder ?? 0) < 0 ? -1 : i;
-      if (list[i].sortOrder != order) {
-        final idx = _tasks.indexWhere((t) => t.id == list[i].id);
-        if (idx != -1) {
-          _tasks[idx] = _tasks[idx].copyWith(sortOrder: order);
-          await _storage.updateTask(_tasks[idx]);
-          _syncTaskSilently(_tasks[idx]);
-        }
+      final isPinned = (list[i].sortOrder ?? 0) < 0;
+      final order = isPinned ? list[i].sortOrder : nonPinnedIndex++;
+      final idx = _tasks.indexWhere((t) => t.id == list[i].id);
+      if (idx != -1) {
+        _tasks[idx] = _tasks[idx].copyWith(sortOrder: order);
+        await _storage.updateTask(_tasks[idx]);
       }
     }
     notifyListeners();
@@ -467,6 +468,23 @@ class TaskProvider extends ChangeNotifier {
             baseTime.second,
           );
           break;
+        case 'yearly':
+          int nextYear = baseTime.year + 1;
+          // Handle Feb 29 → Feb 28 in non-leap years
+          int newDay = baseTime.day;
+          if (baseTime.month == 2 && baseTime.day == 29) {
+            final isLeap = DateTime(nextYear, 3, 0).day == 29;
+            if (!isLeap) newDay = 28;
+          }
+          newDueTime = DateTime(
+            nextYear,
+            baseTime.month,
+            newDay,
+            baseTime.hour,
+            baseTime.minute,
+            baseTime.second,
+          );
+          break;
         default:
           newDueTime = baseTime.add(const Duration(days: 1));
       }
@@ -483,6 +501,7 @@ class TaskProvider extends ChangeNotifier {
 
       await _storage.insertTask(newTask);
       _tasks.insert(0, newTask);
+      _syncTaskSilently(newTask);
 
       // 重新计算今日任务，确保新创建的周期任务能立即显示
       _recalculateTodayTasks();
@@ -496,18 +515,13 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 重新计算今日任务列表
-  /// 显示所有未完成的任务 + 今天创建或截止的任务（包括已完成）
+  /// 显示：今天创建的 + 今天截止的 + 今天完成的 + 逾期未完成的
   void _recalculateTodayTasks() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
 
     _todayTasks = _tasks.where((t) {
-      // 优先包含所有未完成的任务（这样导入的历史任务也能显示）
-      if (!t.isCompleted) {
-        return true;
-      }
-
       // 包含今天完成的任务
       if (t.completedAt != null) {
         final completedDate = t.completedAt!;
@@ -518,7 +532,7 @@ class TaskProvider extends ChangeNotifier {
         }
       }
 
-      // 包含今天创建的任务（即使已完成）
+      // 包含今天创建的任务
       if (t.createdAt != null) {
         final createdDate = t.createdAt!;
         if (createdDate.year == now.year &&
@@ -528,13 +542,17 @@ class TaskProvider extends ChangeNotifier {
         }
       }
 
-      // 包含今天截止的任务（即使已完成）
-      // 使用 !due.isBefore(today) 确保包含今天 00:00:00 的任务
+      // 包含今天截止的任务
       if (t.dueTime != null) {
         final due = t.dueTime!;
         if (!due.isBefore(today) && due.isBefore(tomorrow)) {
           return true;
         }
+      }
+
+      // 包含逾期未完成的任务
+      if (!t.isCompleted && t.dueTime != null && t.dueTime!.isBefore(today)) {
+        return true;
       }
 
       return false;
@@ -579,6 +597,8 @@ class TaskProvider extends ChangeNotifier {
   /// 删除任务
   Future<void> deleteTask(String id) async {
     try {
+      // Save real task data before removing
+      final realTask = _tasks.where((t) => t.id == id).firstOrNull;
       await _storage.deleteTask(id);
       _tasks.removeWhere((t) => t.id == id);
 
@@ -587,7 +607,7 @@ class TaskProvider extends ChangeNotifier {
 
       notifyListeners();
       _notifyNativeDataChanged('task', id);
-      final deletedTask = Task(
+      final deletedTask = realTask ?? Task(
         id: id,
         title: 'deleted',
         updatedAt: DateTime.now(),
@@ -798,6 +818,16 @@ class TaskProvider extends ChangeNotifier {
     try {
       await _storage.deleteTag(id);
       _tags.removeWhere((t) => t.id == id);
+      // Clean up tag references in all tasks
+      for (int i = 0; i < _tasks.length; i++) {
+        final task = _tasks[i];
+        if (task.tagIds != null && task.tagIds!.contains(id)) {
+          final updatedTagIds = task.tagIds!.where((tid) => tid != id).toList();
+          final updated = task.copyWith(tagIds: updatedTagIds.isEmpty ? [] : updatedTagIds);
+          await _storage.updateTask(updated);
+          _tasks[i] = updated;
+        }
+      }
       notifyListeners();
     } catch (e) {
       _error = e.toString();
@@ -919,14 +949,15 @@ class TaskProvider extends ChangeNotifier {
 
   /// 手动从后台拉取任务，保持本地优先：仅新增本地不存在的云端任务。
   Future<int> syncFromBackend() async {
-    await _backend.init();
-    if (!_backend.isLoggedIn) return 0;
     if (_isSyncRunning) return 0;
     _isSyncRunning = true;
 
     _setBackendSyncing(true);
-    final lastSyncAt = await _backend.getLastSyncAt();
     try {
+      await _backend.init();
+      if (!_backend.isLoggedIn) { _isSyncRunning = false; return 0; }
+
+      final lastSyncAt = await _backend.getLastSyncAt();
       final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
       var changed = 0;
 
@@ -955,6 +986,7 @@ class TaskProvider extends ChangeNotifier {
           _tasks.removeAt(index);
           changed++;
         }
+        await SyncQueueService.instance.removeByTaskId(deletedId);
       }
 
       // push 待同步评论，再保存 pull 返回的远端评论
@@ -994,16 +1026,17 @@ class TaskProvider extends ChangeNotifier {
 
   /// 登录后首次同步：先拉取云端变更，再上传本机任务。
   Future<int> syncAllWithBackend() async {
-    await _backend.init();
-    if (!_backend.isLoggedIn) return 0;
     if (_isSyncRunning) return 0;
     _isSyncRunning = true;
 
     _setBackendSyncing(true);
 
     try {
+      await _backend.init();
+      if (!_backend.isLoggedIn) { _isSyncRunning = false; return 0; }
       // 先处理重试队列
-      await SyncQueueService.instance.retryAll();
+      final retrySucceeded = await SyncQueueService.instance.retryAll();
+      _pendingBackendSyncCount = (_pendingBackendSyncCount - retrySucceeded).clamp(0, 999999);
 
       // 先 pull：获取远端最新数据（包括 admin 修改的），更新本地
       final lastSyncAt = await _backend.getLastSyncAt();
@@ -1031,6 +1064,7 @@ class TaskProvider extends ChangeNotifier {
           _tasks.removeAt(index);
           changed++;
         }
+        await SyncQueueService.instance.removeByTaskId(deletedId);
       }
       if (pullResult.comments.isNotEmpty) {
         await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
@@ -1040,7 +1074,6 @@ class TaskProvider extends ChangeNotifier {
       final pushConflicts = await _backend.pushTasks(List.of(_tasks));
       _conflicts = pushConflicts;
       await _syncPendingComments();
-      _pendingBackendSyncCount = 0;
 
       // Auto-ack distributions as "received" for current user
       await _ackReceivedDistributions();
@@ -1072,13 +1105,22 @@ class TaskProvider extends ChangeNotifier {
     );
     try {
       await _backend.init();
-      if (!_backend.isLoggedIn || _isSyncRunning) return;
+      if (!_backend.isLoggedIn) return;
+      if (_isSyncRunning) {
+        // Sync in progress — enqueue for later retry
+        await SyncQueueService.instance.enqueue(
+          type: deleted ? 'task_delete' : 'task_push',
+          payload: pushPayload,
+        );
+        _pendingBackendSyncCount++;
+        if (!_suppressNotify) notifyListeners();
+        return;
+      }
       await _backend.pushTask(task, deleted: deleted);
-      if (_pendingBackendSyncCount > 0) _pendingBackendSyncCount--;
       _lastBackendSyncAt = DateTime.now();
       _backendSyncError = null;
       await _saveBackendSyncState();
-      notifyListeners();
+      if (!_suppressNotify) notifyListeners();
     } on BackendError catch (e) {
       _pendingBackendSyncCount++;
       _backendSyncError = e.message;
@@ -1089,7 +1131,7 @@ class TaskProvider extends ChangeNotifier {
         errorCode: e.code,
       );
       await _saveBackendSyncState();
-      notifyListeners();
+      if (!_suppressNotify) notifyListeners();
       debugPrint('后台任务同步失败，已加入重试队列: $e');
     } catch (e) {
       _pendingBackendSyncCount++;
@@ -1100,26 +1142,41 @@ class TaskProvider extends ChangeNotifier {
         error: e.toString(),
       );
       await _saveBackendSyncState();
-      notifyListeners();
+      if (!_suppressNotify) notifyListeners();
       debugPrint('后台任务同步失败，已加入重试队列: $e');
     }
   }
 
   /// 解决冲突：keepLocal 强制推送本地版本，keepServer 接受服务器版本
   Future<void> resolveConflict(String taskId, {bool keepLocal = true}) async {
-    final conflict = _conflicts.firstWhere((c) => c.taskId == taskId);
+    final conflictIndex = _conflicts.indexWhere((c) => c.taskId == taskId);
+    if (conflictIndex == -1) return;
+    final conflict = _conflicts[conflictIndex];
     if (keepLocal) {
       final payload = Map<String, dynamic>.from(conflict.clientVersion);
       payload['updatedAt'] = DateTime.now().toIso8601String();
       await _backend.forcePushTasks([payload]);
+      final localIndex = _tasks.indexWhere((t) => t.id == taskId);
+      if (localIndex != -1) {
+        final serverVersion = conflict.serverVersion['version'] as int? ?? 0;
+        final localVersion = _tasks[localIndex].version ?? 0;
+        _tasks[localIndex] = _tasks[localIndex].copyWith(
+          updatedAt: DateTime.now(),
+          version: (localVersion > serverVersion ? localVersion : serverVersion) + 1,
+        );
+        await _storage.updateTask(_tasks[localIndex]);
+        _refreshTaskLists();
+      }
     } else {
       final serverData = conflict.serverVersion;
       final index = _tasks.indexWhere((t) => t.id == taskId);
       if (index != -1) {
-        final remoteTask = _taskFromBackendJson(serverData);
+        final localTask = _tasks[index];
+        final remoteTask = _taskFromBackendJson(serverData, localTask: localTask);
         await _storage.updateTask(remoteTask);
         _tasks[index] = remoteTask;
         _refreshTaskLists();
+        // No need to push back — server already has this version
       }
     }
     _conflicts.removeWhere((c) => c.taskId == taskId);
@@ -1128,7 +1185,10 @@ class TaskProvider extends ChangeNotifier {
 
   // Batch operations
   Future<void> batchUpdateTasks(List<String> ids, {TaskStatus? status, String? tagId, bool addTag = true}) async {
+    _suppressNotify = true;
+    try {
     for (final id in ids) {
+      try {
       final index = _tasks.indexWhere((t) => t.id == id);
       if (index == -1) continue;
       var task = _tasks[index];
@@ -1155,25 +1215,39 @@ class TaskProvider extends ChangeNotifier {
       if (!wasCompleted && task.status == TaskStatus.completed && task.isRecurring) {
         await _createRecurringTask(task);
       }
-    }
-    _refreshTaskLists();
-    notifyListeners();
-  }
-
-  Future<void> batchDeleteTasks(List<String> ids) async {
-    final toDelete = ids.where((id) => _tasks.any((t) => t.id == id)).toList();
-    for (final id in toDelete) {
-      _syncTaskSilently(Task(id: id, title: ''), deleted: true);
-    }
-    for (final id in toDelete) {
-      final index = _tasks.indexWhere((t) => t.id == id);
-      if (index != -1) {
-        await _storage.deleteTask(id);
-        _tasks.removeAt(index);
+      } catch (e) {
+        debugPrint('批量更新任务 $id 失败: $e');
       }
     }
     _refreshTaskLists();
     notifyListeners();
+    } finally {
+      _suppressNotify = false;
+    }
+  }
+
+  Future<void> batchDeleteTasks(List<String> ids) async {
+    final toDelete = ids.where((id) => _tasks.any((t) => t.id == id)).toList();
+    final deleteSet = toDelete.toSet();
+    // Preserve task data before removal for sync
+    final tasksToDelete = {for (final id in toDelete) id: _tasks.firstWhere((t) => t.id == id)};
+    // Persist deletions first
+    for (final id in toDelete) {
+      await _storage.deleteTask(id);
+    }
+    _tasks.removeWhere((t) => deleteSet.contains(t.id));
+    _refreshTaskLists();
+    notifyListeners();
+    // Sync with real task data (preserves version, ownerUserId, etc.)
+    _suppressNotify = true;
+    try {
+      for (final id in toDelete) {
+        final task = tasksToDelete[id];
+        _syncTaskSilently(task ?? Task(id: id, title: ''), deleted: true);
+      }
+    } finally {
+      _suppressNotify = false;
+    }
   }
 
   // Subtask helpers
@@ -1191,8 +1265,8 @@ class TaskProvider extends ChangeNotifier {
     return _tasks.where((t) => t.parentId == parentId && t.isCompleted).length;
   }
 
-  Task _taskFromBackendJson(Map<String, dynamic> json) {
-    return BackendApiService.instance.taskFromBackendJson(json);
+  Task _taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
+    return BackendApiService.instance.taskFromBackendJson(json, localTask: localTask);
   }
 
   Future<int> _syncPendingComments() async {

@@ -24,6 +24,7 @@ export default function DistributionForm({ initialTasks, teams, adminUserId, tok
   const myTasks = tasks.filter((t) => t.ownerUserId === adminUserId && !t.deletedAt);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchOwnedTasks() {
       try {
         const data = await loadAdminTasks(token, {
@@ -31,13 +32,15 @@ export default function DistributionForm({ initialTasks, teams, adminUserId, tok
           page: 1,
           pageSize: 100,
         });
-        setTasks(data.tasks);
+        if (!cancelled) setTasks(data.tasks);
       } catch {
-        setTasks(initialTasks);
+        if (!cancelled) setTasks([]);
       }
     }
     if (adminUserId) void fetchOwnedTasks();
-  }, [adminUserId, initialTasks, token]);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminUserId, token]);
 
   async function handleTeamChange(teamId: string) {
     setSelectedTeamId(teamId);
@@ -81,15 +84,24 @@ export default function DistributionForm({ initialTasks, teams, adminUserId, tok
     setSuccess('');
 
     try {
-      for (const userId of selectedUserIds) {
-        await createDistribution(token, {
-          sourceTaskId: selectedTaskId,
-          recipientUserId: userId,
-          teamId: selectedTeamId,
-          remark: remark || undefined,
-        });
+      const results = await Promise.allSettled(
+        [...selectedUserIds].map((userId) =>
+          createDistribution(token, {
+            sourceTaskId: selectedTaskId,
+            recipientUserId: userId,
+            teamId: selectedTeamId,
+            remark: remark || undefined,
+          })
+        )
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed === 0) {
+        setSuccess(`成功分发给 ${succeeded} 个用户`);
+      } else {
+        setSuccess(succeeded > 0 ? `成功 ${succeeded} 个，失败 ${failed} 个` : '');
+        setError(`分发失败 ${failed} 个用户`);
       }
-      setSuccess(`成功分发给 ${selectedUserIds.size} 个用户`);
       setSelectedTaskId('');
       setSelectedTeamId('');
       setSelectedUserIds(new Set());

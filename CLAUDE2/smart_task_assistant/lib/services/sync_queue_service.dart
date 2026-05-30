@@ -74,6 +74,15 @@ class SyncQueueService {
     await _save();
   }
 
+  Future<void> removeByTaskId(String taskId) async {
+    _items.removeWhere((item) {
+      final payload = item.payload;
+      if (payload is Map) return payload['id'] == taskId;
+      return false;
+    });
+    await _save();
+  }
+
   /// Retry all pending items. Returns number of items successfully retried.
   Future<int> retryAll() async {
     final backend = BackendApiService.instance;

@@ -569,7 +569,7 @@ class DatabaseHelper {
 
   // ==================== 任务相关操作 ====================
 
-  /// 插入任务
+  /// 插入任务（存在则更新，不触发级联删除）
   Future<void> insertTask(Task task) async {
     final db = await database;
     debugPrint('===== DatabaseHelper.insertTask =====');
@@ -578,11 +578,13 @@ class DatabaseHelper {
     debugPrint('截止时间: ${task.dueTime}');
     debugPrint('状态: ${task.status}');
 
-    final result = await db.insert(
-      'tasks',
-      task.toJson(),
-      conflictAlgorithm: ConflictAlgorithm.fail,
-    );
+    final existing = await db.query('tasks', where: 'id = ?', whereArgs: [task.id]);
+    int result;
+    if (existing.isNotEmpty) {
+      result = await db.update('tasks', task.toJson(), where: 'id = ?', whereArgs: [task.id]);
+    } else {
+      result = await db.insert('tasks', task.toJson(), conflictAlgorithm: ConflictAlgorithm.fail);
+    }
 
     debugPrint('插入结果: $result (行ID)');
 
@@ -734,6 +736,16 @@ class DatabaseHelper {
     );
   }
 
+  /// Insert default tag only if not exists (preserves user modifications)
+  Future<void> insertDefaultTag(Tag tag) async {
+    final db = await database;
+    await db.insert(
+      'tags',
+      tag.toJson(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
   /// 获取所有标签
   Future<List<Tag>> getAllTags() async {
     final db = await database;
@@ -819,6 +831,7 @@ class DatabaseHelper {
       try {
         await _database!.close();
         _database = null;
+        _databaseInitLock = null;
         debugPrint('数据库已关闭');
       } catch (e) {
         debugPrint('关闭数据库失败: $e');

@@ -31,7 +31,7 @@ export default function TaskDistributionTab({ overview, adminUserId, token, onRe
   };
 
   useEffect(() => {
-    loadDistributions(page);
+    loadDistributions(1);
   }, [token]);
 
   const handlePageChange = (newPage: number) => {

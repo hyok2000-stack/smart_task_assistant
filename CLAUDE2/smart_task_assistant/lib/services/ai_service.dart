@@ -20,6 +20,8 @@ class ChatResult {
 
 /// AI 服务配置
 class AIConfig {
+  static const _configSentinel = Object();
+
   final String provider;
   final String apiKey;
   final String baseUrl;
@@ -39,14 +41,14 @@ class AIConfig {
     String? apiKey,
     String? baseUrl,
     String? model,
-    bool? enabled,
+    Object? enabled = _configSentinel,
   }) {
     return AIConfig(
       provider: provider ?? this.provider,
       apiKey: apiKey ?? this.apiKey,
       baseUrl: baseUrl ?? this.baseUrl,
       model: model ?? this.model,
-      enabled: enabled ?? this.enabled,
+      enabled: identical(enabled, _configSentinel) ? this.enabled : enabled as bool,
     );
   }
 
@@ -511,7 +513,7 @@ class AIService {
   "tags": ["标签1", "标签2"]
 }
 
-文本：$input
+文本：${_sanitizeForPrompt(input)}
 
 要求：
 - title、dueTime、priority 三个字段必须有值
@@ -682,7 +684,7 @@ class AIService {
 3. 任务优先级
 4. 任务状态
 
-任务列表：${jsonEncode(tasksData)}
+任务列表：${_sanitizeForPrompt(jsonEncode(tasksData))}
 
 请返回JSON格式：
 {
@@ -1283,5 +1285,17 @@ class AIService {
       debugPrint('API连接测试失败: $e');
       return false;
     }
+  }
+
+  /// Sanitize user input before embedding into AI prompts to strip common
+  /// prompt-injection patterns.
+  String _sanitizeForPrompt(String input) {
+    return input
+        .replaceAll(
+            RegExp(r'(?i)ignore\s+(the\s+)?(above|previous|instructions)'),
+            '[filtered]')
+        .replaceAll(RegExp(r'(?i)you\s+are\s+now'), '[filtered]')
+        .replaceAll(RegExp(r'(?i)system\s*:'), '')
+        .replaceAll(RegExp(r'(?i)assistant\s*:'), '');
   }
 }

@@ -3,10 +3,12 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import morgan from "morgan";
-import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { mutateDb, now, publicUser, readDb } from "./db";
-import type { Task, TaskComment, TaskDistribution, User } from "./types";
+import type { DatabaseShape, Task, TaskComment, TaskDistribution, User } from "./types";
 
 // === 错误码定义 ===
 const ErrorCode = {
@@ -75,18 +77,20 @@ function auth(req: AuthedRequest, res: Response, next: NextFunction) {
   }
 }
 
-function logOperation(action: string, operatorUserId?: string, targetType = "system", targetId?: string | string[], detail?: unknown) {
-  mutateDb((db) => {
-    db.operationLogs.unshift({
-      id: randomUUID(),
-      operatorUserId,
-      action,
-      targetType,
-      targetId,
-      detail,
-      createdAt: now(),
-    });
+function appendLog(db: DatabaseShape, action: string, operatorUserId?: string, targetType = "system", targetId?: string | string[], detail?: unknown) {
+  db.operationLogs.unshift({
+    id: randomUUID(),
+    operatorUserId,
+    action,
+    targetType,
+    targetId,
+    detail,
+    createdAt: now(),
   });
+}
+
+function logOperation(action: string, operatorUserId?: string, targetType = "system", targetId?: string | string[], detail?: unknown) {
+  mutateDb((db) => { appendLog(db, action, operatorUserId, targetType, targetId, detail); });
 }
 
 function requireTeamMember(userId: string, teamId: string) {
@@ -95,16 +99,36 @@ function requireTeamMember(userId: string, teamId: string) {
   );
 }
 
-function canSeeTask(user: User, task: Task) {
+function requireTeamAdmin(userId: string, teamId: string) {
+  return readDb().teamMembers.some(
+    (member) => member.userId === userId && member.teamId === teamId && member.role === "team_admin" && member.status === "active",
+  );
+}
+
+function canSeeTask(user: User, task: Task, db?: ReturnType<typeof readDb>) {
   if (task.ownerUserId === user.id) return true;
   if (user.role === "system_admin") return true;
-  if (user.role === "team_admin" && task.teamId && requireTeamMember(user.id, task.teamId)) return true;
+  const data = db ?? readDb();
+  if (user.role === "team_admin") {
+    // team_admin can see tasks in their teams AND tasks owned by their team members
+    const adminTeams = data.teamMembers.filter(
+      (m) => m.userId === user.id && m.status === "active",
+    ).map((m) => m.teamId);
+    if (task.teamId && adminTeams.includes(task.teamId)) return true;
+    // Also check if task owner is in same team
+    if (task.ownerUserId) {
+      const ownerInAdminTeam = data.teamMembers.some(
+        (m) => m.userId === task.ownerUserId && adminTeams.includes(m.teamId) && m.status === "active",
+      );
+      if (ownerInAdminTeam) return true;
+    }
+  }
   // Distribution: sender/recipient can see each other's related tasks
-  const db = readDb();
-  const dist = db.distributions.find(
-    (d) => d.sourceTaskId === task.id || d.recipientTaskId === task.id,
+  const distVisible = data.distributions.some(
+    (d) => (d.sourceTaskId === task.id || d.recipientTaskId === task.id) &&
+           (d.senderUserId === user.id || d.recipientUserId === user.id),
   );
-  if (dist && (dist.senderUserId === user.id || dist.recipientUserId === user.id)) return true;
+  if (distVisible) return true;
   return false;
 }
 
@@ -119,7 +143,8 @@ function requireAppKey(req: Request, res: Response, next: NextFunction) {
 function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "TEAM-";
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  const bytes = randomBytes(6);
+  for (let i = 0; i < 6; i++) code += chars[bytes[i] % chars.length];
   return code;
 }
 
@@ -270,7 +295,11 @@ function enrichDistribution(db: ReturnType<typeof readDb>, distribution: TaskDis
     const isSender = userId === distribution.senderUserId;
     const lastRead = isSender ? distribution.senderLastReadCommentAt : distribution.recipientLastReadCommentAt;
     if (!lastRead || distribution.lastCommentAt > lastRead) {
-      unreadCommentCount = distribution.commentCount;
+      const relatedTaskIds = [distribution.sourceTaskId, distribution.recipientTaskId].filter(Boolean) as string[];
+      unreadCommentCount = db.comments.filter(
+        (c) => relatedTaskIds.includes(c.taskId) && c.status === "active" &&
+               (!lastRead || (c.serverCreatedAt ?? c.createdAt) > lastRead),
+      ).length;
     }
   }
   return {
@@ -290,75 +319,8 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, time: now(), deviceOnlineTimeoutMs });
 });
 
-app.get("/", (_req, res) => {
-  res.type("html").send(`<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>智能任务后台服务</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f5f7fb;
-        color: #172033;
-      }
-      main {
-        max-width: 720px;
-        margin: 72px auto;
-        padding: 0 24px;
-      }
-      section {
-        background: #fff;
-        border: 1px solid #dbe3ef;
-        border-radius: 8px;
-        padding: 28px;
-      }
-      h1 {
-        margin: 0 0 10px;
-        font-size: 28px;
-      }
-      p {
-        color: #475569;
-        line-height: 1.7;
-      }
-      a {
-        display: inline-flex;
-        margin: 8px 12px 0 0;
-        padding: 10px 14px;
-        border-radius: 6px;
-        color: #fff;
-        background: #2563eb;
-        text-decoration: none;
-        font-weight: 600;
-      }
-      a.secondary {
-        color: #1e293b;
-        background: #e2e8f0;
-      }
-      code {
-        background: #eef2f7;
-        padding: 2px 6px;
-        border-radius: 4px;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <section>
-        <h1>智能任务后台服务已运行</h1>
-        <p>这里是 API 服务入口，不是后台管理页面。后台管理页面由前端开发服务提供。</p>
-        <p>如果要打开管理页面，请访问 <code>http://127.0.0.1:5173</code>。</p>
-        <a href="http://127.0.0.1:5173">打开后台管理页面</a>
-        <a class="secondary" href="/api/health">查看接口健康状态</a>
-      </section>
-    </main>
-  </body>
-</html>`);
-});
 
-app.post("/api/auth/register", requireAppKey, (req, res) => {
+app.post("/api/auth/register", requireAppKey, async (req, res) => {
   const body = z
     .object({
       nickname: z.string().min(1),
@@ -371,19 +333,7 @@ app.post("/api/auth/register", requireAppKey, (req, res) => {
 
   if (!body.email && !body.phone) throw new AppError(ErrorCode.VALIDATION_ERROR, "邮箱和手机号至少填写一项");
 
-  // Pre-validate invite code and persist expired status if needed
-  const inviteCheck = readDb().inviteCodes.find((item) => item.code === body.inviteCode);
-  if (!inviteCheck) throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码不存在");
-  if (inviteCheck.status !== "active") throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码已失效");
-  if (inviteCheck.expiresAt && new Date(inviteCheck.expiresAt) < new Date()) {
-    mutateDb((db) => {
-      const inv = db.inviteCodes.find((i) => i.id === inviteCheck.id);
-      if (inv) { inv.status = "expired"; inv.updatedAt = now(); }
-    });
-    throw new AppError(ErrorCode.INVITE_CODE_EXPIRED, "邀请码已过期");
-  }
-  if (inviteCheck.maxUses !== -1 && inviteCheck.usedCount >= inviteCheck.maxUses) throw new AppError(ErrorCode.INVITE_CODE_EXHAUSTED, "邀请码已用完");
-
+  const passwordHash = await bcrypt.hash(body.password, 10);
   const user = mutateDb((db) => {
     const exists = db.users.some((item) =>
       (body.email && item.email === body.email) || (body.phone && item.phone === body.phone),
@@ -391,7 +341,13 @@ app.post("/api/auth/register", requireAppKey, (req, res) => {
     if (exists) throw new AppError(ErrorCode.CONFLICT, "账号已存在");
 
     const invite = db.inviteCodes.find((item) => item.code === body.inviteCode);
-    if (!invite || invite.status !== "active") throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码无效");
+    if (!invite) throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码不存在");
+    if (invite.status !== "active") throw new AppError(ErrorCode.INVITE_CODE_INVALID, "邀请码已失效");
+    if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+      invite.status = "expired";
+      invite.updatedAt = now();
+      throw new AppError(ErrorCode.INVITE_CODE_EXPIRED, "邀请码已过期");
+    }
     if (invite.maxUses !== -1 && invite.usedCount >= invite.maxUses) throw new AppError(ErrorCode.INVITE_CODE_EXHAUSTED, "邀请码已用完");
 
     const team = db.teams.find((t) => t.id === invite.teamId && t.status === "active");
@@ -403,7 +359,7 @@ app.post("/api/auth/register", requireAppKey, (req, res) => {
       nickname: body.nickname,
       email: body.email,
       phone: body.phone,
-      passwordHash: bcrypt.hashSync(body.password, 10),
+      passwordHash,
       role: "member",
       status: "active",
       createdAt,
@@ -431,7 +387,10 @@ app.post("/api/auth/register", requireAppKey, (req, res) => {
   res.json({ token: signToken(user), user: publicUser(user) });
 });
 
-app.post("/api/users", auth, (req: AuthedRequest, res) => {
+app.post("/api/users", auth, async (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const body = z.object({
     nickname: z.string().min(1),
     phone: z.string().min(6).optional(),
@@ -441,11 +400,23 @@ app.post("/api/users", auth, (req: AuthedRequest, res) => {
     teamId: z.string().optional(),
   }).parse(req.body);
 
+  // Only system_admin can create team_admin users
+  if (body.role === "team_admin" && req.user!.role !== "system_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "仅系统管理员可创建团队管理员");
+  }
+
+  const passwordHash = await bcrypt.hash(body.password, 10);
   const user = mutateDb((db) => {
     const exists = db.users.some((item) =>
       (body.email && item.email === body.email) || (body.phone && item.phone === body.phone),
     );
     if (exists) throw new AppError(ErrorCode.CONFLICT, "账号已存在");
+
+    // team_admin can only create users in teams they administer
+    if (req.user!.role === "team_admin" && body.teamId) {
+      const isAdmin = db.teamMembers.some((m) => m.teamId === body.teamId && m.userId === req.user!.id && m.role === "team_admin" && m.status === "active");
+      if (!isAdmin) throw new AppError(ErrorCode.FORBIDDEN, "只能为自己管理的团队创建用户");
+    }
 
     const createdAt = now();
     const nextUser: User = {
@@ -453,7 +424,7 @@ app.post("/api/users", auth, (req: AuthedRequest, res) => {
       nickname: body.nickname,
       email: body.email,
       phone: body.phone,
-      passwordHash: bcrypt.hashSync(body.password, 10),
+      passwordHash,
       role: body.role,
       status: "active",
       createdAt,
@@ -464,17 +435,16 @@ app.post("/api/users", auth, (req: AuthedRequest, res) => {
     const teamId = body.teamId;
     if (teamId) {
       const team = db.teams.find((t) => t.id === teamId && t.status === "active");
-      if (team) {
-        db.teamMembers.push({
-          id: randomUUID(),
-          teamId: team.id,
-          userId: nextUser.id,
-          role: body.role === "team_admin" ? "team_admin" : "member",
-          status: "active",
-          joinedAt: createdAt,
-          updatedAt: createdAt,
-        });
-      }
+      if (!team) throw new AppError(ErrorCode.NOT_FOUND, "指定的团队不存在或已停用");
+      db.teamMembers.push({
+        id: randomUUID(),
+        teamId: team.id,
+        userId: nextUser.id,
+        role: body.role === "team_admin" ? "team_admin" : "member",
+        status: "active",
+        joinedAt: createdAt,
+        updatedAt: createdAt,
+      });
     }
 
     return nextUser;
@@ -484,11 +454,14 @@ app.post("/api/users", auth, (req: AuthedRequest, res) => {
   res.json({ user: publicUser(user) });
 });
 
-app.post("/api/auth/login", requireAppKey, (req, res) => {
+app.post("/api/auth/login", requireAppKey, async (req, res) => {
   const body = z.object({ account: z.string().min(1), password: z.string().min(1) }).parse(req.body);
   const user = readDb().users.find((item) => item.email === body.account || item.phone === body.account);
-  if (!user || !bcrypt.compareSync(body.password, user.passwordHash)) {
+  if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
     return sendError(res, 401, ErrorCode.AUTH_INVALID_CREDENTIALS, "账号或密码错误");
+  }
+  if (user.status !== "active") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "账号已被停用");
   }
   res.json({ token: signToken(user), user: publicUser(user) });
 });
@@ -497,7 +470,12 @@ app.get("/api/me", auth, (req: AuthedRequest, res) => {
   res.json({ user: publicUser(req.user!) });
 });
 
-app.patch("/api/users/:userId", auth, (req: AuthedRequest, res) => {
+app.patch("/api/users/:userId", auth, async (req: AuthedRequest, res) => {
+  const isAdmin = req.user!.role === "system_admin" || req.user!.role === "team_admin";
+  const isSelf = req.user!.id === req.params.userId;
+  if (!isAdmin && !isSelf) {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const body = z.object({
     nickname: z.string().min(1).optional(),
     phone: z.string().min(6).optional(),
@@ -507,16 +485,46 @@ app.patch("/api/users/:userId", auth, (req: AuthedRequest, res) => {
     password: z.string().min(6).optional(),
   }).parse(req.body);
 
+  // Non-admin self-edit: only allow nickname, phone, email, password
+  if (!isAdmin && body.role !== undefined) {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权修改角色");
+  }
+  if (!isAdmin && body.status !== undefined) {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权修改状态");
+  }
+
+  const newPasswordHash = body.password ? await bcrypt.hash(body.password, 10) : undefined;
   const user = mutateDb((db) => {
     const found = db.users.find((u) => u.id === req.params.userId);
     if (!found) throw new AppError(ErrorCode.NOT_FOUND, "用户不存在");
+    // Non-system_admin cannot modify system_admin accounts
+    if (found.role === "system_admin" && req.user!.role !== "system_admin") {
+      throw new AppError(ErrorCode.FORBIDDEN, "无权修改系统管理员");
+    }
+
+    if (body.phone !== undefined) {
+      const conflict = db.users.some((u) => u.id !== found.id && u.phone === body.phone);
+      if (conflict) throw new AppError(ErrorCode.CONFLICT, "该手机号已被其他用户使用");
+    }
+    if (body.email !== undefined) {
+      const conflict = db.users.some((u) => u.id !== found.id && u.email === body.email);
+      if (conflict) throw new AppError(ErrorCode.CONFLICT, "该邮箱已被其他用户使用");
+    }
 
     if (body.nickname !== undefined) found.nickname = body.nickname;
     if (body.phone !== undefined) found.phone = body.phone;
     if (body.email !== undefined) found.email = body.email;
+    // team_admin can only change role for users in their teams
+    if (body.role !== undefined && req.user!.role === "team_admin") {
+      const sharedTeam = db.teamMembers.some(
+        (m) => m.userId === req.user!.id && m.role === "team_admin" && m.status === "active" &&
+        db.teamMembers.some((m2) => m2.userId === found.id && m2.teamId === m.teamId && m2.status === "active"),
+      );
+      if (!sharedTeam) throw new AppError(ErrorCode.FORBIDDEN, "只能修改自己团队内成员的角色");
+    }
     if (body.role !== undefined) found.role = body.role;
     if (body.status !== undefined) found.status = body.status;
-    if (body.password) found.passwordHash = bcrypt.hashSync(body.password, 10);
+    if (newPasswordHash) found.passwordHash = newPasswordHash;
     found.updatedAt = now();
 
     return found;
@@ -557,14 +565,20 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
   }).parse(req.body);
 
   const task = mutateDb((db) => {
-    const found = db.tasks.find((t) => t.id === req.params.taskId);
-    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
+    const found = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
+    if (!found) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在或已删除");
+    // team_admin can only edit tasks within their team scope
+    if (req.user!.role === "team_admin") {
+      const canSee = canSeeTask(req.user!, found, db);
+      if (!canSee) throw new AppError(ErrorCode.FORBIDDEN, "无权操作此任务");
+    }
     if (body.title !== undefined) found.title = body.title;
     if (body.content !== undefined) found.content = body.content;
     if (body.status !== undefined) {
       const prev = found.status;
       found.status = body.status;
       if (body.status === "completed") found.completedAt = now();
+      else found.completedAt = undefined;
       if (prev !== body.status) {
         recordStatusChange(db, found.id, {
           previousStatus: prev,
@@ -587,7 +601,7 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
     if (body.ownerUserId !== undefined) found.ownerUserId = body.ownerUserId;
     if (body.teamId !== undefined) found.teamId = body.teamId || undefined;
     if (body.parentId !== undefined) found.parentId = body.parentId || undefined;
-    if (body.completedAt !== undefined) found.completedAt = body.completedAt || undefined;
+    if (body.completedAt !== undefined && body.status === undefined && found.status === "completed") found.completedAt = body.completedAt || undefined;
     if (body.isRecurring !== undefined) found.isRecurring = body.isRecurring;
     if (body.recurringRule !== undefined) found.recurringRule = body.recurringRule || undefined;
     if (body.tagIds !== undefined) found.tagIds = body.tagIds;
@@ -610,6 +624,9 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/admin/overview", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   refreshDevicePresence();
   const db = readDb();
   const today = new Date().toISOString().slice(0, 10);
@@ -628,9 +645,9 @@ app.get("/api/admin/overview", auth, (req: AuthedRequest, res) => {
     teams: db.teams,
     members: db.teamMembers,
     devices: db.devices,
-    tasks: db.tasks.filter((task) => canSeeTask(req.user!, task) && !task.deletedAt).slice(0, 200),
+    tasks: db.tasks.filter((task) => canSeeTask(req.user!, task, db) && !task.deletedAt).slice(0, 200),
     distributions: db.distributions.map((distribution) => enrichDistribution(db, distribution, req.user!.id)),
-    comments: db.comments,
+    comments: db.comments.filter((c) => c.status === "active"),
     syncLogs: db.syncLogs.slice(0, 50),
     operationLogs: db.operationLogs.slice(0, 50),
     inviteCodes: db.inviteCodes,
@@ -642,13 +659,17 @@ app.get("/api/admin/tasks/export", auth, (req: AuthedRequest, res) => {
     return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
   }
   const db = readDb();
-  const tasks = db.tasks.filter((t) => !t.deletedAt);
+  const tasks = db.tasks.filter((t) => !t.deletedAt && canSeeTask(req.user!, t, db));
   const header = "ID,标题,状态,优先级,负责人,截止时间,创建时间,更新时间";
+  const csvSafe = (v: string) => {
+    const escaped = v.replace(/\r?\n/g, " ").replace(/"/g, '""');
+    return `"${escaped}"`;
+  };
   const rows = tasks.map((t) => {
     const statusMap: Record<string, string> = { pending: "待处理", in_progress: "进行中", completed: "已完成", cancelled: "已取消" };
     const prioMap: Record<string, string> = { low: "低", medium: "中", high: "高" };
     const assignee = t.assigneeUserId ? db.users.find((u) => u.id === t.assigneeUserId)?.nickname ?? "" : t.assignee ?? "";
-    return [t.id, `"${t.title.replace(/"/g, '""')}"`, statusMap[t.status] ?? t.status, prioMap[t.priority] ?? t.priority, assignee, t.dueTime ?? "", t.createdAt, t.updatedAt].join(",");
+    return [csvSafe(t.id), csvSafe(t.title), csvSafe(statusMap[t.status] ?? t.status), csvSafe(prioMap[t.priority] ?? t.priority), csvSafe(assignee), csvSafe(t.dueTime ?? ""), csvSafe(t.createdAt), csvSafe(t.updatedAt)].join(",");
   });
   const csv = [header, ...rows].join("\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -678,9 +699,9 @@ app.post("/api/admin/tasks/batch-delete", auth, (req: AuthedRequest, res) => {
     let targets: Task[];
 
     if (body.taskIds?.length) {
-      targets = db.tasks.filter((t) => body.taskIds!.includes(t.id) && !t.deletedAt);
+      targets = db.tasks.filter((t) => body.taskIds!.includes(t.id) && !t.deletedAt && canSeeTask(req.user!, t, db));
     } else {
-      targets = db.tasks.filter((t) => !t.deletedAt && canSeeTask(req.user!, t) && taskMatchesAdminQuery(t, { query: body.query ?? {} } as any));
+      targets = db.tasks.filter((t) => !t.deletedAt && canSeeTask(req.user!, t, db) && taskMatchesAdminQuery(t, { query: body.query ?? {} } as any));
     }
 
     for (const task of targets) {
@@ -696,11 +717,14 @@ app.post("/api/admin/tasks/batch-delete", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/admin/tasks", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   refreshDevicePresence();
   const db = readDb();
   const { page, pageSize } = parsePageQuery(req);
   const matched = db.tasks
-    .filter((task) => canSeeTask(req.user!, task) && taskMatchesAdminQuery(task, req))
+    .filter((task) => canSeeTask(req.user!, task, db) && taskMatchesAdminQuery(task, req))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const total = matched.length;
   const start = (page - 1) * pageSize;
@@ -716,10 +740,13 @@ app.get("/api/admin/tasks", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const db = readDb();
   const task = db.tasks.find((t) => t.id === req.params.taskId);
   if (!task || task.deletedAt) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
-  if (!canSeeTask(req.user!, task)) throw new AppError(ErrorCode.FORBIDDEN, "无权查看此任务");
+  if (!canSeeTask(req.user!, task, db)) throw new AppError(ErrorCode.FORBIDDEN, "无权查看此任务");
 
   const comments = db.comments
     .filter((c) => c.taskId === task.id && c.status === "active")
@@ -747,6 +774,9 @@ app.get("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/admin/distributions", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const db = readDb();
   const { page, pageSize } = parsePageQuery(req);
   let matched = db.distributions;
@@ -772,7 +802,10 @@ app.get("/api/admin/distributions", auth, (req: AuthedRequest, res) => {
 
 // ==================== Invite Codes ====================
 
-app.get("/api/invite-codes", auth, (_req: AuthedRequest, res) => {
+app.get("/api/invite-codes", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const db = readDb();
   const codes = db.inviteCodes.map((code) => ({
     ...code,
@@ -783,15 +816,22 @@ app.get("/api/invite-codes", auth, (_req: AuthedRequest, res) => {
 });
 
 app.post("/api/invite-codes", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const body = z.object({
     teamId: z.string().min(1),
-    maxUses: z.number().int().default(-1),
+    maxUses: z.number().int().min(-1).default(-1),
     expiresAt: z.string().optional(),
   }).parse(req.body);
 
   const inviteCode = mutateDb((db) => {
     const team = db.teams.find((t) => t.id === body.teamId && t.status === "active");
     if (!team) throw new AppError(ErrorCode.NOT_FOUND, "团队不存在");
+    if (req.user!.role !== "system_admin") {
+      const inTeam = db.teamMembers.some((m) => m.teamId === body.teamId && m.userId === req.user!.id && m.role === "team_admin" && m.status === "active");
+      if (!inTeam) throw new AppError(ErrorCode.FORBIDDEN, "只能为自己管理的团队创建邀请码");
+    }
 
     const timestamp = now();
     const code = generateInviteCode();
@@ -816,9 +856,16 @@ app.post("/api/invite-codes", auth, (req: AuthedRequest, res) => {
 });
 
 app.post("/api/invite-codes/:id/disable", auth, (req: AuthedRequest, res) => {
+  if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+  }
   const inviteCode = mutateDb((db) => {
     const found = db.inviteCodes.find((item) => item.id === req.params.id);
     if (!found) throw new AppError(ErrorCode.NOT_FOUND, "邀请码不存在");
+    if (req.user!.role !== "system_admin") {
+      const inTeam = db.teamMembers.some((m) => m.teamId === found.teamId && m.userId === req.user!.id && m.role === "team_admin" && m.status === "active");
+      if (!inTeam) throw new AppError(ErrorCode.FORBIDDEN, "只能禁用自己管理团队的邀请码");
+    }
     found.status = "disabled";
     found.updatedAt = now();
     return found;
@@ -865,21 +912,27 @@ app.post("/api/teams", auth, (req: AuthedRequest, res) => {
   res.json({ team });
 });
 
-app.get("/api/teams/:teamId/members", auth, (req, res) => {
+app.get("/api/teams/:teamId/members", auth, (req: AuthedRequest, res) => {
   refreshDevicePresence();
   const db = readDb();
+  // Only team members or system_admin can view team members
+  const isMember = db.teamMembers.some((m) => m.teamId === req.params.teamId && m.userId === req.user!.id && m.status === "active");
+  if (!isMember && req.user!.role !== "system_admin") {
+    return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看团队成员");
+  }
   const members = db.teamMembers
     .filter((member) => member.teamId === req.params.teamId && member.status === "active")
-    .map((member) => {
-      const user = db.users.find((item) => item.id === member.userId)!;
+    .flatMap((member) => {
+      const user = db.users.find((item) => item.id === member.userId && item.status === "active");
+      if (!user) return [];
       const online = db.devices.some((device) => device.userId === user.id && device.onlineStatus === "online");
-      return {
+      return [{
         userId: user.id,
         displayName: user.nickname,
         phoneMasked: user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : undefined,
         role: member.role,
         online,
-      };
+      }];
     });
   res.json({ members });
 });
@@ -891,6 +944,16 @@ app.post("/api/teams/:teamId/members", auth, (req: AuthedRequest, res) => {
   }).parse(req.body);
 
   const member = mutateDb((db) => {
+    const myMembership = db.teamMembers.find(
+      (m) => m.teamId === req.params.teamId && m.userId === req.user!.id && m.status === "active",
+    );
+    if (req.user!.role === "system_admin") {
+      // system_admin can operate on any team
+    } else {
+      if (!myMembership || myMembership.role !== "team_admin") {
+        throw new AppError(ErrorCode.FORBIDDEN, "仅该团队管理员可添加成员");
+      }
+    }
     const team = db.teams.find((t) => t.id === req.params.teamId && t.status === "active");
     if (!team) throw new AppError(ErrorCode.NOT_FOUND, "团队不存在");
     const user = db.users.find((u) => u.id === body.userId && u.status === "active");
@@ -925,10 +988,33 @@ app.post("/api/teams/:teamId/members", auth, (req: AuthedRequest, res) => {
 
 app.delete("/api/teams/:teamId/members/:userId", auth, (req: AuthedRequest, res) => {
   const member = mutateDb((db) => {
+    const myMembership = db.teamMembers.find(
+      (m) => m.teamId === req.params.teamId && m.userId === req.user!.id && m.status === "active",
+    );
+    if (req.user!.role === "system_admin") {
+      // ok
+    } else if (req.user!.role === "team_admin") {
+      if (!myMembership || myMembership.role !== "team_admin") {
+        throw new AppError(ErrorCode.FORBIDDEN, "仅该团队管理员可移除成员");
+      }
+    } else {
+      if (!myMembership || myMembership.role !== "team_admin") {
+        throw new AppError(ErrorCode.FORBIDDEN, "仅团队管理员可移除成员");
+      }
+    }
     const found = db.teamMembers.find(
       (m) => m.teamId === req.params.teamId && m.userId === req.params.userId && m.status === "active",
     );
     if (!found) throw new AppError(ErrorCode.NOT_FOUND, "成员不存在");
+    // Prevent removing the last team_admin
+    if (found.role === "team_admin") {
+      const adminCount = db.teamMembers.filter(
+        (m) => m.teamId === req.params.teamId && m.role === "team_admin" && m.status === "active",
+      ).length;
+      if (adminCount <= 1) {
+        throw new AppError(ErrorCode.FORBIDDEN, "不能移除最后一个团队管理员");
+      }
+    }
     found.status = "left";
     found.updatedAt = now();
     return found;
@@ -950,6 +1036,10 @@ app.post("/api/devices/bind", auth, (req: AuthedRequest, res) => {
     const timestamp = now();
     const existing = body.deviceId ? db.devices.find((item) => item.id === body.deviceId) : undefined;
     if (existing) {
+      // Prevent binding another user's device
+      if (existing.userId && existing.userId !== req.user!.id) {
+        throw new AppError(ErrorCode.FORBIDDEN, "该设备已绑定其他用户");
+      }
       existing.userId = req.user!.id;
       existing.deviceName = body.deviceName?.trim() || "APP设备";
       existing.platform = body.platform?.trim() || "unknown";
@@ -994,14 +1084,14 @@ app.post("/api/devices/heartbeat", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/tasks", auth, (req: AuthedRequest, res) => {
-  const tasks = readDb().tasks.filter((task) => canSeeTask(req.user!, task) && !task.deletedAt);
+  const db = readDb(); const tasks = db.tasks.filter((task) => canSeeTask(req.user!, task, db) && !task.deletedAt);
   res.json({ tasks });
 });
 
 app.get("/api/tasks/:taskId", auth, (req: AuthedRequest, res) => {
   const db = readDb();
   const task = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
-  if (!task || !canSeeTask(req.user!, task)) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
+  if (!task || !canSeeTask(req.user!, task, db)) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
   res.json({ task });
 });
 
@@ -1054,10 +1144,48 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
     for (const incoming of body.tasks) {
       const timestamp = incoming.updatedAt ?? now();
       const existing = db.tasks.find((task) => task.id === incoming.id && task.ownerUserId === req.user!.id);
+      // Handle soft-delete
+      if (incoming.deletedAt && existing) {
+        existing.deletedAt = incoming.deletedAt;
+        existing.updatedAt = timestamp;
+        existing.version = existing.version + 1;
+        result.push(existing);
+        db.syncLogs.unshift({
+          id: randomUUID(),
+          userId: req.user!.id,
+          deviceId: body.deviceId,
+          taskId: incoming.id,
+          operationType: "delete",
+          status: "success",
+          createdAt: now(),
+        });
+        continue;
+      }
       if (!existing) {
+        // Check if another user owns a task with the same ID
+        const ownedByOther = db.tasks.find((task) => task.id === incoming.id);
+        if (ownedByOther) {
+          // Report conflict for ID collision so client knows to generate new UUID
+          conflicts.push({
+            taskId: incoming.id,
+            serverVersion: { ...ownedByOther },
+            clientVersion: { ...ownedByOther, ...incoming } as Task,
+          });
+          result.push(ownedByOther);
+          continue;
+        }
+        // Auto-assign teamId only when user has exactly one active membership
+        let userTeam = incoming.teamId;
+        if (!userTeam) {
+          const userTeams = db.teamMembers.filter(
+            (m) => m.userId === req.user!.id && m.status === "active",
+          );
+          if (userTeams.length === 1) userTeam = userTeams[0].teamId;
+        }
         const nextTask: Task = {
           ...incoming,
           ownerUserId: req.user!.id,
+          teamId: userTeam,
           sourceType: incoming.sourceType ?? "local",
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -1065,7 +1193,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         };
         db.tasks.push(nextTask);
         result.push(nextTask);
-      } else if (incoming.version != null && incoming.version < existing.version) {
+      } else if (incoming.version != null && incoming.version <= existing.version) {
         // 检查数据是否完全一致，一致则跳过冲突
         const merged = { ...existing, ...incoming };
         const fieldsToCompare = ["title", "content", "status", "priority", "startTime", "dueTime", "completedAt", "assignee", "parentId", "isRecurring", "recurringRule", "tagIds", "reminderMinutes", "reminderDismissed", "assigneeUserId", "sortOrder"] as const;
@@ -1076,7 +1204,21 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         } else if (body.force) {
           // Force push: overwrite server version
           const prevStatus = existing.status;
+          const ownerId = existing.ownerUserId;
+          const createdAt = existing.createdAt;
+          const sourceType = existing.sourceType;
+          const sourceTaskId = existing.sourceTaskId;
+          const sourceDistributionId = existing.sourceDistributionId;
           Object.assign(existing, incoming, { updatedAt: timestamp, version: existing.version + 1 });
+          existing.ownerUserId = ownerId;
+          existing.createdAt = createdAt;
+          existing.sourceType = sourceType;
+          existing.sourceTaskId = sourceTaskId;
+          existing.sourceDistributionId = sourceDistributionId;
+          if (prevStatus !== existing.status) {
+            if (existing.status === "completed") existing.completedAt = existing.completedAt || now();
+            else existing.completedAt = undefined;
+          }
           if (incoming.status && prevStatus !== incoming.status) {
             recordStatusChange(db, existing.id, {
               previousStatus: prevStatus,
@@ -1084,6 +1226,12 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
               changedByUserId: req.user!.id,
               source: existing.sourceType === "team_distribution" ? "recipient" : "sender",
             });
+          }
+          if (existing.sourceType === "team_distribution" && incoming.status) {
+            updateDistributionStatusOnTaskChange(db, existing.id, incoming.status);
+          }
+          if (existing.sourceType !== "team_distribution" && incoming.status && prevStatus !== incoming.status) {
+            propagateSenderStatusToRecipient(db, existing.id, incoming.status, req.user!.id);
           }
           result.push(existing);
         } else {
@@ -1095,9 +1243,23 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
           });
           result.push(existing);
         }
-      } else if (timestamp >= existing.updatedAt) {
+      } else if (incoming.version != null ? incoming.version > existing.version : timestamp >= existing.updatedAt) {
         const prevStatus = existing.status;
-        Object.assign(existing, incoming, { updatedAt: timestamp, version: Math.max(existing.version + 1, incoming.version) });
+        const ownerId = existing.ownerUserId;
+        const createdAt = existing.createdAt;
+        const sourceType = existing.sourceType;
+        const sourceTaskId = existing.sourceTaskId;
+        const sourceDistributionId = existing.sourceDistributionId;
+        Object.assign(existing, incoming, { updatedAt: timestamp, version: existing.version + 1 });
+        existing.ownerUserId = ownerId;
+        existing.createdAt = createdAt;
+        existing.sourceType = sourceType;
+        existing.sourceTaskId = sourceTaskId;
+        existing.sourceDistributionId = sourceDistributionId;
+        if (prevStatus !== existing.status) {
+          if (existing.status === "completed") existing.completedAt = existing.completedAt || now();
+          else existing.completedAt = undefined;
+        }
         if (incoming.status && prevStatus !== incoming.status) {
           recordStatusChange(db, existing.id, {
             previousStatus: prevStatus,
@@ -1117,15 +1279,19 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
       } else {
         result.push(existing);
       }
-      db.syncLogs.unshift({
-        id: randomUUID(),
-        userId: req.user!.id,
-        deviceId: body.deviceId,
-        taskId: incoming.id,
-        operationType: incoming.deletedAt ? "delete" : "update",
-        status: "success",
-        createdAt: now(),
-      });
+      // Only log sync for tasks that were actually applied (not conflicts)
+      const isConflict = conflicts.some((c) => c.taskId === incoming.id);
+      if (!isConflict) {
+        db.syncLogs.unshift({
+          id: randomUUID(),
+          userId: req.user!.id,
+          deviceId: body.deviceId,
+          taskId: incoming.id,
+          operationType: incoming.deletedAt ? "delete" : "update",
+          status: "success",
+          createdAt: now(),
+        });
+      }
     }
     return result;
   });
@@ -1133,14 +1299,20 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/tasks/sync/pull", auth, (req: AuthedRequest, res) => {
-  const since = typeof req.query.since === "string" ? req.query.since : "1970-01-01T00:00:00.000Z";
+  const rawSince = typeof req.query.since === "string" ? req.query.since : "1970-01-01T00:00:00.000Z";
+  const since = isNaN(Date.parse(rawSince)) ? "1970-01-01T00:00:00.000Z" : rawSince;
   const db = readDb();
-  const allVisible = db.tasks.filter((task) => canSeeTask(req.user!, task));
+  const allVisible = db.tasks.filter((task) => canSeeTask(req.user!, task, db));
   const visibleTaskIds = new Set(allVisible.map((t) => t.id));
   // Tasks: only return those updated since last sync
   const tasks = allVisible
     .filter((task) => task.updatedAt >= since)
-    .map((task) => ({ ...task, deleted: !!task.deletedAt }));
+    .map((task) => {
+      if (task.deletedAt) {
+        return { id: task.id, updatedAt: task.updatedAt, deletedAt: task.deletedAt, deleted: true as const };
+      }
+      return { ...task, deleted: false as const };
+    });
   // Comments: return all active comments for visible tasks (no since filter, client deduplicates)
   const comments = db.comments.filter((comment) => {
     return visibleTaskIds.has(comment.taskId) && comment.status === "active";
@@ -1164,11 +1336,13 @@ app.patch("/api/tasks/batch", auth, (req: AuthedRequest, res) => {
     const result: Task[] = [];
     const timestamp = now();
     for (const id of body.taskIds) {
-      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id);
+      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id && !t.deletedAt);
       if (!task) continue;
       if (body.status) {
         const prev = task.status;
         task.status = body.status;
+        if (body.status === "completed") task.completedAt = timestamp;
+        else task.completedAt = undefined;
         if (prev !== body.status) {
           recordStatusChange(db, task.id, {
             previousStatus: prev,
@@ -1176,8 +1350,11 @@ app.patch("/api/tasks/batch", auth, (req: AuthedRequest, res) => {
             changedByUserId: req.user!.id,
             source: task.sourceType === "team_distribution" ? "recipient" : "sender",
           });
-          updateDistributionStatusOnTaskChange(db, task.id, body.status);
-          propagateSenderStatusToRecipient(db, task.id, body.status, req.user!.id);
+          if (task.sourceType === "team_distribution") {
+            updateDistributionStatusOnTaskChange(db, task.id, body.status);
+          } else {
+            propagateSenderStatusToRecipient(db, task.id, body.status, req.user!.id);
+          }
         }
       }
       if (body.priority) task.priority = body.priority;
@@ -1201,7 +1378,7 @@ app.delete("/api/tasks/batch", auth, (req: AuthedRequest, res) => {
     let count = 0;
     const timestamp = now();
     for (const id of body.taskIds) {
-      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id);
+      const task = db.tasks.find((t) => t.id === id && t.ownerUserId === req.user!.id && !t.deletedAt);
       if (!task) continue;
       task.deletedAt = timestamp;
       task.updatedAt = timestamp;
@@ -1232,11 +1409,16 @@ app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
     .parse(req.body);
 
   const distribution = mutateDb((db) => {
-    const sourceTask = db.tasks.find((task) => task.id === body.sourceTaskId && task.ownerUserId === req.user!.id);
+    const sourceTask = db.tasks.find((task) => task.id === body.sourceTaskId && task.ownerUserId === req.user!.id && !task.deletedAt);
     if (!sourceTask) throw new AppError(ErrorCode.NOT_FOUND, "原任务不存在或无权分发");
     const senderInTeam = db.teamMembers.some((item) => item.teamId === body.teamId && item.userId === req.user!.id && item.status === "active");
     const recipientInTeam = db.teamMembers.some((item) => item.teamId === body.teamId && item.userId === body.recipientUserId && item.status === "active");
     if (!senderInTeam || !recipientInTeam) throw new AppError(ErrorCode.FORBIDDEN, "只能向同一团队成员分发任务");
+    // Prevent duplicate distribution
+    const alreadyDistributed = db.distributions.some(
+      (d) => d.sourceTaskId === body.sourceTaskId && d.recipientUserId === body.recipientUserId && d.status !== "cancelled" && d.status !== "failed",
+    );
+    if (alreadyDistributed) throw new AppError(ErrorCode.CONFLICT, "已向该成员分发过此任务");
 
     const timestamp = now();
     const distributionId = randomUUID();
@@ -1253,10 +1435,22 @@ app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
       completedAt: undefined,
       assignee: sourceTask.assignee,
       parentId: sourceTask.parentId,
+      isRecurring: sourceTask.isRecurring,
+      recurringRule: sourceTask.recurringRule,
+      tagIds: sourceTask.tagIds ? [...sourceTask.tagIds] : undefined,
       attachmentPaths: sourceTask.attachmentPaths ? [...sourceTask.attachmentPaths] : undefined,
+      reminderMinutes: sourceTask.reminderMinutes,
+      reminderDismissed: false,
+      reminderVoiceEnabled: sourceTask.reminderVoiceEnabled,
+      reminderVoiceType: sourceTask.reminderVoiceType,
+      reminderVoiceStyle: sourceTask.reminderVoiceStyle,
+      reminderVoiceSpeed: sourceTask.reminderVoiceSpeed,
+      reminderCustomVoicePath: sourceTask.reminderCustomVoicePath,
       sourceType: "team_distribution",
       sourceTaskId: sourceTask.id,
       sourceDistributionId: distributionId,
+      assigneeUserId: sourceTask.assigneeUserId,
+      sortOrder: sourceTask.sortOrder,
       version: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -1284,13 +1478,46 @@ app.post("/api/distributions", auth, (req: AuthedRequest, res) => {
   res.json({ distribution });
 });
 
+const DISTRIBUTION_STATUS_ORDER: Record<string, number> = {
+  sent: 0, received: 1, generated: 1, viewed: 2, in_progress: 3, completed: 4, cancelled: 4, failed: 4,
+};
+
 app.post("/api/distributions/:id/ack", auth, (req: AuthedRequest, res) => {
   const body = z.object({ status: z.enum(["received", "viewed", "in_progress", "completed", "cancelled", "failed"]) }).parse(req.body);
   const distribution = mutateDb((db) => {
     const found = db.distributions.find((item) => item.id === req.params.id);
     if (!found || found.recipientUserId !== req.user!.id) throw new AppError(ErrorCode.NOT_FOUND, "分发记录不存在或无权操作");
+    const currentOrder = DISTRIBUTION_STATUS_ORDER[found.status] ?? 0;
+    const newOrder = DISTRIBUTION_STATUS_ORDER[body.status] ?? 0;
+    if (newOrder <= currentOrder) throw new AppError(ErrorCode.CONFLICT, `不允许从 ${found.status} 回退到 ${body.status}`);
     found.status = body.status;
     found.updatedAt = now();
+    // Sync recipientTask status for terminal states
+    const taskStatus = body.status as string;
+    if (["completed", "cancelled", "in_progress"].includes(taskStatus) && found.recipientTaskId) {
+      const recipientTask = db.tasks.find((t) => t.id === found.recipientTaskId);
+      if (recipientTask && recipientTask.status !== taskStatus) {
+        const prevStatus = recipientTask.status;
+        recipientTask.status = taskStatus as Task["status"];
+        recipientTask.updatedAt = now();
+        recipientTask.version = (recipientTask.version ?? 0) + 1;
+        if (taskStatus === "completed") recipientTask.completedAt = now();
+        else recipientTask.completedAt = undefined;
+        recordStatusChange(db, recipientTask.id, {
+          previousStatus: prevStatus,
+          newStatus: taskStatus as Task["status"],
+          changedByUserId: req.user!.id,
+          source: "recipient",
+        });
+        // Propagate back to source task
+        if (found.sourceTaskId) {
+          const sourceTask = db.tasks.find((t) => t.id === found.sourceTaskId);
+          if (sourceTask && sourceTask.status !== taskStatus) {
+            updateDistributionStatusOnTaskChange(db, sourceTask.id, taskStatus as Task["status"]);
+          }
+        }
+      }
+    }
     return found;
   });
   res.json({ distribution });
@@ -1302,7 +1529,7 @@ app.get("/api/distributions", auth, (req: AuthedRequest, res) => {
     (item) =>
       item.senderUserId === req.user!.id ||
       item.recipientUserId === req.user!.id ||
-      (req.user!.role === "team_admin" && requireTeamMember(req.user!.id, item.teamId)),
+      (req.user!.role === "team_admin" && db.teamMembers.some((m) => m.teamId === item.teamId && m.userId === req.user!.id && m.role === "team_admin" && m.status === "active")),
   );
   const distributions = filtered.map((d) => enrichDistribution(db, d, req.user!.id));
   res.json({ distributions });
@@ -1315,7 +1542,7 @@ app.get("/api/distributions/by-task/:taskId", auth, (req: AuthedRequest, res) =>
   const isAuthorized = filtered.some(
     (d) => d.senderUserId === req.user!.id || d.recipientUserId === req.user!.id ||
       (req.user!.role === "system_admin") ||
-      (req.user!.role === "team_admin" && requireTeamMember(req.user!.id, d.teamId)),
+      (req.user!.role === "team_admin" && db.teamMembers.some((m) => m.teamId === d.teamId && m.userId === req.user!.id && m.role === "team_admin" && m.status === "active")),
   );
   if (!isAuthorized) return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看此任务的分发记录");
   const distributions = filtered.map((d) => {
@@ -1332,7 +1559,7 @@ app.get("/api/distributions/:distributionId/recipient-comments", auth, (req: Aut
   const db = readDb();
   const distribution = db.distributions.find((d) => d.id === req.params.distributionId);
   if (!distribution) return sendError(res, 404, ErrorCode.NOT_FOUND, "分发记录不存在");
-  if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamMember(req.user!.id, distribution.teamId))) {
+  if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamAdmin(req.user!.id, distribution.teamId))) {
     return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看");
   }
   const relatedTaskIds = [distribution.sourceTaskId, distribution.recipientTaskId].filter(Boolean) as string[];
@@ -1350,7 +1577,7 @@ app.get("/api/distributions/:distributionId/status-logs", auth, (req: AuthedRequ
   const db = readDb();
   const distribution = db.distributions.find((d) => d.id === req.params.distributionId);
   if (!distribution) return sendError(res, 404, ErrorCode.NOT_FOUND, "分发记录不存在");
-  if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamMember(req.user!.id, distribution.teamId))) {
+  if (distribution.senderUserId !== req.user!.id && distribution.recipientUserId !== req.user!.id && req.user!.role !== "system_admin" && !(req.user!.role === "team_admin" && requireTeamAdmin(req.user!.id, distribution.teamId))) {
     return sendError(res, 403, ErrorCode.FORBIDDEN, "无权查看");
   }
   const taskIds = new Set([distribution.sourceTaskId, distribution.recipientTaskId].filter(Boolean) as string[]);
@@ -1424,7 +1651,16 @@ app.post("/api/notifications/read-all", auth, (req: AuthedRequest, res) => {
 });
 
 // Activity feed
-app.get("/api/activity", auth, (req: AuthedRequest, res) => {
+function requireRole(...roles: string[]) {
+  return (req: AuthedRequest, res: Response, next: NextFunction) => {
+    if (!roles.includes(req.user!.role)) {
+      return sendError(res, 403, ErrorCode.FORBIDDEN, "无权操作");
+    }
+    next();
+  };
+}
+
+app.get("/api/activity", auth, requireRole("system_admin"), (req: AuthedRequest, res) => {
   const db = readDb();
   const logs = db.operationLogs
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -1494,10 +1730,14 @@ app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
   const comment = mutateDb((db) => {
     const task = db.tasks.find((item) => item.id === req.params.taskId && !item.deletedAt);
     if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务尚未同步到后台，请先同步任务后再评论");
-    if (!canSeeTask(req.user!, task)) throw new AppError(ErrorCode.FORBIDDEN, "无权评论该任务");
+    if (!canSeeTask(req.user!, task, db)) throw new AppError(ErrorCode.FORBIDDEN, "无权评论该任务");
     const operationId = body.operationId ?? randomUUID();
     const existingByOperation = db.comments.find((item) => item.operationId === operationId);
     if (existingByOperation) return existingByOperation;
+    if (body.clientCommentId) {
+      const existingByClientId = db.comments.find((item) => item.clientCommentId === body.clientCommentId);
+      if (existingByClientId) return existingByClientId;
+    }
     const timestamp = now();
     const nextComment: TaskComment = {
       id: randomUUID(),
@@ -1545,7 +1785,7 @@ app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
       createdAt: timestamp,
     });
     // Generate @mention notifications
-    const mentionRegex = /@(\S+)/g;
+    const mentionRegex = /@([^\s@]+)/g;
     let match: RegExpExecArray | null;
     const mentionedNames = new Set<string>();
     while ((match = mentionRegex.exec(body.content)) !== null) {
@@ -1580,11 +1820,21 @@ app.delete("/api/tasks/:taskId/comments/:commentId", auth, (req: AuthedRequest, 
   const comment = mutateDb((db) => {
     const found = db.comments.find((item) => item.id === req.params.commentId && item.taskId === req.params.taskId);
     if (!found || found.authorUserId !== req.user!.id) throw new AppError(ErrorCode.NOT_FOUND, "评论不存在或无权删除");
+    const originalOperationId = found.operationId;
     found.status = "deleted";
     found.deletedAt = now();
     found.updatedAt = found.deletedAt;
     found.operationId = body.operationId ?? found.operationId;
     updateDistributionCommentSummary(db, found.taskId);
+    // Delete mirrored copies of this comment
+    const mirrorPrefix = `${originalOperationId}-mirror-`;
+    const mirrors = db.comments.filter((c) => c.operationId?.startsWith(mirrorPrefix) && c.status === "active");
+    for (const m of mirrors) {
+      m.status = "deleted";
+      m.deletedAt = now();
+      m.updatedAt = m.deletedAt;
+      updateDistributionCommentSummary(db, m.taskId);
+    }
     return found;
   });
   res.json({ comment });
@@ -1600,8 +1850,8 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
     authorUserId: z.string().min(1).optional(),
   }).parse(req.body);
   const comment = mutateDb((db) => {
-    const task = db.tasks.find((t) => t.id === req.params.taskId);
-    if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在");
+    const task = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
+    if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在或已删除");
     // If authorUserId specified, verify it exists
     const effectiveAuthorId = body.authorUserId ?? req.user!.id;
     if (body.authorUserId && !db.users.find((u) => u.id === body.authorUserId)) {
@@ -1671,7 +1921,7 @@ app.post("/api/comments/sync/push", auth, (req: AuthedRequest, res) => {
         continue;
       }
       const task = db.tasks.find((item) => item.id === incoming.taskId && !item.deletedAt);
-      if (!task || !canSeeTask(req.user!, task)) continue;
+      if (!task || !canSeeTask(req.user!, task, db)) continue;
       const timestamp = now();
       const nextComment: TaskComment = {
         id: randomUUID(),
@@ -1702,12 +1952,13 @@ app.post("/api/comments/sync/push", auth, (req: AuthedRequest, res) => {
 });
 
 app.get("/api/comments/sync/pull", auth, (req: AuthedRequest, res) => {
-  const since = typeof req.query.since === "string" ? req.query.since : "1970-01-01T00:00:00.000Z";
+  const rawSince = typeof req.query.since === "string" ? req.query.since : "1970-01-01T00:00:00.000Z";
+  const since = isNaN(Date.parse(rawSince)) ? "1970-01-01T00:00:00.000Z" : rawSince;
   const db = readDb();
   const comments = db.comments
     .filter((comment) => {
       const task = db.tasks.find((item) => item.id === comment.taskId);
-      return task && canSeeTask(req.user!, task) && comment.status === "active" && comment.updatedAt >= since;
+      return task && canSeeTask(req.user!, task, db) && comment.status === "active" && comment.updatedAt >= since;
     })
     .sort((a, b) => a.serverCreatedAt.localeCompare(b.serverCreatedAt))
     .map((c) => ({
@@ -1716,6 +1967,19 @@ app.get("/api/comments/sync/pull", auth, (req: AuthedRequest, res) => {
     }));
   res.json({ comments, serverTime: now() });
 });
+
+// === Serve admin-web static files ===
+const adminWebDist = join(__dirname, "../../admin-web/dist");
+if (existsSync(adminWebDist)) {
+  app.use(express.static(adminWebDist));
+  // SPA fallback: non-API, non-static-asset routes return index.html
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith("/api")) return next();
+    if (/\.\w+$/.test(req.path)) return next();
+    res.sendFile(join(adminWebDist, "index.html"));
+  });
+  console.log(`Admin web served from ${adminWebDist}`);
+}
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {
@@ -1730,9 +1994,9 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     return sendError(res, status, err.code, err.message, err.details);
   }
   if (err instanceof z.ZodError) {
-    return sendError(res, 400, ErrorCode.VALIDATION_ERROR, "参数校验失败", err.issues);
+    return sendError(res, 400, ErrorCode.VALIDATION_ERROR, err.message ?? "Validation error", err.issues);
   }
-  const message = err instanceof Error ? err.message : "服务器异常";
+  const message = err instanceof Error ? err.message : "Server error";
   sendError(res, 500, ErrorCode.SERVER_ERROR, message);
 });
 

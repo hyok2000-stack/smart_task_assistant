@@ -178,6 +178,17 @@ export interface TaskFormData {
   reminderVoiceSpeed: string;
 }
 
+export interface Comment {
+  id: string;
+  taskId: string;
+  content: string;
+  authorUserId: string;
+  authorName?: string;
+  status: string;
+  createdAt?: string;
+  serverCreatedAt: string;
+}
+
 export interface TaskQuery {
   page?: number;
   pageSize?: number;

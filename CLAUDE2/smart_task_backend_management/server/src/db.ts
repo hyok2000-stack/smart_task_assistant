@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { DatabaseShape } from "./types";
@@ -137,18 +137,26 @@ function ensureDb() {
   }
 }
 
+let _cache: { mtime: number; data: DatabaseShape } | null = null;
+
 export function readDb(): DatabaseShape {
   ensureDb();
+  const stat = statSync(dbPath);
+  if (_cache && _cache.mtime === stat.mtimeMs) {
+    return JSON.parse(JSON.stringify(_cache.data)) as DatabaseShape;
+  }
   const db = JSON.parse(readFileSync(dbPath, "utf8")) as DatabaseShape;
   if (!db.inviteCodes) db.inviteCodes = [];
   if (!db.statusChangeLogs) db.statusChangeLogs = [];
   if (!db.notifications) db.notifications = [];
-  return db;
+  _cache = { mtime: stat.mtimeMs, data: db };
+  return JSON.parse(JSON.stringify(db)) as DatabaseShape;
 }
 
 export function writeDb(db: DatabaseShape) {
   mkdirSync(dirname(dbPath), { recursive: true });
   writeFileSync(dbPath, JSON.stringify(db, null, 2), "utf8");
+  _cache = null;
 }
 
 export function mutateDb<T>(fn: (db: DatabaseShape) => T): T {

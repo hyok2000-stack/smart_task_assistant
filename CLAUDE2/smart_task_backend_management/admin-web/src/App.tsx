@@ -12,10 +12,22 @@ import InviteCodeTab from './components/invite-code/InviteCodeTab';
 import TeamTab from './components/team/TeamTab';
 import UserTab from './components/user/UserTab';
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
 function App() {
-  const [account, setAccount] = useState('admin@example.com');
-  const [password, setPassword] = useState('admin123');
-  const [token, setToken] = useState(() => localStorage.getItem('smart-task-token') ?? '');
+  const [account, setAccount] = useState('');
+  const [password, setPassword] = useState('');
+  const [token, setToken] = useState(() => {
+    const stored = localStorage.getItem('smart-task-token');
+    return stored && !isTokenExpired(stored) ? stored : '';
+  });
   const [overview, setOverview] = useState<Overview | null>(null);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('list');
@@ -39,12 +51,20 @@ function App() {
       const data = await loadOverview(token);
       setOverview(data);
     } catch (err: any) {
-      setMessage(err.message ?? '读取失败');
+      const status = err?.status;
+      if (status === 401 || status === 403) {
+        localStorage.removeItem('smart-task-token');
+        setToken('');
+        setOverview(null);
+        setMessage('登录已过期，请重新登录');
+      } else {
+        setMessage(err.message ?? '读取失败');
+      }
     }
   }
 
   useEffect(() => {
-    handleRefresh();
+    if (token) handleRefresh();
   }, [token]);
 
   const adminUserId = useMemo(() => {
@@ -96,6 +116,17 @@ function App() {
           onPasswordChange={setPassword}
           onLogin={handleLogin}
         />
+      )}
+
+      {token && !overview && (
+        <div style={{ textAlign: 'center', padding: '48px 16px', color: '#666' }}>
+          <p>{message || '加载中...'}</p>
+          {message && (
+            <button className="ghost-button" type="button" onClick={handleRefresh} style={{ marginTop: 12 }}>
+              重试
+            </button>
+          )}
+        </div>
       )}
 
       {overview && token && (

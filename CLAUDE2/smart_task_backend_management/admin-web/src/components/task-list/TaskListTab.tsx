@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadAdminTasks, apiFetch } from '../../api';
 import type { Overview, Task, TaskQuery } from '../../types';
 import TaskDetailPage from '../task-detail/TaskDetailPage';
@@ -27,6 +27,7 @@ export default function TaskListTab({ overview, token, onRefresh, initialFilter 
   const [pageInfo, setPageInfo] = useState({ total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const fetchSeq = useRef(0);
 
   const toggleExpand = (taskId: string) => {
     setExpandedTaskId((prev) => (prev === taskId ? null : taskId));
@@ -39,17 +40,20 @@ export default function TaskListTab({ overview, token, onRefresh, initialFilter 
   };
 
   async function fetchTasks(nextQuery = query) {
+    const seq = ++fetchSeq.current;
     setLoading(true);
     setError('');
     try {
       const data = await loadAdminTasks(token, nextQuery);
+      if (seq !== fetchSeq.current) return;
       setTasks(data.tasks);
       setPageInfo({ total: data.total, totalPages: data.totalPages });
       setQuery((prev) => ({ ...prev, page: data.page, pageSize: data.pageSize }));
     } catch (err: any) {
+      if (seq !== fetchSeq.current) return;
       setError(err.message ?? '任务加载失败');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeq.current) setLoading(false);
     }
   }
 
@@ -96,9 +100,18 @@ export default function TaskListTab({ overview, token, onRefresh, initialFilter 
               style={{ marginLeft: 8 }}
               onClick={async () => {
                 try {
-                  const res = await fetch(`/api/admin/tasks/export`, {
+                  const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:4100/api';
+                  const res = await fetch(`${API_BASE}/admin/tasks/export`, {
                     headers: { Authorization: `Bearer ${token}` },
                   });
+                  if (!res.ok) {
+                    const ct = res.headers.get('content-type') ?? '';
+                    if (ct.includes('application/json')) {
+                      const err = await res.json();
+                      throw new Error(err.message ?? `导出失败: ${res.status}`);
+                    }
+                    throw new Error(`导出失败: ${res.status}`);
+                  }
                   const csv = await res.text();
                   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
                   const url = URL.createObjectURL(blob);
@@ -122,9 +135,17 @@ export default function TaskListTab({ overview, token, onRefresh, initialFilter 
                   : `确定删除当前显示的 ${tasks.length} 条任务？此操作不可撤销。`;
                 if (!confirm(msg)) return;
                 try {
+                  const filterQuery = {
+                    status: query.status || undefined,
+                    priority: query.priority || undefined,
+                    source: query.source || undefined,
+                    ownerUserId: query.ownerUserId || undefined,
+                    teamId: query.teamId || undefined,
+                    search: query.search || undefined,
+                  };
                   const res = await apiFetch('/admin/tasks/batch-delete', {
                     method: 'POST',
-                    body: JSON.stringify({ query }),
+                    body: JSON.stringify({ query: filterQuery }),
                   }, token);
                   alert(`已删除 ${res.deleted} 条任务`);
                   onRefresh();

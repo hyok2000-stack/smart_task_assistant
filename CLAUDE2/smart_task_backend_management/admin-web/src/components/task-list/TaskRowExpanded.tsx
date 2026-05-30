@@ -1,4 +1,4 @@
-import type { Task } from '../../types';
+import type { Comment, Task } from '../../types';
 
 const TAG_MAP: Record<string, { label: string; color: string }> = {
   default_work: { label: '工作', color: '#3B82F6' },
@@ -6,15 +6,6 @@ const TAG_MAP: Record<string, { label: string; color: string }> = {
   default_urgent: { label: '紧急', color: '#EF4444' },
   default_study: { label: '学习', color: '#8B5CF6' },
 };
-
-interface Comment {
-  id: string;
-  taskId: string;
-  authorUserId: string;
-  content: string;
-  status: string;
-  serverCreatedAt: string;
-}
 
 interface TaskRowExpandedProps {
   task: Task;
@@ -51,7 +42,7 @@ export default function TaskRowExpanded({ task, userName, comments, distribution
 
   return (
     <tr>
-      <td colSpan={7} className="task-expanded-cell">
+      <td colSpan={8} className="task-expanded-cell">
         <div className="task-expanded">
           <div className="detail-grid">
             <div className="detail-item">

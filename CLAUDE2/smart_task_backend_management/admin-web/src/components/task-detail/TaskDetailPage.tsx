@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Task } from '../../types';
 import * as api from '../../api';
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   pending: { label: '待处理', cls: 'status-pending' },
-  in_progress: { label: '进行中', cls: 'status-in_progress' },
+  in_progress: { label: '进行中', cls: 'status-in-progress' },
   completed: { label: '已完成', cls: 'status-completed' },
   cancelled: { label: '已取消', cls: 'status-cancelled' },
 };
@@ -20,7 +20,9 @@ const DIST_STATUS_MAP: Record<string, { label: string; cls: string }> = {
   received: { label: '已接收', cls: 'status-received' },
   generated: { label: '已生成', cls: 'status-generated' },
   viewed: { label: '已查看', cls: 'status-viewed' },
+  in_progress: { label: '进行中', cls: 'status-in-progress' },
   completed: { label: '已完成', cls: 'status-completed' },
+  cancelled: { label: '已取消', cls: 'status-cancelled' },
   failed: { label: '失败', cls: 'status-failed' },
 };
 
@@ -30,29 +32,62 @@ interface Props {
   onBack: () => void;
 }
 
+interface TaskDetailData {
+  task: Task;
+  comments: any[];
+  distributions: any[];
+  statusLogs: any[];
+  syncLogs: any[];
+}
+
+interface CommentsSectionProps {
+  comments: any[];
+  newComment: string;
+  onNewCommentChange: (v: string) => void;
+  onSubmit: () => void;
+  onDelete: (id: string) => void;
+}
+
+interface DistributionsSectionProps {
+  distributions: any[];
+  taskId: string;
+}
+
+interface StatusLogsSectionProps {
+  logs: any[];
+}
+
+interface SyncLogsSectionProps {
+  logs: any[];
+}
+
 type TabKey = 'info' | 'comments' | 'distributions' | 'logs' | 'sync';
 
 export default function TaskDetailPage({ taskId, token, onBack }: Props) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<TaskDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [newComment, setNewComment] = useState('');
+  const loadSeq = useRef(0);
 
   useEffect(() => {
     load();
   }, [taskId, token]);
 
   async function load() {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError('');
     try {
       const result = await api.loadAdminTaskDetail(token, taskId);
+      if (seq !== loadSeq.current) return;
       setData(result);
     } catch (e: any) {
+      if (seq !== loadSeq.current) return;
       setError(e.message ?? '加载失败');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
@@ -61,16 +96,31 @@ export default function TaskDetailPage({ taskId, token, onBack }: Props) {
     try {
       await api.adminAddComment(token, taskId, newComment.trim());
       setNewComment('');
-      load();
+      // Silent refresh without full-page loading flash
+      const seq = ++loadSeq.current;
+      try {
+        const freshData = await api.loadAdminTaskDetail(token, taskId);
+        if (seq === loadSeq.current) {
+          setData(freshData);
+        }
+      } catch { /* ignore background refresh errors */ }
     } catch (e: any) {
       alert('评论失败: ' + e.message);
     }
   }
 
   async function handleDeleteComment(commentId: string) {
+    if (!confirm('确定删除此评论？')) return;
     try {
       await api.adminDeleteComment(token, commentId);
-      load();
+      // Refresh without full-page loading flash
+      const seq = ++loadSeq.current;
+      try {
+        const freshData = await api.loadAdminTaskDetail(token, taskId);
+        if (seq === loadSeq.current) {
+          setData(freshData);
+        }
+      } catch { /* ignore background refresh errors */ }
     } catch (e: any) {
       alert('删除失败: ' + e.message);
     }
@@ -129,7 +179,7 @@ export default function TaskDetailPage({ taskId, token, onBack }: Props) {
             onDelete={handleDeleteComment}
           />
         )}
-        {activeTab === 'distributions' && <DistributionsSection distributions={data.distributions} />}
+        {activeTab === 'distributions' && <DistributionsSection distributions={data.distributions} taskId={taskId} />}
         {activeTab === 'logs' && <StatusLogsSection logs={data.statusLogs} />}
         {activeTab === 'sync' && <SyncLogsSection logs={data.syncLogs} />}
       </div>
@@ -141,16 +191,16 @@ function InfoSection({ task }: { task: Task }) {
   const fields: [string, string | undefined][] = [
     ['ID', task.id],
     ['内容', task.content],
-    ['指派人', (task as any).assigneeName ?? (task as any).assigneeUserId ?? '-'],
+    ['指派人', task.assigneeUserId ?? '-'],
     ['来源', task.sourceType === 'team_distribution' ? '团队分发' : '本地'],
     ['优先级', task.priority],
     ['开始时间', task.startTime ? new Date(task.startTime).toLocaleString('zh-CN') : undefined],
     ['截止时间', task.dueTime ? new Date(task.dueTime).toLocaleString('zh-CN') : undefined],
     ['完成时间', task.completedAt ? new Date(task.completedAt).toLocaleString('zh-CN') : undefined],
-    ['标签', (task as any).tagIds?.length ? (task as any).tagIds.join(', ') : undefined],
-    ['提醒(分钟)', (task as any).reminderMinutes != null ? String((task as any).reminderMinutes) : undefined],
-    ['重复', (task as any).isRecurring ? (task as any).recurringRule ?? '是' : '否'],
-    ['团队ID', (task as any).teamId],
+    ['标签', task.tagIds?.length ? task.tagIds.join(', ') : undefined],
+    ['提醒(分钟)', task.reminderMinutes != null ? String(task.reminderMinutes) : undefined],
+    ['重复', task.isRecurring ? task.recurringRule ?? '是' : '否'],
+    ['团队ID', task.teamId],
     ['创建时间', task.createdAt ? new Date(task.createdAt).toLocaleString('zh-CN') : undefined],
     ['更新时间', task.updatedAt ? new Date(task.updatedAt).toLocaleString('zh-CN') : undefined],
   ];
@@ -166,7 +216,7 @@ function InfoSection({ task }: { task: Task }) {
   );
 }
 
-function CommentsSection({ comments, newComment, onNewCommentChange, onSubmit, onDelete }: any) {
+function CommentsSection({ comments, newComment, onNewCommentChange, onSubmit, onDelete }: CommentsSectionProps) {
   return (
     <div>
       <div className="comment-input-row">
@@ -174,7 +224,7 @@ function CommentsSection({ comments, newComment, onNewCommentChange, onSubmit, o
           value={newComment}
           onChange={(e) => onNewCommentChange(e.target.value)}
           placeholder="输入评论..."
-          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSubmit()}
         />
         <button onClick={onSubmit} disabled={!newComment.trim()}>发送</button>
       </div>
@@ -198,7 +248,7 @@ function CommentsSection({ comments, newComment, onNewCommentChange, onSubmit, o
   );
 }
 
-function DistributionsSection({ distributions }: { distributions: any[] }) {
+function DistributionsSection({ distributions, taskId }: DistributionsSectionProps) {
   if (distributions.length === 0) return <div className="empty-state">暂无分发记录</div>;
   return (
     <table className="dist-table">
@@ -219,7 +269,7 @@ function DistributionsSection({ distributions }: { distributions: any[] }) {
           const s = DIST_STATUS_MAP[d.status] ?? { label: d.status, cls: '' };
           return (
             <tr key={d.id}>
-              <td>{d.sourceTaskTitle ? '发出' : '接收'}</td>
+              <td>{d.sourceTaskId === taskId ? '发出' : '接收'}</td>
               <td>{d.sourceTaskTitle ?? d.sourceTaskId}</td>
               <td>{d.recipientTaskTitle ?? '-'}</td>
               <td>{d.senderName}</td>
@@ -235,13 +285,13 @@ function DistributionsSection({ distributions }: { distributions: any[] }) {
   );
 }
 
-function StatusLogsSection({ logs }: { logs: any[] }) {
+function StatusLogsSection({ logs }: StatusLogsSectionProps) {
   if (logs.length === 0) return <div className="empty-state">暂无状态变更记录</div>;
   return (
     <div className="log-timeline">
       {logs.map((l: any) => (
         <div key={l.id} className="log-item">
-          <span className={`status-badge ${STATUS_MAP[l.newStatus]?.cls ?? ''}`}>
+          <span className={`status-badge ${STATUS_MAP[l.previousStatus]?.cls ?? ''}`}>
             {STATUS_MAP[l.previousStatus]?.label ?? l.previousStatus}
           </span>
           <span className="log-arrow">→</span>
@@ -257,7 +307,7 @@ function StatusLogsSection({ logs }: { logs: any[] }) {
   );
 }
 
-function SyncLogsSection({ logs }: { logs: any[] }) {
+function SyncLogsSection({ logs }: SyncLogsSectionProps) {
   if (logs.length === 0) return <div className="empty-state">暂无同步记录</div>;
   return (
     <table>

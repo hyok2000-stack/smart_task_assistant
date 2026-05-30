@@ -66,7 +66,7 @@ export default function UserTab({ overview, token, onRefresh }: UserTabProps) {
     setEditNickname(user.nickname);
     setEditPhone(user.phone ?? '');
     setEditEmail(user.email ?? '');
-    setEditRole(user.role === 'system_admin' ? 'team_admin' : user.role);
+    setEditRole(user.role);
     setEditPassword('');
     setEditError('');
   }
@@ -74,15 +74,16 @@ export default function UserTab({ overview, token, onRefresh }: UserTabProps) {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingUser) return;
+    if (!editNickname.trim()) { setEditError('请输入昵称'); return; }
     setEditSubmitting(true);
     setEditError('');
     try {
       const body: Record<string, string> = {
         nickname: editNickname.trim(),
-        role: editRole,
+        role: editingUser.role === 'system_admin' ? 'system_admin' : editRole,
       };
-      if (editPhone.trim()) body.phone = editPhone.trim();
-      if (editEmail.trim()) body.email = editEmail.trim();
+      body.phone = editPhone.trim();
+      body.email = editEmail.trim();
       if (editPassword) body.password = editPassword;
       await updateUser(token, editingUser.id, body);
       setEditingUser(null);
@@ -204,10 +205,14 @@ export default function UserTab({ overview, token, onRefresh }: UserTabProps) {
               </div>
               <div className="form-field">
                 <label>角色</label>
+                {editingUser.role === 'system_admin' ? (
+                  <span className="detail-label">系统管理员（不可更改）</span>
+                ) : (
                 <select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                   <option value="member">成员</option>
                   <option value="team_admin">团队管理员</option>
                 </select>
+                )}
               </div>
               <div className="form-field">
                 <label>新密码（留空不修改）</label>

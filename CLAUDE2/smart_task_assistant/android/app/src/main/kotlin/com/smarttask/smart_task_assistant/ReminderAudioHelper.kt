@@ -96,11 +96,14 @@ class ReminderAudioHelper(private val context: Context) {
 
     /**
      * 播放提醒通知音
+     * 使用 USAGE_ALARM + TYPE_ALARM 铃声，Doze 模式下最可靠
      */
     fun playReminderSound(): MediaPlayer? {
         return try {
             val soundFile = ensureSoundFile()
-            val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            // 优先使用闹钟铃声（比通知铃声更响，Doze 下更可靠）
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val defaultUri = alarmUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             val mp = MediaPlayer()
             mp.setAudioAttributes(alarmAudioAttributes)
             mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Task, User } from '../../types';
+import type { Comment, Task, User } from '../../types';
 import { updateTask, adminAddComment, adminDeleteComment } from '../../api';
 
 const TAG_OPTIONS = [
@@ -16,15 +16,6 @@ const RECURRENCE_OPTIONS = [
   { value: 'monthly', label: '每月' },
 ];
 
-interface Comment {
-  id: string;
-  taskId: string;
-  authorUserId: string;
-  content: string;
-  status: string;
-  serverCreatedAt: string;
-}
-
 interface TaskEditFormProps {
   task: Task;
   users: User[];
@@ -37,13 +28,25 @@ interface TaskEditFormProps {
 
 function datetimeLocal(v?: string) {
   if (!v) return '';
-  return v.slice(0, 16);
+  try {
+    const d = new Date(v);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
 }
 
 export default function TaskEditForm({ task, users, comments, distributions, token, onSave, onCancel }: TaskEditFormProps) {
   const [title, setTitle] = useState(task.title);
   const [content, setContent] = useState(task.content ?? '');
   const [status, setStatus] = useState(task.status);
+  function handleStatusChange(newStatus: string) {
+    setStatus(newStatus as Task['status']);
+    if (newStatus === 'completed' && !completedAt) {
+      setCompletedAt(datetimeLocal(new Date().toISOString()));
+    }
+  }
   const [priority, setPriority] = useState(task.priority);
   const [startTime, setStartTime] = useState(datetimeLocal(task.startTime));
   const [dueTime, setDueTime] = useState(datetimeLocal(task.dueTime));
@@ -111,13 +114,13 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
         dueTime: dueTime || undefined,
         completedAt: completedAt || undefined,
         assigneeUserId: assigneeUserId || undefined,
-        ownerUserId,
+        ownerUserId: ownerUserId || undefined,
         teamId: teamId || undefined,
         parentId: parentId.trim() || undefined,
         isRecurring,
         recurringRule: isRecurring && recurringFreq ? JSON.stringify({ freq: recurringFreq }) : undefined,
         tagIds,
-        reminderMinutes: reminderMinutes ? Number(reminderMinutes) : null,
+        reminderMinutes: reminderMinutes ? (isNaN(Number(reminderMinutes)) ? undefined : Number(reminderMinutes)) : undefined,
         reminderDismissed,
         reminderVoiceEnabled,
         reminderVoiceType: reminderVoiceType || undefined,
@@ -140,7 +143,7 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
     try {
       const authorId = commentAsUserId || undefined;
       const data = await adminAddComment(token, task.id, text, authorId);
-      setLocalComments((prev) => [data.comment, ...prev]);
+      if (data?.comment) setLocalComments((prev) => [data.comment, ...prev]);
       setNewComment('');
     } catch (err: any) {
       alert(err.message ?? '评论失败');
@@ -168,14 +171,14 @@ export default function TaskEditForm({ task, users, comments, distributions, tok
 
   return (
     <tr>
-      <td colSpan={7} className="task-expanded-cell">
+      <td colSpan={8} className="task-expanded-cell">
         <form className="dist-form" onSubmit={handleSubmit} style={{ margin: 0 }}>
           <div className="form-grid">
             {/* === 基本信息 === */}
             {field('标题 *', <input value={title} onChange={(e) => setTitle(e.target.value)} />, true)}
             {field('内容', <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={3} />, true)}
             {field('状态', (
-              <select value={status} onChange={(e) => setStatus(e.target.value as Task['status'])}>
+              <select value={status} onChange={(e) => handleStatusChange(e.target.value)}>
                 <option value="pending">待处理</option>
                 <option value="in_progress">进行中</option>
                 <option value="completed">已完成</option>

@@ -255,20 +255,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       final tagIds = <String>[];
 
       // 包含默认标签
-      final defaultTags = [
-        Tag(id: 'default_work', name: '工作', color: '#3B82F6', isDefault: true),
-        Tag(
-            id: 'default_personal',
-            name: '个人',
-            color: '#10B981',
-            isDefault: true),
-        Tag(
-            id: 'default_urgent',
-            name: '紧急',
-            color: '#EF4444',
-            isDefault: true),
-        Tag(id: 'default_study', name: '学习', color: '#8B5CF6', isDefault: true),
-      ];
+      final defaultTags = Tag.getDefaultTags();
 
       // 处理标签：找到对应的ID或创建新标签
       for (final tagName in _selectedTags) {
@@ -770,7 +757,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                   ],
                                 ),
                                 child: ElevatedButton.icon(
-                                  onPressed: _isLoading ? null : _createTask,
+                                  onPressed: _isCreating ? null : _createTask,
                                   icon: const Icon(Icons.add_task, size: 18),
                                   label: const Text('创建任务'),
                                   style: ElevatedButton.styleFrom(
@@ -1306,28 +1293,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
     return Consumer<TaskProvider>(
       builder: (context, provider, child) {
         // 获取默认标签
-        final defaultTags = [
-          Tag(
-              id: 'default_work',
-              name: '工作',
-              color: '#3B82F6',
-              isDefault: true),
-          Tag(
-              id: 'default_personal',
-              name: '个人',
-              color: '#10B981',
-              isDefault: true),
-          Tag(
-              id: 'default_urgent',
-              name: '紧急',
-              color: '#EF4444',
-              isDefault: true),
-          Tag(
-              id: 'default_study',
-              name: '学习',
-              color: '#8B5CF6',
-              isDefault: true),
-        ];
+        final defaultTags = Tag.getDefaultTags();
 
         // 合并默认标签和自定义标签（去重）
         final allTags = [...defaultTags];

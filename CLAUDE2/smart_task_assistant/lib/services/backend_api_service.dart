@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -261,6 +262,7 @@ class BackendApiService {
   String? _account;
   String? _password;
   String? _deviceId;
+  Timer? _heartbeatTimer;
 
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
   String? get userId => _userId;
@@ -296,6 +298,12 @@ class BackendApiService {
       await prefs.remove(_passwordKey);
     }
     _deviceId = prefs.getString(_deviceIdKey);
+
+    // Restore heartbeat if already logged in
+    if (isLoggedIn && _deviceId != null) {
+      _autoBindDevice();
+      _startHeartbeat();
+    }
   }
 
   Future<void> setBaseUrl(String value) async {
@@ -354,6 +362,10 @@ class BackendApiService {
       await SecureStorageService.instance.deletePassword();
     }
 
+    // Auto bind device and start heartbeat
+    await _autoBindDevice();
+    _startHeartbeat();
+
     return session;
   }
 
@@ -403,12 +415,18 @@ class BackendApiService {
     await prefs.setString(_tokenKey, session.token);
     await prefs.setString(_userIdKey, session.userId);
     await prefs.setString(_nicknameKey, session.nickname);
+    await prefs.setString(_accountKey, nickname);
     await prefs.remove(_passwordKey);
+
+    // Auto bind device and start heartbeat
+    await _autoBindDevice();
+    _startHeartbeat();
 
     return session;
   }
 
   Future<void> logout() async {
+    _stopHeartbeat();
     _token = null;
     _userId = null;
     _nickname = null;
@@ -438,6 +456,49 @@ class BackendApiService {
         options: _authOptions(),
       ),
     );
+  }
+
+  Future<void> _autoBindDevice() async {
+    if (!isLoggedIn || _deviceId == null) return;
+    try {
+      await _request(
+        () => _dio.post<Map<String, dynamic>>(
+          '$baseUrl/devices/bind',
+          data: _withoutNulls({
+            'deviceId': _deviceId,
+            'deviceName': 'Flutter APP',
+            'platform': defaultTargetPlatform.name,
+          }),
+          options: _authOptions(),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    if (!isLoggedIn || _deviceId == null) return;
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      _sendHeartbeat();
+    });
+  }
+
+  Future<void> _sendHeartbeat() async {
+    if (!isLoggedIn || _deviceId == null) return;
+    try {
+      await _request(
+        () => _dio.post<Map<String, dynamic>>(
+          '$baseUrl/devices/heartbeat',
+          data: {'deviceId': _deviceId},
+          options: _authOptions(),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   /// 获取我加入的团队列表
@@ -530,7 +591,7 @@ class BackendApiService {
     if (deletedIds != null) {
       final now = DateTime.now().toIso8601String();
       for (final id in deletedIds) {
-        items.add({'id': id, 'deletedAt': now, 'updatedAt': now});
+        items.add({'id': id, 'deletedAt': now, 'updatedAt': now, 'version': 1});
       }
     }
     final allConflicts = <ConflictInfo>[];
@@ -599,15 +660,15 @@ class BackendApiService {
     );
     final tasksJson = response.data?['tasks'] as List? ?? [];
     final commentsJson = response.data?['comments'] as List? ?? [];
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastSyncAtKey, DateTime.now().toIso8601String());
 
     final activeTasks = <Task>[];
     final deletedIds = <String>[];
     for (final json in tasksJson) {
-      final jsonMap = json as Map<String, dynamic>;
+      if (json is! Map<String, dynamic>) continue;
+      final jsonMap = json;
       if (jsonMap['deleted'] == true) {
-        deletedIds.add(jsonMap['id'] as String);
+        final id = jsonMap['id'];
+        if (id is String) deletedIds.add(id);
         continue;
       }
       final localMatch = localTasks?.where((t) => t.id == jsonMap['id']).firstOrNull;
@@ -615,8 +676,12 @@ class BackendApiService {
     }
 
     final comments = commentsJson
-        .map((json) => BackendTaskComment.fromJson(json as Map<String, dynamic>))
+        .whereType<Map<String, dynamic>>()
+        .map((json) => BackendTaskComment.fromJson(json))
         .toList();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastSyncAtKey, DateTime.now().toIso8601String());
 
     return PullResult(tasks: activeTasks, deletedTaskIds: deletedIds, comments: comments);
   }
@@ -929,13 +994,13 @@ class BackendApiService {
               .toIso8601String(),
       'assignee': task.assignee,
       'parentId': task.parentId,
-      'isRecurring': task.isRecurring ? true : null,
+      'isRecurring': task.isRecurring,
       'recurringRule': task.recurringRule,
       'tagIds': task.tagIds.isNotEmpty ? task.tagIds : null,
       'attachmentPaths': task.attachmentPaths.isNotEmpty ? task.attachmentPaths : null,
       'reminderMinutes': task.reminderMinutes,
-      'reminderDismissed': task.reminderDismissed ? true : null,
-      'reminderVoiceEnabled': task.reminderVoiceEnabled ? null : false,
+      'reminderDismissed': task.reminderDismissed,
+      'reminderVoiceEnabled': task.reminderVoiceEnabled,
       'reminderVoiceType': task.reminderVoiceType,
       'reminderVoiceStyle': task.reminderVoiceStyle,
       'reminderVoiceSpeed': task.reminderVoiceSpeed,
@@ -977,40 +1042,65 @@ class BackendApiService {
     }
   }
 
+  /// Helper: get nullable value from json, fall back to localTask only if key is absent or value is null
+  T? _jsonOrLocal<T>(Map<String, dynamic> json, String key, T? Function()? localGetter) {
+    if (json.containsKey(key) && json[key] != null) {
+      final v = json[key];
+      // Coerce numeric types: double → int when T is int
+      if (T == int && v is num) return v.toInt() as T?;
+      return v as T?;
+    }
+    return localGetter?.call();
+  }
+
+  bool _parseBool(dynamic v, {bool defaultValue = false, bool? localFallback}) {
+    if (v is bool) return v;
+    if (v is int) return v != 0;
+    if (v == null && localFallback != null) return localFallback;
+    return defaultValue;
+  }
+
+  DateTime? _parseDateField(dynamic v) {
+    if (v is DateTime) return v;
+    if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    return null;
+  }
+
   Task taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
-    final sourceType = (json['sourceType'] as String?) ?? localTask?.sourceType;
+    final sourceType = json.containsKey('sourceType') ? (json['sourceType'] as String?) : (localTask?.sourceType);
     final task = Task(
       id: json['id'] as String,
       title: json['title'] as String,
-      content: json['content'] as String?,
+      content: _jsonOrLocal(json, 'content', () => localTask?.content),
       status: _statusFromBackend(json['status'] as String?),
       priority: _priorityFromBackend(json['priority'] as String?),
-      startTime: _parseDate(json['startTime']) ?? localTask?.startTime,
-      dueTime: _parseDate(json['dueTime']),
-      completedAt: _parseDate(json['completedAt']) ?? localTask?.completedAt,
-      assignee: (json['assignee'] as String?) ?? localTask?.assignee,
-      parentId: (json['parentId'] as String?) ?? localTask?.parentId,
-      isRecurring: json['isRecurring'] as bool? ?? localTask?.isRecurring ?? false,
-      recurringRule: (json['recurringRule'] as String?) ?? localTask?.recurringRule,
-      tagIds: _parseStringList(json['tagIds']) ?? localTask?.tagIds ?? [],
-      attachmentPaths: _parseStringList(json['attachmentPaths']) ?? localTask?.attachmentPaths ?? [],
-      reminderMinutes: json['reminderMinutes'] as int? ?? localTask?.reminderMinutes,
-      reminderDismissed: json['reminderDismissed'] as bool? ?? localTask?.reminderDismissed ?? false,
-      reminderVoiceEnabled: json['reminderVoiceEnabled'] as bool? ?? localTask?.reminderVoiceEnabled ?? true,
-      reminderVoiceType: (json['reminderVoiceType'] as String?) ?? localTask?.reminderVoiceType,
-      reminderVoiceStyle: (json['reminderVoiceStyle'] as String?) ?? localTask?.reminderVoiceStyle,
-      reminderVoiceSpeed: (json['reminderVoiceSpeed'] as String?) ?? localTask?.reminderVoiceSpeed,
-      reminderCustomVoicePath: (json['reminderCustomVoicePath'] as String?) ?? localTask?.reminderCustomVoicePath,
+      startTime: json.containsKey('startTime') ? _parseDateField(json['startTime']) : localTask?.startTime,
+      dueTime: json.containsKey('dueTime') ? _parseDateField(json['dueTime']) : localTask?.dueTime,
+      completedAt: json.containsKey('completedAt') ? _parseDateField(json['completedAt']) : localTask?.completedAt,
+      assignee: _jsonOrLocal(json, 'assignee', () => localTask?.assignee),
+      parentId: _jsonOrLocal(json, 'parentId', () => localTask?.parentId),
+      isRecurring: json.containsKey('isRecurring') ? _parseBool(json['isRecurring'], localFallback: localTask?.isRecurring) : (localTask?.isRecurring ?? false),
+      recurringRule: _jsonOrLocal(json, 'recurringRule', () => localTask?.recurringRule),
+      tagIds: json.containsKey('tagIds') ? _parseStringList(json['tagIds']) ?? [] : (localTask?.tagIds ?? []),
+      attachmentPaths: json.containsKey('attachmentPaths') ? _parseStringList(json['attachmentPaths']) ?? [] : (localTask?.attachmentPaths ?? []),
+      reminderMinutes: _jsonOrLocal(json, 'reminderMinutes', () => localTask?.reminderMinutes),
+      reminderDismissed: json.containsKey('reminderDismissed') ? _parseBool(json['reminderDismissed'], localFallback: localTask?.reminderDismissed) : (localTask?.reminderDismissed ?? false),
+      reminderVoiceEnabled: json.containsKey('reminderVoiceEnabled') ? _parseBool(json['reminderVoiceEnabled'], defaultValue: true, localFallback: localTask?.reminderVoiceEnabled) : (localTask?.reminderVoiceEnabled ?? true),
+      reminderVoiceType: _jsonOrLocal(json, 'reminderVoiceType', () => localTask?.reminderVoiceType),
+      reminderVoiceStyle: _jsonOrLocal(json, 'reminderVoiceStyle', () => localTask?.reminderVoiceStyle),
+      reminderVoiceSpeed: _jsonOrLocal(json, 'reminderVoiceSpeed', () => localTask?.reminderVoiceSpeed),
+      reminderCustomVoicePath: _jsonOrLocal(json, 'reminderCustomVoicePath', () => localTask?.reminderCustomVoicePath),
       sourceType: sourceType,
-      sourceTaskId: (json['sourceTaskId'] as String?) ?? localTask?.sourceTaskId,
-      sourceDistributionId: (json['sourceDistributionId'] as String?) ?? localTask?.sourceDistributionId,
-      teamId: (json['teamId'] as String?) ?? localTask?.teamId,
-      ownerUserId: (json['ownerUserId'] as String?) ?? localTask?.ownerUserId,
-      version: (json['version'] as int?) ?? localTask?.version,
-      sortOrder: json['sortOrder'] as int?,
-      assigneeUserId: json['assigneeUserId'] as String?,
-      createdAt: _parseDate(json['createdAt']) ?? localTask?.createdAt ?? DateTime.now(),
-      updatedAt: _parseDate(json['updatedAt']) ?? DateTime.now(),
+      sourceTaskId: _jsonOrLocal(json, 'sourceTaskId', () => localTask?.sourceTaskId),
+      sourceDistributionId: _jsonOrLocal(json, 'sourceDistributionId', () => localTask?.sourceDistributionId),
+      teamId: _jsonOrLocal(json, 'teamId', () => localTask?.teamId),
+      ownerUserId: _jsonOrLocal(json, 'ownerUserId', () => localTask?.ownerUserId),
+      version: _jsonOrLocal(json, 'version', () => localTask?.version),
+      sortOrder: _jsonOrLocal(json, 'sortOrder', () => localTask?.sortOrder),
+      assigneeUserId: _jsonOrLocal(json, 'assigneeUserId', () => localTask?.assigneeUserId),
+      createdAt: json.containsKey('createdAt') ? (_parseDate(json['createdAt']) ?? localTask?.createdAt ?? DateTime.now()) : (localTask?.createdAt ?? DateTime.now()),
+      updatedAt: _parseDate(json['updatedAt']) ?? localTask?.updatedAt ?? DateTime.now(),
     );
 
     return task;
@@ -1074,9 +1164,7 @@ class BackendApiService {
   }
 
   List<String>? _parseStringList(dynamic value) {
-    if (value is List) {
-      return value.cast<String>();
-    }
+    if (value is List) return value.whereType<String>().toList();
     return null;
   }
 }

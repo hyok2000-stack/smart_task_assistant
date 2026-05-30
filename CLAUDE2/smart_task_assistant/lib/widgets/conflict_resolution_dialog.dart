@@ -12,7 +12,13 @@ class ConflictResolutionDialog extends StatelessWidget {
     return Consumer<TaskProvider>(
       builder: (context, provider, _) {
         final conflicts = provider.conflicts;
-        if (conflicts.isEmpty) return const SizedBox.shrink();
+        if (conflicts.isEmpty) {
+          // Conflicts resolved while dialog was open — auto close
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) Navigator.pop(context);
+          });
+          return const SizedBox.shrink();
+        }
 
         return Dialog(
           child: Container(

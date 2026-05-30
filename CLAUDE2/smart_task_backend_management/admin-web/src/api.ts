@@ -19,6 +19,7 @@ export async function apiFetch(path: string, options: RequestInit, token: string
   if (!response.ok) {
     const err = new Error(data.message ?? '请求失败');
     (err as any).code = data.code;
+    (err as any).status = response.status;
     throw err;
   }
   return data;
@@ -104,7 +105,7 @@ export async function loadAdminTaskDetail(token: string, taskId: string) {
   }>;
 }
 
-export async function pushTasks(token: string, tasks: Task[]): Promise<{ tasks: Task[] }> {
+export async function pushTasks(token: string, tasks: Partial<Task>[]): Promise<{ tasks: Task[] }> {
   return apiFetch('/tasks/sync/push', {
     method: 'POST',
     body: JSON.stringify({ tasks }),
@@ -145,12 +146,12 @@ export function taskToPushPayload(form: TaskFormData): Partial<Task> {
     startTime: form.startTime || undefined,
     dueTime: form.dueTime || undefined,
     assignee: form.assignee || undefined,
-    assigneeUserId: (form as any).assigneeUserId || undefined,
-    isRecurring: form.isRecurring || undefined,
+    assigneeUserId: form.assigneeUserId || undefined,
+    isRecurring: form.isRecurring ? true : undefined,
     recurringRule: form.isRecurring ? form.recurringRule : undefined,
     tagIds: form.tagIds.length > 0 ? form.tagIds : undefined,
     reminderMinutes: form.reminderMinutes ?? undefined,
-    reminderVoiceEnabled: form.reminderVoiceEnabled || undefined,
+    reminderVoiceEnabled: form.reminderVoiceEnabled ? true : undefined,
     reminderVoiceType: form.reminderVoiceEnabled ? form.reminderVoiceType : undefined,
     reminderVoiceStyle: form.reminderVoiceEnabled ? form.reminderVoiceStyle : undefined,
     reminderVoiceSpeed: form.reminderVoiceEnabled ? form.reminderVoiceSpeed : undefined,

@@ -1,5 +1,5 @@
-import { Fragment, useState } from 'react';
-import type { Task, TaskQuery, Team, User } from '../../types';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import type { Comment, Task, TaskQuery, Team, User } from '../../types';
 import TaskRowExpanded from './TaskRowExpanded';
 import TaskEditForm from './TaskEditForm';
 
@@ -15,15 +15,6 @@ const PRIORITY_MAP: Record<string, { label: string; cls: string }> = {
   medium: { label: '中', cls: 'priority-medium' },
   high: { label: '高', cls: 'priority-high' },
 };
-
-interface Comment {
-  id: string;
-  taskId: string;
-  authorUserId: string;
-  content: string;
-  status: string;
-  serverCreatedAt: string;
-}
 
 interface TaskTableProps {
   tasks: Task[];
@@ -59,6 +50,20 @@ export default function TaskTable({
   onViewDetail,
 }: TaskTableProps) {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState(query.search ?? '');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setSearchText(query.search ?? '');
+  }, [query.search]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchText(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onQueryChange({ search: value });
+    }, 300);
+  }, [onQueryChange]);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.nickname ?? id;
   const hasFilter = query.status || query.priority || query.source || query.ownerUserId || query.teamId || query.search;
@@ -109,8 +114,8 @@ export default function TaskTable({
           ))}
         </select>
         <input
-          value={query.search ?? ''}
-          onChange={(e) => onQueryChange({ search: e.target.value })}
+          value={searchText}
+          onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="搜索标题/内容"
           style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, width: 160 }}
         />

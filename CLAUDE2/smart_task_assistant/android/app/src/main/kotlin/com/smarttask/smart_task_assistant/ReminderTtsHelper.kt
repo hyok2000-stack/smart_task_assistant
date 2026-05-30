@@ -28,12 +28,15 @@ class ReminderTtsHelper(private val context: Context) {
     companion object {
         private const val TAG = "ReminderTtsHelper"
         private const val DEFAULT_TTS_VOLUME = 1.0f
+        private const val IDLE_THRESHOLD_MS = 300_000L // 5 分钟空闲视为需要重新初始化
     }
 
     @Volatile
     private var tts: TextToSpeech? = null
     @Volatile
     private var ttsReady = false
+    @Volatile
+    private var lastSuccessfulSpeakTime = 0L // 上次成功 speak 的时间
     private var initLatch = CountDownLatch(1)
     private val handlerThread = HandlerThread("TtsHelperThread").apply { start() }
     private val handler = Handler(handlerThread.looper)
@@ -141,7 +144,7 @@ class ReminderTtsHelper(private val context: Context) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(mediaSpeechAttributes)
+                    .setAudioAttributes(alarmSpeechAttributes)
                     .setOnAudioFocusChangeListener { }
                     .build()
                 audioManager.requestAudioFocus(audioFocusRequest!!)
@@ -277,6 +280,19 @@ class ReminderTtsHelper(private val context: Context) {
                     return@post
                 }
 
+                // 空闲超过 5 分钟（深度 Doze 后 TTS 引擎进程可能已被冻结/杀死）
+                // 强制重新初始化，确保引擎处于可用状态
+                val now = System.currentTimeMillis()
+                if (lastSuccessfulSpeakTime > 0 && now - lastSuccessfulSpeakTime > IDLE_THRESHOLD_MS) {
+                    Log.w(TAG, "TTS idle for ${(now - lastSuccessfulSpeakTime) / 1000}s, forcing reinit")
+                    reinitTts()
+                    if (!waitForInit() || tts == null) {
+                        Log.e(TAG, "TTS reinit after idle failed, playing fallback")
+                        playFallbackNotification()
+                        return@post
+                    }
+                }
+
                 // Calculate pitch (matching Flutter _getPitch())
                 val basePitch = when (voiceType) {
                     "male" -> 0.7f
@@ -296,14 +312,16 @@ class ReminderTtsHelper(private val context: Context) {
                     else -> 1.0f
                 }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    tts?.setAudioAttributes(mediaSpeechAttributes)
-                }
+                // 先设置 pitch/rate，再设置 audioAttributes
+                // 部分 TTS 引擎在 setPitch/setSpeechRate 时会重置 audioAttributes
                 tts?.setPitch(pitch)
                 tts?.setSpeechRate(rate)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    tts?.setAudioAttributes(alarmSpeechAttributes)
+                }
                 val speakParams = Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, DEFAULT_TTS_VOLUME)
-                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+                    putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
                 }
 
                 val utteranceId = "reminder_${System.currentTimeMillis()}"
@@ -334,6 +352,7 @@ class ReminderTtsHelper(private val context: Context) {
                         accepted.set(doRetrySpeak(text, pitch, rate, speakParams))
                     } else {
                         accepted.set(true)
+                        lastSuccessfulSpeakTime = System.currentTimeMillis()
                         Log.d(TAG, "TTS speak started: '$text' (pitch=$pitch, rate=$rate)")
                     }
                 }
@@ -368,11 +387,11 @@ class ReminderTtsHelper(private val context: Context) {
             playFallbackNotification()
             return false
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            tts?.setAudioAttributes(mediaSpeechAttributes)
-        }
         tts?.setPitch(pitch)
         tts?.setSpeechRate(rate)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            tts?.setAudioAttributes(alarmSpeechAttributes)
+        }
         val retryId = "reminder_retry_${System.currentTimeMillis()}"
         utteranceTextMap[retryId] = text
         val retryStartLatch = CountDownLatch(1)
@@ -400,7 +419,7 @@ class ReminderTtsHelper(private val context: Context) {
     private fun playCustomVoiceFile(file: File): Boolean {
         return try {
             val mp = MediaPlayer()
-            mp.setAudioAttributes(mediaSpeechAttributes)
+            mp.setAudioAttributes(alarmSpeechAttributes)
             mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             mp.setDataSource(file.absolutePath)
             mp.setOnCompletionListener {
@@ -425,17 +444,19 @@ class ReminderTtsHelper(private val context: Context) {
     }
 
     /**
-     * TTS 完全失败时的兜底方案：使用 MediaPlayer 播放系统通知音
-     * USAGE_ALARM 在 Doze 模式下可靠，确保至少有声音提醒
+     * TTS 完全失败时的兜底方案：使用 MediaPlayer 播放闹钟铃声
+     * TYPE_ALARM + USAGE_ALARM 在 Doze 模式下最可靠，确保至少有声音提醒
      */
     private fun playFallbackNotification() {
         try {
             val mp = MediaPlayer()
             mp.setAudioAttributes(alarmSoundAttributes)
             mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+            // 优先使用闹钟铃声（比通知铃声更响、Doze 下更可靠）
+            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
             if (uri == null) {
-                Log.w(TAG, "No fallback notification sound available")
+                Log.w(TAG, "No fallback sound available")
                 abandonAudioFocus()
                 return
             }

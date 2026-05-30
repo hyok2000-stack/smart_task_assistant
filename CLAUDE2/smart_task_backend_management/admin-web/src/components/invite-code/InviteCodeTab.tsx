@@ -55,10 +55,21 @@ export default function InviteCodeTab({ overview, token, onRefresh }: InviteCode
     }
   }
 
-  function copyCode(code: InviteCode) {
-    navigator.clipboard.writeText(code.code);
-    setCopiedId(code.id);
-    setTimeout(() => setCopiedId(null), 1500);
+  async function copyCode(code: InviteCode) {
+    try {
+      await navigator.clipboard.writeText(code.code);
+      setCopiedId(code.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = code.code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedId(code.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    }
   }
 
   const codes = overview.inviteCodes ?? [];
