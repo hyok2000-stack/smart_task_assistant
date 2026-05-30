@@ -1103,7 +1103,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
       tasks: z.array(
         z.object({
           id: z.string().min(1),
-          title: z.string().min(1),
+          title: z.string().min(1).optional(),
           content: z.string().optional(),
           status: z.enum(["pending", "in_progress", "completed", "cancelled"]).default("pending"),
           priority: z.enum(["low", "medium", "high"]).default("medium"),
