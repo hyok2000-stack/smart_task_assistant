@@ -13,9 +13,14 @@ class ConflictResolutionDialog extends StatelessWidget {
       builder: (context, provider, _) {
         final conflicts = provider.conflicts;
         if (conflicts.isEmpty) {
-          // Conflicts resolved while dialog was open — auto close
+          // 冲突已全部解决 — 延迟关闭对话框
+          // 只在当前路由仍是最顶层时才 pop，避免与 _resolveAll 的 pop 竞争导致双重 pop（黑屏）
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) Navigator.pop(context);
+            if (!context.mounted) return;
+            final route = ModalRoute.of(context);
+            if (route != null && route.isCurrent) {
+              Navigator.pop(context);
+            }
           });
           return const SizedBox.shrink();
         }
