@@ -118,7 +118,7 @@ class StatCard extends StatelessWidget {
                         Text(
                           trendValue!,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: trendUp
                                 ? AppTheme.successColor
@@ -161,7 +161,7 @@ class StatCard extends StatelessWidget {
                 subtitle!,
                 style: TextStyle(
                   color: AppTheme.textHintColor,
-                  fontSize: 11,
+                  fontSize: 12,
                 ),
               ),
             ],

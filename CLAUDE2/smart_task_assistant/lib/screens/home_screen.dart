@@ -720,7 +720,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Text(
                     badge,
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -765,7 +765,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Text(
                 _weatherInfo!.cityName!,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   color: AppTheme.textHintColor,
                 ),
                 maxLines: 1,
@@ -1190,7 +1190,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Text(
                       '$completedCount/$totalCount',
                       style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 12,
                         color: AppTheme.textSecondaryColor,
                       ),
                     ),
@@ -1249,7 +1249,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Text(
           label,
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 12,
             color: AppTheme.textSecondaryColor,
           ),
         ),
@@ -1619,7 +1619,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   color: isSelected ? color : AppTheme.textHintColor,
                 ),
@@ -2389,7 +2389,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     child: Text(
                       '${distributions.length}',
-                      style: TextStyle(fontSize: 11, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 12, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -2482,7 +2482,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                         child: Text(
                           '${d.unreadCommentCount}条新评论',
-                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w600),
+                          style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
                         ),
                       ),
                     const SizedBox(width: 4),
@@ -2587,7 +2587,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   const Spacer(),
                                   Text(
                                     _formatDateTime(c.serverCreatedAt),
-                                    style: TextStyle(fontSize: 11, color: AppTheme.textHintColor),
+                                    style: TextStyle(fontSize: 12, color: AppTheme.textHintColor),
                                   ),
                                 ],
                               ),
@@ -2716,7 +2716,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                             ),
                                             child: Text(
                                               sourceLabels[log.source] ?? log.source,
-                                              style: TextStyle(fontSize: 10, color: sourceColor),
+                                              style: TextStyle(fontSize: 12, color: sourceColor),
                                             ),
                                           ),
                                         ],
@@ -2729,7 +2729,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       const SizedBox(height: 2),
                                       Text(
                                         _formatDateTime(log.createdAt),
-                                        style: TextStyle(fontSize: 11, color: AppTheme.textHintColor),
+                                        style: TextStyle(fontSize: 12, color: AppTheme.textHintColor),
                                       ),
                                     ],
                                   ),
@@ -3400,7 +3400,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         title: Text(m.displayName),
-                        subtitle: m.userId == currentUserId ? const Text('（自己）', style: TextStyle(fontSize: 11)) : null,
+                        subtitle: m.userId == currentUserId ? const Text('（自己）', style: TextStyle(fontSize: 12)) : null,
                         trailing: isCurrentAssignee
                             ? const Icon(Icons.check_circle, color: AppTheme.primaryColor)
                             : null,

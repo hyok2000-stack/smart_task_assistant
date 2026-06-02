@@ -100,7 +100,7 @@ class _LogViewerDialogState extends State<LogViewerDialog> {
                       Text(
                         log.formattedTime,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           color: Colors.grey.shade600,
                           fontFamily: 'monospace',
                         ),

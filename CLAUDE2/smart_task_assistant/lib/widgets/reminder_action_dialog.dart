@@ -45,7 +45,7 @@ class ReminderActionDialog extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppTheme.warningColor.withOpacity(0.15),
+                    color: AppTheme.warningColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -91,7 +91,7 @@ class ReminderActionDialog extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -116,7 +116,7 @@ class ReminderActionDialog extends StatelessWidget {
                     ),
                     Icon(
                       Icons.edit_outlined,
-                      color: AppTheme.primaryColor.withOpacity(0.6),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.6),
                       size: 18,
                     ),
                   ],
@@ -208,7 +208,7 @@ class ReminderActionDialog extends StatelessWidget {
       },
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.primaryColor,
-        side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.5)),
+        side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.5)),
         padding: const EdgeInsets.symmetric(vertical: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),

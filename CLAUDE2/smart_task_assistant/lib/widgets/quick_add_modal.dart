@@ -1017,7 +1017,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
               Text(
                 '推荐',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 12,
                   color: chipColor,
                   fontWeight: FontWeight.w600,
                 ),

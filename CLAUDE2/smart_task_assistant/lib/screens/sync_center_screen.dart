@@ -278,7 +278,7 @@ class SyncCenterScreen extends StatelessWidget {
               ),
             Text(
               DateFormat('MM-dd HH:mm').format(item.createdAt),
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),

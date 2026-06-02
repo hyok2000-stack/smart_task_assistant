@@ -205,7 +205,7 @@ class _ConflictCard extends StatelessWidget {
                       width: 56,
                       child: Text(f.$1,
                           style: const TextStyle(
-                              fontSize: 11, color: Colors.grey)),
+                              fontSize: 12, color: Colors.grey)),
                     ),
                     Expanded(
                       child: Text(f.$2 ?? '-',

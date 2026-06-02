@@ -354,7 +354,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                                 Text(
                                   _currentModelName,
                                   style: const TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: Colors.white70,
                                   ),
                                 ),
@@ -682,7 +682,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                       Text(
                         message.engineType!,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 12,
                           color: Colors.grey.shade500,
                         ),
                       ),
@@ -892,7 +892,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                         child: Text(
                           item.priorityLevel,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
                             color: priorityColor,
                             fontWeight: FontWeight.w500,
                           ),
@@ -913,7 +913,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                         child: Text(
                           item.reason,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             color: AppTheme.textSecondaryColor,
                           ),
                         ),
@@ -933,7 +933,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                         child: Text(
                           item.suggestion,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             color: const Color(0xFF6366F1),
                             fontWeight: FontWeight.w500,
                           ),
@@ -1051,14 +1051,14 @@ class _AIChatDialogState extends State<AIChatDialog>
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: priorityColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: Text(priorityText, style: TextStyle(fontSize: 11, color: priorityColor, fontWeight: FontWeight.w500)),
+                        child: Text(priorityText, style: TextStyle(fontSize: 12, color: priorityColor, fontWeight: FontWeight.w500)),
                       ),
                       if (parsed.dueTime != null)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                           child: Text('截止: ${parsed.dueTime!.month}/${parsed.dueTime!.day} ${parsed.dueTime!.hour}:${parsed.dueTime!.minute.toString().padLeft(2, '0')}',
-                              style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                              style: const TextStyle(fontSize: 12, color: Colors.blue)),
                         ),
                     ],
                   ),

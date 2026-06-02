@@ -191,7 +191,7 @@ class TaskCard extends StatelessWidget {
                       Text(
                         task.dueTimeDescription,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           color: task.isOverdue
                               ? AppTheme.errorColor
                               : AppTheme.textSecondaryColor,
@@ -565,7 +565,7 @@ class TaskCard extends StatelessWidget {
           Text(
             '已分发',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               color: AppTheme.primaryColor,
               fontWeight: FontWeight.w600,
             ),
@@ -637,7 +637,7 @@ class TaskCard extends StatelessWidget {
                       Text(
                         '编辑',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           color: AppTheme.primaryColor,
                           fontWeight: FontWeight.w500,
                         ),
@@ -779,7 +779,7 @@ class TaskCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: color,
                 fontWeight: FontWeight.w600,
               ),
@@ -856,7 +856,7 @@ class TaskCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: color,
                 fontWeight: FontWeight.w600,
               ),
@@ -913,7 +913,7 @@ class TaskCard extends StatelessWidget {
             Text(
               task.dueTimeDescription,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: color,
                 fontWeight:
                     task.isOverdue ? FontWeight.w600 : FontWeight.normal,
@@ -968,7 +968,7 @@ class TaskCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
               ),
@@ -1016,7 +1016,7 @@ class TaskCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: Colors.orange,
                 fontWeight: FontWeight.w600,
               ),
@@ -1084,7 +1084,7 @@ class TaskCard extends StatelessWidget {
                 Text(
                   tag.name,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: color,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1150,7 +1150,7 @@ class TaskCard extends StatelessWidget {
                 Text(
                   tag.name,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: color,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.2,

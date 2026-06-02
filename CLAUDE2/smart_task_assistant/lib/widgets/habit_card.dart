@@ -96,7 +96,7 @@ class HabitCard extends StatelessWidget {
                           Text(
                             _formatTime(nextReminderTime),
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               color: Colors.blue[700],
                               fontWeight: FontWeight.w500,
                             ),

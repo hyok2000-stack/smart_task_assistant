@@ -222,13 +222,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppTheme.primaryColor.withOpacity(0.1),
-                        AppTheme.secondaryColor.withOpacity(0.1),
+                        AppTheme.primaryColor.withValues(alpha: 0.1),
+                        AppTheme.secondaryColor.withValues(alpha: 0.1),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
@@ -236,7 +236,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.2),
+                          color: AppTheme.primaryColor.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
@@ -332,8 +332,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     gradient: _dueTime != null
                         ? LinearGradient(
                             colors: [
-                              AppTheme.primaryColor.withOpacity(0.08),
-                              AppTheme.secondaryColor.withOpacity(0.08),
+                              AppTheme.primaryColor.withValues(alpha: 0.08),
+                              AppTheme.secondaryColor.withValues(alpha: 0.08),
                             ],
                           )
                         : null,
@@ -342,7 +342,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _dueTime != null
-                          ? AppTheme.primaryColor.withOpacity(0.3)
+                          ? AppTheme.primaryColor.withValues(alpha: 0.3)
                           : Colors.grey.shade200,
                       width: _dueTime != null ? 1.5 : 1,
                     ),
@@ -353,7 +353,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: _dueTime != null
-                              ? AppTheme.primaryColor.withOpacity(0.15)
+                              ? AppTheme.primaryColor.withValues(alpha: 0.15)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -388,13 +388,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
+                              color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Icon(
                               Icons.close,
                               size: 16,
-                              color: Colors.red.withOpacity(0.7),
+                              color: Colors.red.withValues(alpha: 0.7),
                             ),
                           ),
                         ),
@@ -780,7 +780,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 child: Text(
                                   l.defaultTags,
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: AppTheme.textHintColor,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -812,7 +812,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           child: Text(
                             l.customTags,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               color: AppTheme.textHintColor,
                               fontWeight: FontWeight.w500,
                             ),
@@ -883,7 +883,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircleAvatar(radius: 10, backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2), child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?', style: const TextStyle(fontSize: 10))),
+                              CircleAvatar(radius: 10, backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2), child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?', style: const TextStyle(fontSize: 12))),
                               const SizedBox(width: 6),
                               Text(m.displayName, style: TextStyle(fontSize: 13, color: _assigneeUserId == m.userId ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
                             ],
@@ -1110,7 +1110,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             children: [
               Text(authorLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isMine ? Colors.grey.shade600 : AppTheme.primaryColor)),
               const SizedBox(width: 6),
-              Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              Text(timeStr, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               if (comment.synced) ...[
                 const SizedBox(width: 4),
                 Icon(Icons.cloud_done_outlined, size: 12, color: Colors.green.shade400),
@@ -1252,7 +1252,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.1) : Colors.grey.shade100,
+            color: isSelected ? color.withValues(alpha: 0.1) : Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? color : Colors.transparent,
@@ -1314,7 +1314,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : Colors.grey.shade50,
+            color: isSelected ? color.withValues(alpha: 0.15) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? color : Colors.grey.shade300,
@@ -1332,7 +1332,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   color: isSelected ? color : AppTheme.textHintColor,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
@@ -1353,7 +1353,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: isSelected
-                ? AppTheme.primaryColor.withOpacity(0.1)
+                ? AppTheme.primaryColor.withValues(alpha: 0.1)
                 : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
@@ -1778,7 +1778,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           }
         });
       },
-      selectedColor: color.withOpacity(0.2),
+      selectedColor: color.withValues(alpha: 0.2),
       checkmarkColor: Colors.white, // 改为白色打勾号
       backgroundColor: Colors.grey.shade100,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1918,7 +1918,7 @@ class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> 
                                         ),
                                       ),
                                       const SizedBox(width: 6),
-                                      Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                      Text(timeStr, style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
                                     ],
                                   ),
                                   const SizedBox(height: 4),

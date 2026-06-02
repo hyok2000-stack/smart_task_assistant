@@ -48,7 +48,7 @@ class SubtaskList extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '$completed/$total',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -76,21 +76,23 @@ class SubtaskList extends StatelessWidget {
                 ],
               ),
             ),
-          // Add subtask button
+          // Add subtask button - 44px minimum tap target
           if (onAddSubtask != null)
             InkWell(
               onTap: onAddSubtask,
               borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 44),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add, size: 16, color: AppTheme.primaryColor),
+                    Icon(Icons.add, size: 18, color: AppTheme.primaryColor),
                     const SizedBox(width: 4),
                     Text(
                       '添加子任务',
-                      style: TextStyle(fontSize: 12, color: AppTheme.primaryColor),
+                      style: TextStyle(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
