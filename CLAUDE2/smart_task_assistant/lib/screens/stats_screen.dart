@@ -10,24 +10,16 @@ import '../utils/app_localizations.dart';
 
 /// 统计页面
 class StatsScreen extends StatelessWidget {
-  const StatsScreen({super.key});
+  final VoidCallback? onNavigateToAllTasks;
+  final ValueChanged<String>? onNavigateToFiltered; // 'pending', 'completed', 'overdue', 'inProgress', 'highPriority'
+
+  const StatsScreen({super.key, this.onNavigateToAllTasks, this.onNavigateToFiltered});
 
   @override
   Widget build(BuildContext context) {
     final l = context.l;
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFAFAFA), // 非常浅的灰色，接近白色
-            Color(0xFFF8F8F8), // 浅灰
-            Color(0xFFF5F5F5), // 稍深的浅灰
-          ],
-          stops: [0.0, 0.5, 1.0],
-        ),
-      ),
+      color: AppTheme.backgroundColor,
       child: Consumer<TaskProvider>(
         builder: (context, provider, child) {
           final stats = provider.stats;
@@ -77,61 +69,68 @@ class StatsScreen extends StatelessWidget {
 
   Widget _buildOverviewCard(
       BuildContext context, Map<String, int> stats, AppLocalizations l) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.15),
-            AppTheme.secondaryColor.withOpacity(0.15),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onNavigateToAllTasks,
         borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l.taskOverview,
-            style: TextStyle(
-              color: AppTheme.textSecondaryColor,
-              fontSize: 14,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primaryColor.withValues(alpha: 0.15),
+                AppTheme.secondaryColor.withValues(alpha: 0.15),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '共 ${stats['total'] ?? 0} 个任务',
-            style: TextStyle(
-              color: AppTheme.textPrimaryColor,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildOverviewItem(
-                l.statusPending,
-                stats['pending'] ?? 0,
-                AppTheme.textPrimaryColor,
+              Text(
+                l.taskOverview,
+                style: TextStyle(
+                  color: AppTheme.textSecondaryColor,
+                  fontSize: 14,
+                ),
               ),
-              const SizedBox(width: 24),
-              _buildOverviewItem(
-                l.statusInProgress,
-                stats['inProgress'] ?? 0,
-                AppTheme.textSecondaryColor,
+              const SizedBox(height: 8),
+              Text(
+                l.isZh ? '共 ${stats['total'] ?? 0} 个任务' : '${stats['total'] ?? 0} tasks total',
+                style: TextStyle(
+                  color: AppTheme.textPrimaryColor,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              const SizedBox(width: 24),
-              _buildOverviewItem(
-                l.statusCompleted,
-                stats['completed'] ?? 0,
-                AppTheme.textHintColor,
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  _buildOverviewItem(
+                    l.statusPending,
+                    stats['pending'] ?? 0,
+                    AppTheme.textPrimaryColor,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildOverviewItem(
+                    l.statusInProgress,
+                    stats['inProgress'] ?? 0,
+                    AppTheme.textSecondaryColor,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildOverviewItem(
+                    l.statusCompleted,
+                    stats['completed'] ?? 0,
+                    AppTheme.textHintColor,
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -151,7 +150,7 @@ class StatsScreen extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: color.withOpacity(0.7),
+            color: color.withValues(alpha: 0.7),
             fontSize: 12,
           ),
         ),
@@ -177,18 +176,18 @@ class StatsScreen extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.white.withOpacity(0.7),
+                Colors.white.withValues(alpha: 0.9),
+                Colors.white.withValues(alpha: 0.7),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -210,7 +209,7 @@ class StatsScreen extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor.withOpacity(0.1),
+                      color: AppTheme.successColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -239,14 +238,14 @@ class StatsScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '已完成 $completed 个',
+                    '${l.completedTasks} $completed',
                     style: TextStyle(
                       color: AppTheme.textSecondaryColor,
                       fontSize: 13,
                     ),
                   ),
                   Text(
-                    '共 $total 个',
+                    '${l.isZh ? "共" : "Total"} $total',
                     style: TextStyle(
                       color: AppTheme.textHintColor,
                       fontSize: 13,
@@ -281,18 +280,18 @@ class StatsScreen extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.white.withOpacity(0.7),
+                Colors.white.withValues(alpha: 0.9),
+                Colors.white.withValues(alpha: 0.7),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -306,7 +305,7 @@ class StatsScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.infoColor.withOpacity(0.15),
+                      color: AppTheme.infoColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -331,28 +330,28 @@ class StatsScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildStatItem(
-                      '今日任务',
+                      l.navToday,
                       '${todayTasks.length}',
                       AppTheme.infoColor,
                     ),
                   ),
                   Expanded(
                     child: _buildStatItem(
-                      '已完成',
+                      l.statusCompleted,
                       '$completedToday',
                       AppTheme.successColor,
                     ),
                   ),
                   Expanded(
                     child: _buildStatItem(
-                      '待处理',
+                      l.statusPending,
                       '$pendingToday',
                       AppTheme.warningColor,
                     ),
                   ),
                   Expanded(
                     child: _buildStatItem(
-                      '高优先级',
+                      l.priorityHigh,
                       '$highPriorityToday',
                       AppTheme.errorColor,
                     ),
@@ -372,89 +371,96 @@ class StatsScreen extends StatelessWidget {
     final highPriorityOverdue =
         overdueTasks.where((t) => t.priority == TaskPriority.high).length;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.white.withOpacity(0.7),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.3),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 15,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.errorColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.warning_amber_rounded,
-                      color: AppTheme.errorColor,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    l.overdueTasks,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimaryColor,
-                    ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onNavigateToFiltered != null ? () => onNavigateToFiltered!('overdue') : null,
+        borderRadius: BorderRadius.circular(20),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.9),
+                    Colors.white.withValues(alpha: 0.7),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 15,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _buildStatItem(
-                      '逾期任务',
-                      '${overdueTasks.length}',
-                      AppTheme.errorColor,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppTheme.errorColor,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        l.overdueTasks,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: _buildStatItem(
-                      '高优先级',
-                      '$highPriorityOverdue',
-                      Colors.red.shade700,
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildStatItem(
-                      '紧急处理',
-                      '需要关注',
-                      Colors.orange.shade600,
-                    ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatItem(
+                          l.overdueTasks,
+                          '${overdueTasks.length}',
+                          AppTheme.errorColor,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildStatItem(
+                          l.priorityHigh,
+                          '$highPriorityOverdue',
+                          Colors.red.shade700,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildStatItem(
+                          l.isZh ? '紧急处理' : 'Urgent',
+                          l.isZh ? '需要关注' : 'Attention',
+                          Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -490,18 +496,18 @@ class StatsScreen extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.white.withOpacity(0.7),
+                Colors.white.withValues(alpha: 0.9),
+                Colors.white.withValues(alpha: 0.7),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -515,7 +521,7 @@ class StatsScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.15),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -539,7 +545,7 @@ class StatsScreen extends StatelessWidget {
               if (topTags.isEmpty)
                 Center(
                   child: Text(
-                    '暂无标签数据',
+                    l.isZh ? '暂无标签数据' : 'No tag data',
                     style: TextStyle(
                       color: AppTheme.textHintColor,
                       fontSize: 14,
@@ -551,7 +557,7 @@ class StatsScreen extends StatelessWidget {
                   final tag = tags.firstWhere(
                     (t) => t.id == entry.key,
                     orElse: () =>
-                        Tag(id: entry.key, name: '未知标签', color: '#999999'),
+                        Tag(id: entry.key, name: l.isZh ? '未知标签' : 'Unknown', color: '#999999'),
                   );
                   final percentage = tasks.isNotEmpty
                       ? (entry.value / tasks.length * 100).toStringAsFixed(1)
@@ -579,7 +585,7 @@ class StatsScreen extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${entry.value}个',
+                          '${entry.value}${l.isZh ? "个" : ""}',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -611,7 +617,7 @@ class StatsScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
@@ -654,18 +660,18 @@ class StatsScreen extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.9),
-                Colors.white.withOpacity(0.7),
+                Colors.white.withValues(alpha: 0.9),
+                Colors.white.withValues(alpha: 0.7),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -739,6 +745,7 @@ class StatsScreen extends StatelessWidget {
 
   // C10: Report generation card
   Widget _buildReportCard(BuildContext context, TaskProvider provider) {
+    final l = context.l;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -762,7 +769,7 @@ class StatsScreen extends StatelessWidget {
                 child: const Icon(Icons.assessment_rounded, color: AppTheme.primaryColor, size: 20),
               ),
               const SizedBox(width: 12),
-              const Text('数据报告', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(l.isZh ? '数据报告' : 'Data Report', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 16),
@@ -833,11 +840,11 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
       children: [
         Row(
           children: [
-            _periodChip('日报', 'daily'),
+            _periodChip(context.l.isZh ? '日报' : 'Daily', 'daily'),
             const SizedBox(width: 8),
-            _periodChip('周报', 'weekly'),
+            _periodChip(context.l.isZh ? '周报' : 'Weekly', 'weekly'),
             const SizedBox(width: 8),
-            _periodChip('月报', 'monthly'),
+            _periodChip(context.l.isZh ? '月报' : 'Monthly', 'monthly'),
             const Spacer(),
             ElevatedButton(
               onPressed: _loading ? null : _generate,
@@ -847,7 +854,7 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
-              child: const Text('生成', style: TextStyle(fontSize: 13)),
+              child: Text(context.l.isZh ? '生成' : 'Generate', style: const TextStyle(fontSize: 13)),
             ),
           ],
         ),
@@ -865,11 +872,11 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
             ),
             child: Column(
               children: [
-                _reportRow('总任务数', '${_report!['totalTasks'] ?? 0}'),
-                _reportRow('已完成', '${_report!['completedTasks'] ?? 0}'),
-                _reportRow('进行中', '${_report!['inProgressTasks'] ?? 0}'),
-                _reportRow('逾期', '${_report!['overdueTasks'] ?? 0}'),
-                _reportRow('完成率', '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
+                _reportRow(context.l.isZh ? '总任务数' : 'Total Tasks', '${_report!['totalTasks'] ?? 0}'),
+                _reportRow(context.l.completedTasks, '${_report!['completedTasks'] ?? 0}'),
+                _reportRow(context.l.statusInProgress, '${_report!['inProgressTasks'] ?? 0}'),
+                _reportRow(context.l.overdueTasks, '${_report!['overdueTasks'] ?? 0}'),
+                _reportRow(context.l.completionRate, '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
               ],
             ),
           ),

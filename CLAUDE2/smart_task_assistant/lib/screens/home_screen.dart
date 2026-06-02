@@ -22,7 +22,7 @@ import 'settings_screen.dart';
 import 'habit_screen.dart';
 import 'calendar_screen.dart';
 import '../widgets/distribution_status_widget.dart';
-import '../widgets/conflict_resolution_dialog.dart';
+import '../widgets/empty_state_widget.dart';
 import '../widgets/subtask_list.dart';
 import '../widgets/activity_feed_dialog.dart';
 
@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _fabAnimationController;
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
   int _unreadNotificationCount = 0;
+  bool _isAICardDismissed = false; // AI 建议卡片是否已关闭
 
   // Cached futures for FutureBuilders (prevents rebuild from re-triggering)
   final Map<String, Future<List<TaskComment>>> _commentsFutureCache = {};
@@ -67,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // 初始化时间
     _updateTime();
     _timeTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
+        Timer.periodic(const Duration(minutes: 1), (_) => _updateTime());
 
     // 强制刷新天气信息（不使用缓存，以获取最新位置）
     _forceRefreshWeather();
@@ -86,30 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _updateTime() {
     final now = DateTime.now();
     _currentTimeNotifier.value =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-  }
-
-  /// 加载天气信息
-  Future<void> _loadWeather() async {
-    if (_isLoadingWeather) return;
-
-    setState(() {
-      _isLoadingWeather = true;
-    });
-
-    try {
-      // 使用getWeather（带缓存）或refreshWeather（强制刷新）
-      final weather = await _weatherService.getWeather();
-      setState(() {
-        _weatherInfo = weather;
-        _isLoadingWeather = false;
-      });
-    } catch (e) {
-      debugPrint('加载天气失败: $e');
-      setState(() {
-        _isLoadingWeather = false;
-      });
-    }
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
   /// 强制刷新天气
@@ -139,24 +117,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFAFAFA), // 非常浅的灰色，接近白色
-              Color(0xFFF8F8F8), // 浅灰
-              Color(0xFFF5F5F5), // 稍深的浅灰
-            ],
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
+        color: AppTheme.backgroundColor,
         child: SafeArea(
           child: _buildBody(),
         ),
       ),
       bottomNavigationBar: _buildBottomNav(),
-      floatingActionButton: _currentIndex == 0 ? _buildFAB() : null,
+      floatingActionButton: _buildFAB(),
     );
   }
 
@@ -171,7 +138,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       case 3:
         return const CalendarScreen();
       case 4:
-        return const StatsScreen();
+        return StatsScreen(
+          onNavigateToAllTasks: () => setState(() => _currentIndex = 1),
+          onNavigateToFiltered: (filter) {
+            setState(() {
+              _currentIndex = 1;
+              if (filter == 'overdue') {
+                _selectedFilter = 'overdue';
+                context.read<TaskProvider>().setFilterStatus(null);
+              }
+            });
+          },
+        );
       case 5:
         return const SettingsScreen();
       default:
@@ -204,60 +182,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _getDateDescription(),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimaryColor,
-                              ),
-                            ),
-                            ValueListenableBuilder<String>(
-                              valueListenable: _currentTimeNotifier,
-                              builder: (context, time, _) {
-                                if (time.isEmpty)
-                                  return const SizedBox.shrink();
-                                return Column(
-                                  children: [
-                                    const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryColor
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.access_time_rounded,
-                                            size: 14,
-                                            color: AppTheme.primaryColor,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            time,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.primaryColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              // 天气紧凑图标
+                              _buildWeatherChip(),
+                              const SizedBox(width: 8),
+                              // 云同步状态点
+                              _buildSyncDot(provider),
+                              const SizedBox(width: 8),
+                              // 离线提示点
+                              StreamBuilder<List<ConnectivityResult>>(
+                                stream: Connectivity().onConnectivityChanged,
+                                initialData: const [ConnectivityResult.wifi],
+                                builder: (context, snapshot) {
+                                  final results = snapshot.data ?? [ConnectivityResult.wifi];
+                                  final isOffline = results.contains(ConnectivityResult.none);
+                                  if (!isOffline) return const SizedBox.shrink();
+                                  return Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange,
+                                      shape: BoxShape.circle,
                                     ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                         Row(
                           children: [
@@ -265,12 +218,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               Icons.search_rounded,
                               () => setState(() => _currentIndex = 1),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 8),
                             _buildHeaderButton(
                               Icons.timeline_rounded,
                               () => _showActivityFeed(),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 8),
                             _buildHeaderButton(
                               Icons.notifications_none_rounded,
                               () => _showNotificationCenter(),
@@ -284,37 +237,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // 天气信息卡片
-                    _buildWeatherCard(),
-                    const SizedBox(height: 12),
-                    _buildBackendSyncBanner(provider),
-                    const SizedBox(height: 8),
-                    // D12: Offline indicator
-                    StreamBuilder<List<ConnectivityResult>>(
-                      stream: Connectivity().onConnectivityChanged,
-                      initialData: const [ConnectivityResult.wifi],
-                      builder: (context, snapshot) {
-                        final results = snapshot.data ?? [ConnectivityResult.wifi];
-                        final isOffline = results.contains(ConnectivityResult.none);
-                        if (!isOffline) return const SizedBox.shrink();
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.wifi_off_rounded, size: 16, color: Colors.orange.shade700),
-                              const SizedBox(width: 8),
-                              Text('当前离线，恢复连接后自动同步', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
                     const SizedBox(height: 12),
                     // 进度卡片 - 紧凑版
                     _buildProgressCard(provider),
@@ -323,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             // AI 建议卡片
-            if (provider.todayTasks.any((t) => !t.isCompleted))
+            if (provider.todayTasks.any((t) => !t.isCompleted) && !_isAICardDismissed)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -331,134 +253,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             const SliverToBoxAdapter(
-              child: SizedBox(height: 20),
+              child: SizedBox(height: 12),
             ),
-            // 逾期任务横向列表
+            // 逾期任务标签（仅有逾期时显示）
             if (provider.overdueTasks.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.errorColor.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.warning_amber_rounded,
-                              color: AppTheme.errorColor,
-                              size: 16,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            l.overdueTasks,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimaryColor,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.errorColor.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '${provider.overdueTasks.length}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.errorColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 110,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: provider.overdueTasks.length,
-                          itemBuilder: (context, index) {
-                            final task = provider.overdueTasks[index];
-                            return Container(
-                              width: 280,
-                              margin: EdgeInsets.only(
-                                right: index == provider.overdueTasks.length - 1
-                                    ? 0
-                                    : 12,
-                              ),
-                              child: TaskCard(
-                                task: task,
-                                compact: true,
-                                onTap: () => _showTaskDetail(task),
-                                isDistributed: provider.distributedTaskIds.contains(task.id),
-                                availableTags: _getAllTags(provider),
-                                onTagsChanged: (tagIds) =>
-                                    _updateTaskTags(task.id, tagIds, provider),
-                                onStatusChange: (status) => _changeTaskStatus(
-                                    task.id, status, provider),
-                                onPriorityChange: (priority) =>
-                                    _changeTaskPriority(
-                                        task.id, priority, provider),
-                                onDueTimeTap: () =>
-                                    _editDueTime(task, provider),
-                                onReminderTap: () =>
-                                    _editReminder(task, provider),
-                                onRecurringTap: () =>
-                                    _editRecurring(task, provider),
-                              ),
-                            );
-                          },
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppTheme.errorColor,
+                          size: 14,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${l.overdueTasks} (${provider.overdueTasks.length})',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.errorColor,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            // 任务列表标题
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      l.pendingTasks,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimaryColor,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => _currentIndex = 1),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryColor,
-                      ),
-                      child: Text(l.viewAll),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 12),
-            ),
-            // 待处理任务列表 - 只显示未完成的任务
-            provider.todayTasks.every((t) => t.isCompleted)
+            // 待处理任务列表 - 逾期任务排前面，然后是今日任务
+            provider.todayTasks.every((t) => t.isCompleted) && provider.overdueTasks.isEmpty
                 ? SliverToBoxAdapter(
                     child: provider.todayTasks.isEmpty
                         ? _buildEmptyState()
@@ -470,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 const SizedBox(height: 20),
                                 Icon(Icons.emoji_events_rounded,
                                     size: 56,
-                                    color: AppTheme.primaryColor.withOpacity(0.6)),
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.6)),
                                 const SizedBox(height: 12),
                                 Text(
                                   l.allTasksCompleted,
@@ -494,42 +324,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                   )
                 : Builder(builder: (context) {
-                    final uncompletedTasks = provider.todayTasks
+                    // 逾期任务（未完成的）排最前
+                    final overdueUncompleted = provider.overdueTasks
                         .where((t) => !t.isCompleted)
                         .toList();
+                    // 今日未完成任务
+                    final todayUncompleted = provider.todayTasks
+                        .where((t) => !t.isCompleted)
+                        .toList();
+                    // 合并：逾期 + 今日（去重）
+                    final overdueIds = overdueUncompleted.map((t) => t.id).toSet();
+                    final mergedTasks = [
+                      ...overdueUncompleted,
+                      ...todayUncompleted.where((t) => !overdueIds.contains(t.id)),
+                    ];
                     return SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            final task = uncompletedTasks[index];
+                            final task = mergedTasks[index];
+                            final isOverdue = overdueIds.contains(task.id);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
-                              child: TaskCard(
-                                task: task,
-                                onTap: () => _showTaskDetail(task),
-                                isDistributed: provider.distributedTaskIds.contains(task.id),
-                                onComplete: () =>
-                                    _completeTask(task.id, provider),
-                                onDelete: () => _deleteTask(task.id, provider),
-                                onStart: () => _startTask(task.id, provider),
-                                onStatusChange: (status) =>
-                                    _changeTaskStatus(task.id, status, provider),
-                                onPriorityChange: (priority) =>
-                                    _changeTaskPriority(
-                                        task.id, priority, provider),
-                                onDueTimeTap: () => _editDueTime(task, provider),
-                                onReminderTap: () =>
-                                    _editReminder(task, provider),
-                                onRecurringTap: () =>
-                                    _editRecurring(task, provider),
-                                availableTags: _getAllTags(provider),
-                                onTagsChanged: (tagIds) =>
-                                    _updateTaskTags(task.id, tagIds, provider),
+                              child: Container(
+                                decoration: isOverdue
+                                    ? BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: AppTheme.errorColor.withValues(alpha: 0.4),
+                                          width: 1.5,
+                                        ),
+                                      )
+                                    : null,
+                                child: TaskCard(
+                                  task: task,
+                                  onTap: () => _showTaskDetail(task),
+                                  isDistributed: provider.distributedTaskIds.contains(task.id),
+                                  onComplete: () =>
+                                      _completeTask(task.id, provider),
+                                  onDelete: () => _deleteTask(task.id, provider),
+                                  onStart: () => _startTask(task.id, provider),
+                                  onStatusChange: (status) =>
+                                      _changeTaskStatus(task.id, status, provider),
+                                  onPriorityChange: (priority) =>
+                                      _changeTaskPriority(
+                                          task.id, priority, provider),
+                                  onDueTimeTap: () => _editDueTime(task, provider),
+                                  onReminderTap: () =>
+                                      _editReminder(task, provider),
+                                  onRecurringTap: () =>
+                                      _editRecurring(task, provider),
+                                  availableTags: _getAllTags(provider),
+                                  onTagsChanged: (tagIds) =>
+                                      _updateTaskTags(task.id, tagIds, provider),
+                                ),
                               ),
                             );
                           },
-                          childCount: uncompletedTasks.length,
+                          childCount: mergedTasks.length,
                         ),
                       ),
                     );
@@ -577,15 +430,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       const SizedBox(height: 16),
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.white.withValues(alpha: 0.3),
                             width: 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 15,
                               offset: const Offset(0, 4),
                             ),
@@ -842,7 +695,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -880,104 +733,110 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildBackendSyncBanner(TaskProvider provider) {
-    final loggedIn = provider.isBackendLoggedIn;
-    final error = provider.backendSyncError;
-    final pending = provider.pendingBackendSyncCount;
-
-    Color color;
-    IconData icon;
-    String title;
-    String subtitle;
-
-    if (!loggedIn) {
-      color = AppTheme.textHintColor;
-      icon = Icons.cloud_off_outlined;
-      title = '未登录云同步';
-      subtitle = '本地任务可继续离线使用';
-    } else if (provider.isBackendSyncing) {
-      color = AppTheme.infoColor;
-      icon = Icons.sync_rounded;
-      title = '正在同步';
-      subtitle = '正在与后台交换任务数据';
-    } else if (error != null && error.isNotEmpty) {
-      color = AppTheme.errorColor;
-      icon = Icons.cloud_off_rounded;
-      title = '同步失败';
-      subtitle = pending > 0 ? '有 $pending 个变更待重试' : '点此重试同步';
-    } else {
-      color = AppTheme.successColor;
-      icon = Icons.cloud_done_outlined;
-      title = '云同步已开启';
-      subtitle = provider.lastBackendSyncAt == null
-          ? '尚未完成同步'
-          : '最后同步 ${_formatDateTime(provider.lastBackendSyncAt!)}';
-    }
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: loggedIn
-          ? () async {
-              try {
-                final count = await provider.syncAllWithBackend();
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('同步完成，更新 $count 个任务')),
-                );
-                if (provider.hasConflicts) {
-                  await showConflictDialogIfNeeded(context);
-                }
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('同步失败：$e')),
-                );
-              }
-            }
-          : () => setState(() => _currentIndex = 5),
+  /// 天气紧凑图标（顶栏用）
+  Widget _buildWeatherChip() {
+    return GestureDetector(
+      onTap: _showCitySelector,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.25)),
+          color: AppTheme.primaryColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 20),
+            Icon(
+              _getWeatherIcon(),
+              size: 16,
+              color: AppTheme.primaryColor,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondaryColor,
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 4),
+            Text(
+              _weatherInfo?.temperatureText ?? '--°C',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: AppTheme.textHintColor),
+            if (_weatherInfo?.cityName != null) ...[
+              const SizedBox(width: 3),
+              Text(
+                _weatherInfo!.cityName!,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textHintColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 云同步状态点（顶栏用）
+  Widget _buildSyncDot(TaskProvider provider) {
+    final loggedIn = provider.isBackendLoggedIn;
+    Color dotColor;
+    String tooltip;
+    VoidCallback onTap;
+
+    if (!loggedIn) {
+      dotColor = AppTheme.textHintColor;
+      tooltip = '未登录云同步';
+      onTap = () => setState(() => _currentIndex = 5);
+    } else if (provider.isBackendSyncing) {
+      dotColor = AppTheme.infoColor;
+      tooltip = '正在同步...';
+      onTap = () {};
+    } else if (provider.backendSyncError != null && provider.backendSyncError!.isNotEmpty) {
+      dotColor = AppTheme.errorColor;
+      tooltip = '同步失败，点击重试';
+      onTap = () async {
+        try {
+          final count = await provider.syncAllWithBackend();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('同步完成，更新 $count 个任务')),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('同步失败：$e')),
+          );
+        }
+      };
+    } else {
+      dotColor = AppTheme.successColor;
+      tooltip = provider.lastBackendSyncAt == null
+          ? '云同步已开启'
+          : '最后同步 ${_formatDateTime(provider.lastBackendSyncAt!)}';
+      onTap = () async {
+        try {
+          final count = await provider.syncAllWithBackend();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('同步完成，更新 $count 个任务')),
+          );
+        } catch (_) {}
+      };
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: tooltip,
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+          ),
         ),
       ),
     );
@@ -1015,7 +874,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -1096,50 +955,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildEmptyState({bool isWhite = false}) {
     final l = context.l;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: isWhite
-                    ? AppTheme.primaryColor.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.task_alt_rounded,
-                size: 48,
-                color: isWhite
-                    ? AppTheme.primaryColor.withOpacity(0.5)
-                    : Colors.white.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              l.noTasks,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: isWhite
-                    ? AppTheme.textSecondaryColor
-                    : Colors.white.withOpacity(0.9),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              l.addTaskHint,
-              style: TextStyle(
-                color: isWhite
-                    ? AppTheme.textHintColor
-                    : Colors.white.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return EmptyStateWidget(
+      icon: Icons.task_alt_rounded,
+      title: l.noTasks,
+      subtitle: l.addTaskHint,
     );
   }
 
@@ -1150,7 +969,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         color: Theme.of(context).cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, -5),
           ),
@@ -1191,7 +1010,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.1)
+              ? AppTheme.primaryColor.withValues(alpha: 0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
@@ -1231,7 +1050,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF667EEA).withOpacity(0.4),
+            color: const Color(0xFF667EEA).withValues(alpha: 0.4),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -1242,110 +1061,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         elevation: 0,
         child: const Icon(Icons.add_rounded, size: 32, color: Colors.white),
-      ),
-    );
-  }
-
-  /// 构建天气卡片
-  Widget _buildWeatherCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.15),
-            AppTheme.primaryColor.withOpacity(0.08),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          // 天气图标
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _getWeatherIcon(),
-              size: 24,
-              color: AppTheme.primaryColor,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 天气信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: _showCitySelector,
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_rounded,
-                        size: 14,
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _weatherInfo?.cityName ?? '加载中...',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.edit_rounded,
-                        size: 12,
-                        color: AppTheme.textHintColor,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      _weatherInfo?.temperatureText ?? '--°C',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _weatherInfo?.description ?? '天气信息',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // 刷新按钮
-          IconButton(
-            icon: Icon(
-              _isLoadingWeather ? Icons.refresh_rounded : Icons.refresh,
-              size: 20,
-              color: AppTheme.primaryColor,
-            ),
-            onPressed: _isLoadingWeather ? null : _forceRefreshWeather,
-          ),
-        ],
       ),
     );
   }
@@ -1430,11 +1145,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -1455,7 +1170,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: CircularProgressIndicator(
                     value: progressPercent,
                     strokeWidth: 6,
-                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                    backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
                     valueColor: const AlwaysStoppedAnimation<Color>(
                         AppTheme.primaryColor),
                     strokeCap: StrokeCap.round,
@@ -1516,7 +1231,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -1542,9 +1257,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// 构建AI建议卡片
+  /// 构建AI建议卡片 - 紧凑单行横幅
   Widget _buildAISuggestionCard(TaskProvider provider) {
-    final l = context.l;
     final uncompletedTasks =
         provider.todayTasks.where((t) => !t.isCompleted).toList();
     final highPriorityTasks =
@@ -1552,301 +1266,73 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final highPriorityTask =
         highPriorityTasks.isNotEmpty ? highPriorityTasks.first : null;
 
-    String suggestion = '🎉 太棒了！今天没有待处理的任务，享受轻松时光吧！';
+    String suggestion = '🎉 今天没有待处理任务！';
     if (highPriorityTask != null) {
-      suggestion = '💡 建议优先处理「${highPriorityTask.title}」';
+      suggestion = '💡 优先处理「${highPriorityTask.title}」';
       if (highPriorityTask.dueTime != null) {
-        suggestion += '，截止时间: ${highPriorityTask.dueTimeDescription}';
+        suggestion += ' · ${highPriorityTask.dueTimeDescription}';
       }
-      suggestion += '。';
     } else if (uncompletedTasks.isNotEmpty) {
       suggestion = '💡 建议处理「${uncompletedTasks.first.title}」';
-      if (uncompletedTasks.first.dueTime != null) {
-        suggestion += '，截止时间: ${uncompletedTasks.first.dueTimeDescription}';
-      }
-      suggestion += '。';
     }
 
     return GestureDetector(
       onTap: () => showAIChatDialog(context),
       child: Container(
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF6366F1).withOpacity(0.9),
-              const Color(0xFF8B5CF6).withOpacity(0.9),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 20,
-              ),
+            const Icon(
+              Icons.auto_awesome,
+              color: Color(0xFF6366F1),
+              size: 18,
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l.aiSuggestion,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    suggestion,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: Colors.white.withOpacity(0.95),
-                    ),
-                  ),
-                ],
+              child: Text(
+                suggestion,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6366F1),
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 6),
+            // 聊天按钮
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
                 Icons.chat_bubble_outline_rounded,
-                color: Colors.white,
-                size: 18,
+                color: Color(0xFF6366F1),
+                size: 14,
+              ),
+            ),
+            const SizedBox(width: 4),
+            // 关闭按钮
+            GestureDetector(
+              onTap: () => setState(() => _isAICardDismissed = true),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: AppTheme.textHintColor,
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  String _getGreeting() {
-    final l = context.l;
-    final hour = DateTime.now().hour;
-    if (hour < 6) return l.greetingNight;
-    if (hour < 12) return l.greetingMorning;
-    if (hour < 14) return l.greetingNoon;
-    if (hour < 18) return l.greetingAfternoon;
-    return l.greetingEvening;
-  }
-
-  String _getDateDescription() {
-    final l = context.l;
-    final now = DateTime.now();
-    if (l.isZh) {
-      return '${now.year}年${now.month}月${now.day}日 · ${_getWeekday()}';
-    } else {
-      final months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-      ];
-      return '${months[now.month - 1]} ${now.day}, ${now.year} · ${_getWeekday()}';
-    }
-  }
-
-  String _getWeekday() {
-    final l = context.l;
-    if (l.isZh) {
-      const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      return weekdays[DateTime.now().weekday - 1];
-    } else {
-      const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return weekdays[DateTime.now().weekday - 1];
-    }
-  }
-
-  void _showNotifications() {
-    final l = context.l;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(bottomSheetContext).size.height * 0.75,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.errorColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.warning_amber_rounded,
-                        color: AppTheme.errorColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      l.overdueReminder,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: Consumer<TaskProvider>(
-                  builder: (context, provider, _) {
-                    final overdueTasks = provider.overdueTasks;
-
-                    // 调试信息
-                    debugPrint('🔍 显示逾期任务弹窗: ${overdueTasks.length} 个逾期任务');
-                    for (var task in overdueTasks) {
-                      debugPrint(
-                          '  - ${task.title}, 截止: ${task.dueTime}, 是否逾期: ${task.isOverdue}, 状态: ${task.status}');
-                    }
-
-                    if (overdueTasks.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              size: 48,
-                              color:
-                                  AppTheme.successColor.withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              '暂无逾期任务',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.textSecondaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: overdueTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = overdueTasks[index];
-                        return Column(
-                          children: [
-                            ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              leading: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.errorColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              title: Text(
-                                task.title,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  '${l.deadline}: ${task.dueTimeDescription}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ),
-                              trailing: TextButton(
-                                onPressed: () {
-                                  Navigator.pop(bottomSheetContext);
-                                  _showTaskDetail(task);
-                                },
-                                child: Text(l.view),
-                              ),
-                            ),
-                            if (index < overdueTasks.length - 1)
-                              Divider(
-                                height: 1,
-                                color: Colors.grey.shade200,
-                                indent: 48,
-                              ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1893,7 +1379,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
                                 color: _getPriorityColor(task.priority)
-                                    .withOpacity(0.15),
+                                    .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Row(
@@ -1921,7 +1407,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
                                 color: _getStatusColor(task.status)
-                                    .withOpacity(0.15),
+                                    .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -2115,7 +1601,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : Colors.white,
+            color: isSelected ? color.withValues(alpha: 0.15) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? color : Colors.grey.shade300,
@@ -2369,7 +1855,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppTheme.primaryColor.withOpacity(0.15)
+                                ? AppTheme.primaryColor.withValues(alpha: 0.15)
                                 : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
@@ -2466,7 +1952,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppTheme.primaryColor.withOpacity(0.15)
+                                ? AppTheme.primaryColor.withValues(alpha: 0.15)
                                 : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
@@ -2529,9 +2015,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.04),
+            color: AppTheme.primaryColor.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.12)),
+            border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.12)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2751,8 +2237,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: member.online
-                                    ? AppTheme.successColor.withOpacity(0.15)
-                                    : AppTheme.textHintColor.withOpacity(0.15),
+                                    ? AppTheme.successColor.withValues(alpha: 0.15)
+                                    : AppTheme.textHintColor.withValues(alpha: 0.15),
                                 child: Icon(
                                   member.online
                                       ? Icons.person_rounded
@@ -2898,7 +2384,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
@@ -2938,7 +2424,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               CircleAvatar(
                 radius: 14,
-                backgroundColor: statusColor.withOpacity(0.12),
+                backgroundColor: statusColor.withValues(alpha: 0.12),
                 child: Icon(Icons.person_rounded, size: 16, color: statusColor),
               ),
               const SizedBox(width: 8),
@@ -3225,7 +2711,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                                             decoration: BoxDecoration(
-                                              color: sourceColor.withOpacity(0.1),
+                                              color: sourceColor.withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(
@@ -3273,7 +2759,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: AppTheme.primaryColor, size: 20),
@@ -3477,11 +2963,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -3501,7 +2987,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor.withOpacity(0.15),
+                      color: AppTheme.successColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -3523,7 +3009,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor.withOpacity(0.15),
+                      color: AppTheme.successColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(

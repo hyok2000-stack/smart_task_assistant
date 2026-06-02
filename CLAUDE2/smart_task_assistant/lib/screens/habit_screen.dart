@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/habit.dart';
 import '../providers/habit_provider.dart';
+import '../theme/app_theme.dart';
+import '../utils/app_localizations.dart';
+import '../widgets/empty_state_widget.dart';
 import '../widgets/habit_card.dart';
 import '../widgets/habit_settings_dialog.dart';
 
-/// 习惯标签页
+/// 习惯标签页 - 统一互联网风格
 class HabitScreen extends StatefulWidget {
   const HabitScreen({super.key});
 
@@ -27,15 +30,15 @@ class _HabitScreenState extends State<HabitScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('习惯'),
-        centerTitle: true,
-      ),
-      body: Consumer<HabitProvider>(
+    final l = context.l;
+    return Container(
+      color: AppTheme.backgroundColor,
+      child: Consumer<HabitProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
           }
 
           if (provider.error != null) {
@@ -43,12 +46,36 @@ class _HabitScreenState extends State<HabitScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.error_outline,
+                      size: 40,
+                      color: AppTheme.errorColor.withValues(alpha: 0.6),
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  Text('加载失败: ${provider.error}'),
+                  Text(
+                    '加载失败: ${provider.error}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _loadData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     child: const Text('重试'),
                   ),
                 ],
@@ -58,34 +85,84 @@ class _HabitScreenState extends State<HabitScreen> {
 
           final habits = provider.habits;
           if (habits.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.event_note, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    '暂无习惯',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            );
+            return _buildEmptyState(l);
           }
 
           return RefreshIndicator(
             onRefresh: _loadData,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: habits.length,
-              itemBuilder: (context, index) {
-                final habit = habits[index];
-                return HabitCard(
-                  habit: habit,
-                  onRecord: () => _recordHabit(habit),
-                  onSettings: () => _openSettings(habit),
-                );
-              },
+            color: AppTheme.primaryColor,
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // 标题区域
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.event_repeat_rounded,
+                            color: AppTheme.primaryColor,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '习惯',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${habits.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // 习惯列表
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final habit = habits[index];
+                        return HabitCard(
+                          habit: habit,
+                          onRecord: () => _recordHabit(habit),
+                          onSettings: () => _openSettings(habit),
+                        );
+                      },
+                      childCount: habits.length,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 100),
+                ),
+              ],
             ),
           );
         },
@@ -93,10 +170,39 @@ class _HabitScreenState extends State<HabitScreen> {
     );
   }
 
+  /// 空状态 - 带引导
+  Widget _buildEmptyState(AppLocalizations l) {
+    return EmptyStateWidget(
+      icon: Icons.event_repeat_rounded,
+      title: l.isZh ? '暂无习惯' : 'No Habits',
+      subtitle: l.isZh ? '创建一个习惯开始追踪你的日常' : 'Create a habit to track your routine',
+      actionLabel: l.isZh ? '创建习惯' : 'Create Habit',
+      onAction: _openCreateHabit,
+    );
+  }
+
+  /// 打开创建习惯
+  void _openCreateHabit() {
+    showDialog(
+      context: context,
+      builder: (context) => HabitSettingsDialog(
+        habit: Habit(
+          id: '',
+          title: '',
+          triggerType: 'interval',
+          isEnabled: true,
+          iconCode: 0x1F4A7, // 💧
+          voiceEnabled: true,
+          soundEnabled: true,
+          vibrationEnabled: true,
+        ),
+      ),
+    );
+  }
+
   /// 记录习惯完成
   Future<void> _recordHabit(Habit habit) async {
     if (!habit.needsRecord) {
-      // 打卡类习惯只显示提醒
       _showClockReminder(habit);
       return;
     }
@@ -107,8 +213,16 @@ class _HabitScreenState extends State<HabitScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${habit.title} 已记录'),
-          backgroundColor: Colors.green,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              Text('${habit.title} 已记录'),
+            ],
+          ),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -120,6 +234,7 @@ class _HabitScreenState extends State<HabitScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
             Text(

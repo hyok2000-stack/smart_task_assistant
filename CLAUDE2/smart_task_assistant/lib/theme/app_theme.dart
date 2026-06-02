@@ -111,7 +111,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: Colors.grey.shade100,
-        selectedColor: primaryColor.withOpacity(0.2),
+        selectedColor: primaryColor.withValues(alpha: 0.2),
         labelStyle: const TextStyle(fontSize: 14),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: RoundedRectangleBorder(
@@ -126,8 +126,8 @@ class AppTheme {
         elevation: 0,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: Colors.white.withOpacity(0.9),
-        indicatorColor: primaryColor.withOpacity(0.2),
+        backgroundColor: Colors.white.withValues(alpha: 0.9),
+        indicatorColor: primaryColor.withValues(alpha: 0.2),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(
@@ -240,7 +240,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: darkCardColor,
-        selectedColor: primaryColor.withOpacity(0.3),
+        selectedColor: primaryColor.withValues(alpha: 0.3),
         labelStyle: const TextStyle(fontSize: 14, color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: RoundedRectangleBorder(
@@ -255,8 +255,8 @@ class AppTheme {
         elevation: 0,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: darkCardColor.withOpacity(0.9),
-        indicatorColor: primaryColor.withOpacity(0.3),
+        backgroundColor: darkCardColor.withValues(alpha: 0.9),
+        indicatorColor: primaryColor.withValues(alpha: 0.3),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(
@@ -340,26 +340,26 @@ class GlassContainer extends StatelessWidget {
                   end: Alignment.bottomRight,
                   colors: [
                     isDark
-                        ? Colors.white.withOpacity(opacity * 0.3)
-                        : Colors.white.withOpacity(opacity),
+                        ? Colors.white.withValues(alpha: opacity * 0.3)
+                        : Colors.white.withValues(alpha: opacity),
                     isDark
-                        ? Colors.white.withOpacity(opacity * 0.1)
-                        : Colors.white.withOpacity(opacity * 0.5),
+                        ? Colors.white.withValues(alpha: opacity * 0.1)
+                        : Colors.white.withValues(alpha: opacity * 0.5),
                   ],
                 ),
             borderRadius: BorderRadius.circular(borderRadius),
             border: Border.all(
               color: borderColor ??
                   (isDark
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.6)),
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.6)),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
                 color: isDark
-                    ? Colors.black.withOpacity(0.3)
-                    : Colors.black.withOpacity(0.1),
+                    ? Colors.black.withValues(alpha: 0.3)
+                    : Colors.black.withValues(alpha: 0.1),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),

@@ -24,19 +24,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // 全局设置状态
 class AppSettings extends ChangeNotifier {
-  ThemeMode _themeMode = ThemeMode.light; // 强制使用浅色主题
+  ThemeMode _themeMode = ThemeMode.light; // 默认浅色主题
   Locale _locale = const Locale('zh', 'CN');
   bool _clipboardMonitorEnabled = true; // 默认开启
   bool _notificationsEnabled = true;
-
-  @override
-  void notifyListeners() {
-    super.notifyListeners();
-    // 确保主题模式始终为浅色
-    if (_themeMode != ThemeMode.light) {
-      _themeMode = ThemeMode.light;
-    }
-  }
 
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;

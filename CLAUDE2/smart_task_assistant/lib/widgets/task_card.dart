@@ -75,22 +75,22 @@ class TaskCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.15)
+              ? AppTheme.primaryColor.withValues(alpha: 0.15)
               : (isDark
                   ? Colors.grey.shade800
-                  : Colors.white.withOpacity(0.95)),
+                  : Colors.white.withValues(alpha: 0.95)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
                 : (task.isOverdue
-                    ? AppTheme.errorColor.withOpacity(0.5)
-                    : _getPriorityColor(task.priority).withOpacity(0.3)),
+                    ? AppTheme.errorColor.withValues(alpha: 0.5)
+                    : _getPriorityColor(task.priority).withValues(alpha: 0.3)),
             width: isSelected || task.isOverdue ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isSelected ? 0.12 : 0.08),
+              color: Colors.black.withValues(alpha: isSelected ? 0.12 : 0.08),
               blurRadius: isSelected ? 16 : 12,
               offset: const Offset(0, 4),
             ),
@@ -98,28 +98,50 @@ class TaskCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // 完成按钮
+            // 完成按钮 - 带动画
             GestureDetector(
               onTap: onComplete,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: task.isCompleted
-                        ? AppTheme.successColor
-                        : _getPriorityColor(task.priority),
-                    width: 2,
-                  ),
-                  color: task.isCompleted
-                      ? AppTheme.successColor
-                      : Colors.transparent,
-                ),
-                child: task.isCompleted
-                    ? const Icon(Icons.check, size: 12, color: Colors.white)
-                    : null,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: task.isCompleted ? 1 : 0),
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: 1.0 + value * 0.2,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: task.isCompleted
+                              ? AppTheme.successColor
+                              : _getPriorityColor(task.priority),
+                          width: 2,
+                        ),
+                        color: task.isCompleted
+                            ? AppTheme.successColor
+                            : Colors.transparent,
+                        boxShadow: task.isCompleted && value > 0.5
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.successColor.withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: value > 0.3
+                          ? Opacity(
+                              opacity: value.clamp(0, 1).toDouble(),
+                              child: const Icon(Icons.check, size: 12, color: Colors.white),
+                            )
+                          : null,
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 10),
@@ -204,7 +226,7 @@ class TaskCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: AppTheme.successColor.withOpacity(0.15),
+                  color: AppTheme.successColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -217,7 +239,7 @@ class TaskCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: AppTheme.errorColor.withOpacity(0.15),
+                  color: AppTheme.errorColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -293,17 +315,17 @@ class TaskCard extends StatelessWidget {
                     end: Alignment.bottomRight,
                     colors: isSelected
                         ? [
-                            AppTheme.primaryColor.withOpacity(0.15),
-                            AppTheme.primaryColor.withOpacity(0.05),
+                            AppTheme.primaryColor.withValues(alpha: 0.15),
+                            AppTheme.primaryColor.withValues(alpha: 0.05),
                           ]
                         : (isDark
                             ? [
-                                Colors.white.withOpacity(0.08),
-                                Colors.white.withOpacity(0.04),
+                                Colors.white.withValues(alpha: 0.08),
+                                Colors.white.withValues(alpha: 0.04),
                               ]
                             : [
-                                Colors.white.withOpacity(0.95),
-                                Colors.white.withOpacity(0.85),
+                                Colors.white.withValues(alpha: 0.95),
+                                Colors.white.withValues(alpha: 0.85),
                               ]),
                   ),
                   borderRadius: BorderRadius.circular(16),
@@ -311,13 +333,13 @@ class TaskCard extends StatelessWidget {
                     color: isSelected
                         ? AppTheme.primaryColor
                         : (isDark
-                            ? Colors.white.withOpacity(0.15)
-                            : Colors.white.withOpacity(0.6)),
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.6)),
                     width: isSelected ? 2 : 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isSelected ? 0.12 : 0.06),
+                      color: Colors.black.withValues(alpha: isSelected ? 0.12 : 0.06),
                       blurRadius: isSelected ? 20 : 12,
                       offset: const Offset(0, 4),
                     ),
@@ -339,43 +361,56 @@ class TaskCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // 完成按钮
+                        // 完成按钮 - 带弹性动画
                         GestureDetector(
                           onTap: onComplete,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 24,
-                            height: 24,
-                            margin: const EdgeInsets.only(top: 2),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: task.isCompleted
-                                    ? AppTheme.successColor
-                                    : AppTheme.primaryColor,
-                                width: 2,
-                              ),
-                              color: task.isCompleted
-                                  ? AppTheme.successColor
-                                  : Colors.transparent,
-                              boxShadow: task.isCompleted
-                                  ? [
-                                      BoxShadow(
-                                        color: AppTheme.successColor
-                                            .withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: task.isCompleted
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 14,
-                                    color: Colors.white,
-                                  )
-                                : null,
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween<double>(begin: 0, end: task.isCompleted ? 1 : 0),
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.elasticOut,
+                            builder: (context, value, child) {
+                              return Transform.scale(
+                                scale: 1.0 + value * 0.25,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  width: 24,
+                                  height: 24,
+                                  margin: const EdgeInsets.only(top: 2),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: task.isCompleted
+                                          ? AppTheme.successColor
+                                          : AppTheme.primaryColor,
+                                      width: 2,
+                                    ),
+                                    color: task.isCompleted
+                                        ? AppTheme.successColor
+                                        : Colors.transparent,
+                                    boxShadow: task.isCompleted && value > 0.5
+                                        ? [
+                                            BoxShadow(
+                                              color: AppTheme.successColor
+                                                  .withValues(alpha: 0.35),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: value > 0.3
+                                      ? Opacity(
+                                          opacity: value.clamp(0, 1).toDouble(),
+                                          child: const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -519,7 +554,7 @@ class TaskCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.12),
+        color: AppTheme.primaryColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -552,10 +587,10 @@ class TaskCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade50,
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade200,
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
         ),
       ),
       child: Column(
@@ -587,7 +622,7 @@ class TaskCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -625,12 +660,12 @@ class TaskCard extends StatelessWidget {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
+                  color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: color, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: color.withOpacity(0.2),
+                      color: color.withValues(alpha: 0.2),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -730,10 +765,10 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onPriorityChange != null
-              ? Border.all(color: color.withOpacity(0.3), width: 1)
+              ? Border.all(color: color.withValues(alpha: 0.3), width: 1)
               : null,
         ),
         child: Row(
@@ -751,7 +786,7 @@ class TaskCard extends StatelessWidget {
             ),
             if (onPriorityChange != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit, size: 8, color: color.withOpacity(0.7)),
+              Icon(Icons.edit, size: 8, color: color.withValues(alpha: 0.7)),
             ],
           ],
         ),
@@ -807,10 +842,10 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onStatusChange != null
-              ? Border.all(color: color.withOpacity(0.3), width: 1)
+              ? Border.all(color: color.withValues(alpha: 0.3), width: 1)
               : null,
         ),
         child: Row(
@@ -828,7 +863,7 @@ class TaskCard extends StatelessWidget {
             ),
             if (onStatusChange != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit, size: 8, color: color.withOpacity(0.7)),
+              Icon(Icons.edit, size: 8, color: color.withValues(alpha: 0.7)),
             ],
           ],
         ),
@@ -863,11 +898,11 @@ class TaskCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: task.isOverdue
-              ? color.withOpacity(0.12)
-              : Colors.grey.withOpacity(0.1),
+              ? color.withValues(alpha: 0.12)
+              : Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: onDueTimeTap != null
-              ? Border.all(color: color.withOpacity(0.3), width: 1)
+              ? Border.all(color: color.withValues(alpha: 0.3), width: 1)
               : null,
         ),
         child: Row(
@@ -886,7 +921,7 @@ class TaskCard extends StatelessWidget {
             ),
             if (onDueTimeTap != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit, size: 8, color: color.withOpacity(0.7)),
+              Icon(Icons.edit, size: 8, color: color.withValues(alpha: 0.7)),
             ],
           ],
         ),
@@ -916,11 +951,11 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: AppTheme.primaryColor.withOpacity(0.12),
+          color: AppTheme.primaryColor.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onRecurringTap != null
               ? Border.all(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  color: AppTheme.primaryColor.withValues(alpha: 0.3),
                   width: 1,
                 )
               : null,
@@ -943,7 +978,7 @@ class TaskCard extends StatelessWidget {
               Icon(
                 Icons.edit,
                 size: 8,
-                color: AppTheme.primaryColor.withOpacity(0.7),
+                color: AppTheme.primaryColor.withValues(alpha: 0.7),
               ),
             ],
           ],
@@ -967,10 +1002,10 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.12),
+          color: Colors.orange.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onReminderTap != null
-              ? Border.all(color: Colors.orange.withOpacity(0.3), width: 1)
+              ? Border.all(color: Colors.orange.withValues(alpha: 0.3), width: 1)
               : null,
         ),
         child: Row(
@@ -988,7 +1023,7 @@ class TaskCard extends StatelessWidget {
             ),
             if (onReminderTap != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit, size: 8, color: Colors.orange.withOpacity(0.7)),
+              Icon(Icons.edit, size: 8, color: Colors.orange.withValues(alpha: 0.7)),
             ],
           ],
         ),
@@ -1018,13 +1053,13 @@ class TaskCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.18), color.withOpacity(0.12)],
+                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.12)],
               ),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withOpacity(0.4), width: 1.2),
+              border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.15),
+                  color: color.withValues(alpha: 0.15),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),
@@ -1084,13 +1119,13 @@ class TaskCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.18), color.withOpacity(0.12)],
+                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.12)],
               ),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withOpacity(0.4), width: 1.2),
+              border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.15),
+                  color: color.withValues(alpha: 0.15),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),
@@ -1122,7 +1157,7 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 2),
-                Icon(Icons.edit, size: 8, color: color.withOpacity(0.8)),
+                Icon(Icons.edit, size: 8, color: color.withValues(alpha: 0.8)),
               ],
             ),
           );
