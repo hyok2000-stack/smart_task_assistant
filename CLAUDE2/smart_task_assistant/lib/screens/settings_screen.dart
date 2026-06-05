@@ -471,7 +471,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       trailing: _buildPermissionStatusTrailing(_notificationsEnabled),
       onTap: () async {
         await _openNotificationSettings();
-        await _refreshReminderPermissionState();
+        // 权限状态由 didChangeAppLifecycleState(resumed) 在返回时刷新
+        // 避免与生命周期回调并发导致 Flutter engine 异常
       },
     );
   }
@@ -486,7 +487,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       trailing: _buildPermissionStatusTrailing(_canScheduleExactAlarms),
       onTap: () async {
         await _openExactAlarmSettings();
-        await _refreshReminderPermissionState();
+        // 权限状态由 didChangeAppLifecycleState(resumed) 在返回时刷新
+        // 避免与生命周期回调并发导致 Flutter engine 异常
       },
     );
   }

@@ -155,8 +155,8 @@ class _AIChatDialogState extends State<AIChatDialog>
     _scrollToBottom();
 
     try {
-      // 加载AI配置
-      await _aiService.loadConfig();
+      // 强制重新加载AI配置，确保使用最新的设置
+      await _aiService.loadConfig(forceReload: true);
 
       // C8: 检测任务创建意图
       final taskKeywords = ['创建任务', '添加任务', '新建任务', '提醒我', '帮我记', '安排', '待办'];
@@ -183,9 +183,12 @@ class _AIChatDialogState extends State<AIChatDialog>
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final tasks = taskProvider.tasks;
 
-      // 构建历史消息
+      // 构建历史消息（只包含真正的对话消息，排除欢迎、紧急提醒等系统消息）
       final history = _messages
           .take(_messages.length - 1)
+          .where((m) =>
+              m.type == ChatMessageType.normal &&
+              m.content.isNotEmpty)
           .map((m) => {
                 'role': m.isUser ? 'user' : 'assistant',
                 'content': m.content,

@@ -523,8 +523,8 @@ class AIService {
 
     try {
       final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 10);
-      dio.options.receiveTimeout = const Duration(seconds: 10);
+      dio.options.connectTimeout = const Duration(seconds: 15);
+      dio.options.receiveTimeout = const Duration(seconds: 120);
 
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
@@ -981,7 +981,7 @@ class AIService {
 
       final dio = Dio();
       dio.options.connectTimeout = const Duration(seconds: 15);
-      dio.options.receiveTimeout = const Duration(seconds: 15);
+      dio.options.receiveTimeout = const Duration(seconds: 120);
 
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
@@ -1011,11 +1011,25 @@ class AIService {
         );
       }
     } catch (e) {
-      debugPrint('AI 聊天失败: $e');
-      final response = _chatWithRules(message, tasks);
-      final engineLabel = _config.enabled ? '$currentModelDisplayName（连接失败，已降级）' : '本地规则引擎';
+      // 提取更详细的错误信息用于诊断
+      String errorDetail = '';
+      if (e is DioException) {
+        if (e.response != null) {
+          errorDetail = 'HTTP ${e.response?.statusCode}: ${e.response?.data}';
+        } else {
+          errorDetail = e.type.toString();
+        }
+      } else {
+        errorDetail = e.toString();
+      }
+      debugPrint('AI 聊天失败: $errorDetail');
+      debugPrint('AI 配置: baseUrl=${_config.baseUrl}, model=${_config.model}, apiKey=${_config.apiKey.length > 8 ? '${_config.apiKey.substring(0, 4)}...${_config.apiKey.substring(_config.apiKey.length - 4)}' : "(empty)"}');
+      final localResponse = _chatWithRules(message, tasks);
+      final engineLabel = _config.enabled
+          ? '$currentModelDisplayName（连接失败，已降级）'
+          : '本地规则引擎';
       return ChatResult(
-        content: response,
+        content: '$localResponse\n\n---\n⚠️ AI服务连接失败: $errorDetail',
         engineType: engineLabel,
         isFromAI: false,
       );
