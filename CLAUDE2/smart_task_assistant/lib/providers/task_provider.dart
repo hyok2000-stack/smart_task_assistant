@@ -366,6 +366,11 @@ class TaskProvider extends ChangeNotifier {
   /// 更新任务
   Future<void> updateTask(Task task) async {
     try {
+      // 本地编辑递增 version，使云端冲突检测（clientVersion vs serverVersion）生效
+      task = task.copyWith(
+        version: (task.version ?? 1) + 1,
+        updatedAt: DateTime.now(),
+      );
       // 从内存列表获取旧任务（避免全表数据库查询）
       final taskIndex = _tasks.indexWhere((t) => t.id == task.id);
       final oldTask = taskIndex >= 0 ? _tasks[taskIndex] : task;
@@ -430,63 +435,59 @@ class TaskProvider extends ChangeNotifier {
         return;
       }
 
-      DateTime? newDueTime;
+      // 锚定时间：基于原任务截止时间（保持"日/月"语义，避免月末任务逐期漂移）；
+      // 原任务无截止时间时用当前时间。
+      final anchor = completedTask.dueTime ?? now;
+      final rule = completedTask.recurringRule;
 
-      // 基于原任务的截止时间计算新的截止时间
-      // 如果原任务有截止时间，则基于该截止时间加上周期长度
-      // 如果没有截止时间，则基于当前时间加上周期长度
-      final baseTime = completedTask.dueTime ?? now;
+      int daysInMonth(int year, int month) =>
+          DateTime(year, month + 1, 0).day;
 
-      // 根据周期规则计算新的截止时间
-      switch (completedTask.recurringRule) {
-        case 'daily':
-          newDueTime = baseTime.add(const Duration(days: 1));
-          break;
-        case 'weekly':
-          newDueTime = baseTime.add(const Duration(days: 7));
-          break;
-        case 'monthly':
-          // 加一个月，保持相同的日期和时间
-          int newMonth = baseTime.month + 1;
-          int newYear = baseTime.year;
-          if (newMonth > 12) {
-            newMonth = 1;
-            newYear++;
-          }
-          // 处理月末日期问题（如1月31日 -> 2月28/29日）
-          int newDay = baseTime.day;
-          final daysInNewMonth = DateTime(newYear, newMonth + 1, 0).day;
-          if (newDay > daysInNewMonth) {
-            newDay = daysInNewMonth;
-          }
-          newDueTime = DateTime(
-            newYear,
-            newMonth,
-            newDay,
-            baseTime.hour,
-            baseTime.minute,
-            baseTime.second,
-          );
-          break;
-        case 'yearly':
-          int nextYear = baseTime.year + 1;
-          // Handle Feb 29 → Feb 28 in non-leap years
-          int newDay = baseTime.day;
-          if (baseTime.month == 2 && baseTime.day == 29) {
-            final isLeap = DateTime(nextYear, 3, 0).day == 29;
-            if (!isLeap) newDay = 28;
-          }
-          newDueTime = DateTime(
-            nextYear,
-            baseTime.month,
-            newDay,
-            baseTime.hour,
-            baseTime.minute,
-            baseTime.second,
-          );
-          break;
-        default:
-          newDueTime = baseTime.add(const Duration(days: 1));
+      // 单次推进一个周期：月/年基于 t 递增，"日"基于 anchor 固定语义
+      DateTime advance(DateTime t) {
+        switch (rule) {
+          case 'daily':
+            return t.add(const Duration(days: 1));
+          case 'weekly':
+            return t.add(const Duration(days: 7));
+          case 'monthly':
+            // 月末任务（如 29/30/31 日）始终落在下一月的月末，
+            // 避免逐期漂移到固定日期（如 31→28→28 而非 31→28→31）。
+            final wasMonthEnd =
+                anchor.day == daysInMonth(anchor.year, anchor.month);
+            var nm = t.month + 1;
+            var ny = t.year;
+            if (nm > 12) {
+              nm = 1;
+              ny++;
+            }
+            final maxDay = daysInMonth(ny, nm);
+            final day = wasMonthEnd
+                ? maxDay
+                : (anchor.day > maxDay ? maxDay : anchor.day);
+            return DateTime(ny, nm, day, t.hour, t.minute, t.second);
+          case 'yearly':
+            final ny = t.year + 1;
+            var day = anchor.day;
+            // 闰年处理：Feb 29 在非闰年落到 Feb 28
+            if (anchor.month == 2 &&
+                anchor.day == 29 &&
+                daysInMonth(ny, 2) != 29) {
+              day = 28;
+            }
+            return DateTime(ny, anchor.month, day, t.hour, t.minute, t.second);
+          default:
+            return t.add(const Duration(days: 1));
+        }
+      }
+
+      // 先推进一期；若仍落在过去（逾期才完成），则继续推进到未来，
+      // 保持周期对齐（不补建错过的周期，例如"每周一"任务仍落在周一）。
+      var newDueTime = advance(anchor);
+      var guard = 0;
+      while (newDueTime.isBefore(now) && guard < 10000) {
+        newDueTime = advance(newDueTime);
+        guard++;
       }
 
       final newTask = completedTask.copyWith(
@@ -497,6 +498,7 @@ class TaskProvider extends ChangeNotifier {
         createdAt: now,
         updatedAt: now,
         reminderDismissed: false,
+        version: 1, // 新任务（下一期）重置 version，不继承已完成任务的自增 version
       );
 
       await _storage.insertTask(newTask);
@@ -964,16 +966,20 @@ class TaskProvider extends ChangeNotifier {
       for (final remoteTask in pullResult.tasks) {
         final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
         if (index == -1) {
-          await _storage.insertTask(remoteTask);
-          _tasks.insert(0, remoteTask);
+          final withBase = remoteTask.copyWith(
+              lastSyncedServerData: remoteTask.toJson());
+          await _storage.insertTask(withBase);
+          _tasks.insert(0, withBase);
           changed++;
           continue;
         }
 
         final localTask = _tasks[index];
         if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
-          await _storage.updateTask(remoteTask);
-          _tasks[index] = remoteTask;
+          final withBase = remoteTask.copyWith(
+              lastSyncedServerData: remoteTask.toJson());
+          await _storage.updateTask(withBase);
+          _tasks[index] = withBase;
           changed++;
         }
       }
@@ -1045,15 +1051,19 @@ class TaskProvider extends ChangeNotifier {
       for (final remoteTask in pullResult.tasks) {
         final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
         if (index == -1) {
-          await _storage.insertTask(remoteTask);
-          _tasks.insert(0, remoteTask);
+          final withBase = remoteTask.copyWith(
+              lastSyncedServerData: remoteTask.toJson());
+          await _storage.insertTask(withBase);
+          _tasks.insert(0, withBase);
           changed++;
           continue;
         }
         final localTask = _tasks[index];
         if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
-          await _storage.updateTask(remoteTask);
-          _tasks[index] = remoteTask;
+          final withBase = remoteTask.copyWith(
+              lastSyncedServerData: remoteTask.toJson());
+          await _storage.updateTask(withBase);
+          _tasks[index] = withBase;
           changed++;
         }
       }
@@ -1070,8 +1080,19 @@ class TaskProvider extends ChangeNotifier {
         await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
       }
 
-      // 后 push：本地数据已同步到最新，再推送不会覆盖远端修改
-      final pushConflicts = await _backend.pushTasks(List.of(_tasks));
+      // 后 push：只推送自上次同步后变化的任务（本地改动），未变化的不重复全量推送，
+      // 大幅减少同步数据量与请求数。首次同步（无 lastSyncAt）仍全量推送；
+      // 仍有未解决冲突的任务一并推送，避免增量推送漏掉冲突检测。
+      final pushCutoff = _lastBackendSyncAt;
+      final conflictTaskIds = _conflicts.map((c) => c.taskId).toSet();
+      final changedTasks = pushCutoff == null
+          ? List.of(_tasks)
+          : _tasks
+              .where((t) => t.updatedAt.isAfter(pushCutoff) || conflictTaskIds.contains(t.id))
+              .toList();
+      final pushConflicts = changedTasks.isEmpty
+          ? <ConflictInfo>[]
+          : await _backend.pushTasks(changedTasks);
       _conflicts = pushConflicts;
       await _syncPendingComments();
 
@@ -1148,11 +1169,39 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 解决冲突：keepLocal 强制推送本地版本，keepServer 接受服务器版本
-  Future<void> resolveConflict(String taskId, {bool keepLocal = true}) async {
+  Future<void> resolveConflict(String taskId, {bool keepLocal = true, bool merge = false}) async {
     final conflictIndex = _conflicts.indexWhere((c) => c.taskId == taskId);
     if (conflictIndex == -1) return;
     final conflict = _conflicts[conflictIndex];
-    if (keepLocal) {
+    if (merge) {
+      // 三路合并：local 改的字段保留本地，server 改的保留服务器，双方都改的取服务器（权威）
+      final localIndex = _tasks.indexWhere((t) => t.id == taskId);
+      if (localIndex != -1) {
+        final localTask = _tasks[localIndex];
+        final base = localTask.lastSyncedServerData ?? <String, dynamic>{};
+        final localJson = localTask.toJson();
+        final serverTask =
+            _taskFromBackendJson(conflict.serverVersion, localTask: localTask);
+        final serverJson = serverTask.toJson();
+        final mergedJson = _threeWayMerge(base, localJson, serverJson);
+        final serverVersion = (conflict.serverVersion['version'] as int?) ?? 0;
+        final localVersion = localTask.version ?? 0;
+        // forcePush 后服务器 version = serverVersion + 1；合并结果设为 serverVersion + 2，
+        // 使下次 push 的 version 严格大于服务器，走后端“接受”分支（version > existing），
+        // 避免落入 isIdentical 严格字段比较而误报冲突（死循环）。
+        mergedJson['version'] =
+            (localVersion > serverVersion + 1 ? localVersion : serverVersion + 1) + 1;
+        mergedJson['updated_at'] = DateTime.now().toIso8601String();
+        final mergedTask =
+            Task.fromJson(mergedJson).copyWith(lastSyncedServerData: serverJson);
+        await _storage.updateTask(mergedTask);
+        _tasks[localIndex] = mergedTask;
+        _refreshTaskLists();
+        final payload = _backend.taskToBackendJson(mergedTask);
+        payload['updatedAt'] = DateTime.now().toIso8601String();
+        await _backend.forcePushTasks([payload]);
+      }
+    } else if (keepLocal) {
       final payload = Map<String, dynamic>.from(conflict.clientVersion);
       payload['updatedAt'] = DateTime.now().toIso8601String();
       await _backend.forcePushTasks([payload]);
@@ -1160,9 +1209,16 @@ class TaskProvider extends ChangeNotifier {
       if (localIndex != -1) {
         final serverVersion = conflict.serverVersion['version'] as int? ?? 0;
         final localVersion = _tasks[localIndex].version ?? 0;
+        // forcePush 后服务器 version = serverVersion + 1。本地设为 serverVersion + 2，
+        // 使下次 push 走后端“接受”分支（version > existing），避免落入 isIdentical
+        // 严格字段比较而误报冲突（“全部本地”后再次同步又冲突的死循环）。
+        final newVersion =
+            (localVersion > serverVersion + 1 ? localVersion : serverVersion + 1) + 1;
+        final newBase = Map<String, dynamic>.from(payload)..['version'] = newVersion;
         _tasks[localIndex] = _tasks[localIndex].copyWith(
           updatedAt: DateTime.now(),
-          version: (localVersion > serverVersion ? localVersion : serverVersion) + 1,
+          version: newVersion,
+          lastSyncedServerData: newBase,
         );
         await _storage.updateTask(_tasks[localIndex]);
         _refreshTaskLists();
@@ -1181,6 +1237,36 @@ class TaskProvider extends ChangeNotifier {
     }
     _conflicts.removeWhere((c) => c.taskId == taskId);
     notifyListeners();
+  }
+
+  /// 三路合并：基于 base（上次同步的服务端快照），逐字段合并 local 与 server。
+  /// local 改的字段保留本地，server 改的保留服务器，双方都改的取服务器（权威）。
+  Map<String, dynamic> _threeWayMerge(
+      Map<String, dynamic> base,
+      Map<String, dynamic> local,
+      Map<String, dynamic> server) {
+    const fields = [
+      'title', 'content', 'status', 'priority', 'start_time', 'due_time',
+      'completed_at', 'assignee', 'parent_id', 'is_recurring', 'recurring_rule',
+      'tag_ids', 'reminder_minutes', 'reminder_dismissed',
+      'reminder_voice_enabled', 'sort_order', 'assignee_user_id',
+    ];
+    final result = Map<String, dynamic>.from(local);
+    for (final f in fields) {
+      final b = base[f];
+      final l = local[f];
+      final s = server[f];
+      if (l == s) {
+        result[f] = l;
+      } else if (l == b) {
+        result[f] = s; // local 未改 → 取 server
+      } else if (s == b) {
+        result[f] = l; // server 未改 → 取 local
+      } else {
+        result[f] = s; // 双方都改 → 取 server（权威）
+      }
+    }
+    return result;
   }
 
   // Batch operations
@@ -1208,6 +1294,10 @@ class TaskProvider extends ChangeNotifier {
         }
         task = task.copyWith(tagIds: tags);
       }
+      task = task.copyWith(
+        version: (task.version ?? 1) + 1,
+        updatedAt: DateTime.now(),
+      );
       _tasks[index] = task;
       await _storage.updateTask(task);
       _syncTaskSilently(task);

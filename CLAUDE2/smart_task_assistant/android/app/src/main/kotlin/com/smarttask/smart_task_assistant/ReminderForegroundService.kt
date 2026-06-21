@@ -220,6 +220,20 @@ class ReminderForegroundService : Service() {
             if (!canSchedule) {
                 Log.w(TAG, "WARNING: Exact alarm permission not granted! " +
                     "setAlarmClock() will silently fail on Android 12+.")
+                // 引导用户授权精确闹钟（仅提示一次，避免反复弹设置页）
+                val sp = getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
+                if (!sp.getBoolean("exact_alarm_prompted", false)) {
+                    try {
+                        // Settings.ACTION_REQUEST_EXACT_ALARM 需 API 31+，用字符串常量兼容较低 compileSdk；运行时已限定 SDK_INT>=S
+                        val intent = Intent("android.settings.REQUEST_EXACT_ALARM").apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        sp.edit().putBoolean("exact_alarm_prompted", true).apply()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to request exact alarm permission", e)
+                    }
+                }
             }
         }
     }

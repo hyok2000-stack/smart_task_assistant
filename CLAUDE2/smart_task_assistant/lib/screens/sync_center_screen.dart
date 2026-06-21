@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models/sync_queue_item.dart';
 import '../providers/task_provider.dart';
+import '../widgets/conflict_resolution_dialog.dart';
 import '../services/backend_api_service.dart';
 import '../services/sync_queue_service.dart';
 
@@ -145,9 +146,13 @@ class SyncCenterScreen extends StatelessWidget {
                 try {
                   await provider.syncAllWithBackend();
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('同步成功')),
-                    );
+                    if (provider.hasConflicts) {
+                      await showConflictDialogIfNeeded(context);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('同步成功')),
+                      );
+                    }
                   }
                 } catch (e) {
                   if (context.mounted) {

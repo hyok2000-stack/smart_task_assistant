@@ -94,6 +94,7 @@ class BackendTaskComment {
   final String status;
   final DateTime serverCreatedAt;
   final String? authorName;
+  final List<String> readByUserIds;
 
   const BackendTaskComment({
     required this.id,
@@ -105,6 +106,7 @@ class BackendTaskComment {
     required this.status,
     required this.serverCreatedAt,
     this.authorName,
+    this.readByUserIds = const [],
   });
 
   factory BackendTaskComment.fromJson(Map<String, dynamic> json) {
@@ -119,6 +121,7 @@ class BackendTaskComment {
       status: json['status'] as String,
       serverCreatedAt: DateTime.parse(json['serverCreatedAt'] as String),
       authorName: json['authorName'] as String?,
+      readByUserIds: (json['readByUserIds'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 }
@@ -798,6 +801,39 @@ class BackendApiService {
     );
   }
 
+  /// 编辑评论（仅作者本人）
+  Future<BackendTaskComment> editComment({
+    required String taskId,
+    required String commentId,
+    required String content,
+  }) async {
+    if (!isLoggedIn) throw Exception('未登录');
+    final response = await _request(
+      () => _dio.patch<Map<String, dynamic>>(
+        '$baseUrl/tasks/$taskId/comments/$commentId',
+        data: {'content': content},
+        options: _authOptions(),
+      ),
+    );
+    return BackendTaskComment.fromJson(
+      (response.data?['comment'] ?? <String, dynamic>{}) as Map<String, dynamic>,
+    );
+  }
+
+  /// 删除评论（仅作者本人）
+  Future<void> deleteComment({
+    required String taskId,
+    required String commentId,
+  }) async {
+    if (!isLoggedIn) return;
+    await _request(
+      () => _dio.delete<Map<String, dynamic>>(
+        '$baseUrl/tasks/$taskId/comments/$commentId',
+        options: _authOptions(),
+      ),
+    );
+  }
+
   Future<List<BackendTaskComment>> pullComments({DateTime? since}) async {
     if (!isLoggedIn) return [];
     final response = await _request(
@@ -1039,10 +1075,19 @@ class BackendApiService {
     );
   }
 
-  Future<Response<T>> _request<T>(Future<Response<T>> Function() action) async {
+  Future<Response<T>> _request<T>(Future<Response<T>> Function() action, {bool allowRelogin = true}) async {
     try {
       return await action();
     } on DioException catch (e) {
+      // 401 token 过期：尝试用保存的凭据静默重登后重放一次
+      if (allowRelogin && e.response?.statusCode == 401 && _account != null && _password != null) {
+        try {
+          await _silentRelogin();
+          return _request(action, allowRelogin: false);
+        } catch (_) {
+          // 重登失败，落到下方错误处理
+        }
+      }
       final data = e.response?.data;
       if (data is Map<String, dynamic> && data['code'] != null) {
         throw BackendError.fromJson(data);
@@ -1055,6 +1100,27 @@ class BackendApiService {
       }
       throw BackendError(code: 'SERVER_ERROR', message: e.message ?? '后台请求失败');
     }
+  }
+
+  /// 静默重登：用保存的账号密码刷新 token（直接 _dio.post，不经 _request 以避免 401 递归）
+  Future<void> _silentRelogin() async {
+    if (_account == null || _password == null) throw Exception('无保存凭据');
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$baseUrl/auth/login',
+      data: {'account': _account, 'password': _password},
+      options: Options(headers: {'X-App-Key': _appKey}),
+    );
+    final data = response.data;
+    final token = data?['token'] as String?;
+    final user = data?['user'] as Map<String, dynamic>?;
+    if (token == null || user == null) throw Exception('重登响应异常');
+    _token = token;
+    _userId = user['id'] as String;
+    _nickname = user['nickname'] as String;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, token);
+    await prefs.setString(_userIdKey, _userId!);
+    await prefs.setString(_nicknameKey, _nickname!);
   }
 
   /// Helper: get nullable value from json, fall back to localTask only if key is absent or value is null

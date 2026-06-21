@@ -13,6 +13,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/add_task_screen.dart';
 import 'services/reminder_service.dart';
+import 'services/task_comment_service.dart';
 import 'services/tts_service.dart';
 import 'services/clipboard_monitor_service.dart';
 import 'widgets/quick_add_modal.dart';
@@ -68,6 +69,54 @@ final AppSettings appSettings = AppSettings();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 全局错误边界：任何 widget build 抛异常时显示友好提示，避免 release 模式渲染成白屏；
+  // 同时打印异常堆栈，便于定位偶发性白页面的根因。
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    debugPrint('===== Widget build error =====\n${details.exception}\n${details.stack}');
+    // 把异常摘要展示在页面上（可选中复制/截图）。release 模式下 debugPrint 不可见，
+    // 这样用户能把错误信息反馈出来，便于定位偶发性渲染异常的根因。
+    final errorSummary = details.exception.toString();
+    return Material(
+      color: Colors.white,
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                const SizedBox(height: 12),
+                const Text('页面渲染异常',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      errorSummary,
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('请下拉刷新或重启应用',
+                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
   initializeDateFormatting();
 
   // 创建 Provider 实例
@@ -351,6 +400,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       await widget.habitProvider.loadData();
       debugPrint('===== habitProvider.loadData 完成 =====');
       debugPrint('习惯数: ${widget.habitProvider.habits.length}');
+
+      // 异步预热评论内存缓存，避免首次打开任务详情时阻塞读盘数秒
+      TaskCommentService.instance.getAllComments();
 
       // 预初始化 TTS 引擎（避免首次播报时延迟）
       await TTSService().init();

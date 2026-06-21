@@ -5,6 +5,8 @@ import '../models/tag.dart';
 import '../theme/app_theme.dart';
 import 'tag_edit_dialog.dart';
 import 'distribution_status_widget.dart';
+import '../utils/app_localizations.dart';
+import '../services/backend_api_service.dart';
 
 /// 任务卡片组件 - 互联网风格设计
 class TaskCard extends StatelessWidget {
@@ -291,6 +293,7 @@ class TaskCard extends StatelessWidget {
   /// 完整型卡片 - 互联网风格
   Widget _buildFullCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = context.l;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -488,7 +491,7 @@ class TaskCard extends StatelessWidget {
                                       size: 20,
                                     ),
                                     const SizedBox(width: 12),
-                                    const Text('编辑任务'),
+                                    Text(l.editTask),
                                   ],
                                 ),
                               ),
@@ -502,7 +505,7 @@ class TaskCard extends StatelessWidget {
                                       size: 20,
                                     ),
                                     const SizedBox(width: 12),
-                                    const Text('删除任务'),
+                                    Text(l.deleteTask),
                                   ],
                                 ),
                               ),
@@ -517,24 +520,26 @@ class TaskCard extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         // 优先级标签
-                        _buildPriorityTag(task.priority),
+                        _buildPriorityTag(context, task.priority),
                         // 状态标签
-                        _buildStatusTag(task.status),
+                        _buildStatusTag(context, task.status),
                         // 截止时间
                         if (task.dueTime != null) _buildTimeTag(context),
                         // 重复周期
-                        if (task.isRecurring) _buildRecurringTag(),
+                        if (task.isRecurring) _buildRecurringTag(context),
                         // 提醒时间
                         if (task.reminderMinutes != null &&
                             task.reminderMinutes! > 0)
-                          _buildReminderTag(),
+                          _buildReminderTag(context),
                         // 标签 - 与其他信息同行显示
                         if (availableTags != null &&
                             availableTags!.isNotEmpty &&
                             task.tagIds.isNotEmpty)
                           _buildTaskTags(context),
                         // 已分发标记
-                        if (isDistributed) _buildDistributedBadge(),
+                        if (isDistributed) _buildDistributedBadge(context),
+                        // 指派给我标记（被指派但非自己创建的任务）
+                        if (_isAssignedToMe) _buildAssignedToMeBadge(context),
                       ],
                     ),
                   ],
@@ -547,7 +552,31 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDistributedBadge() {
+  bool get _isAssignedToMe {
+    final me = BackendApiService.instance.userId;
+    return me != null && task.assigneeUserId == me && task.ownerUserId != me;
+  }
+
+  Widget _buildAssignedToMeBadge(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.person_pin_rounded, size: 11, color: Colors.orange.shade700),
+          const SizedBox(width: 3),
+          Text('指派给我', style: TextStyle(fontSize: 12, color: Colors.orange.shade700, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDistributedBadge(BuildContext context) {
+    final l = context.l;
     if (distributionStatus != null) {
       return DistributionStatusWidget(status: distributionStatus!, compact: true);
     }
@@ -563,138 +592,12 @@ class TaskCard extends StatelessWidget {
           Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
           const SizedBox(width: 3),
           Text(
-            '已分发',
+            l.distributed,
             style: TextStyle(
               fontSize: 12,
               color: AppTheme.primaryColor,
               fontWeight: FontWeight.w600,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 构建标签显示区域 - 只显示任务已关联的标签
-  Widget _buildTagsSection(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // 只显示任务已关联的标签
-    final taskTags =
-        availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-            [];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.label_outline,
-                size: 14,
-                color: AppTheme.textHintColor,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '标签',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textHintColor,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const Spacer(),
-              // 编辑标签按钮
-              GestureDetector(
-                onTap: () => _showTagEditDialog(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.edit_outlined,
-                        size: 12,
-                        color: AppTheme.primaryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '编辑',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.primaryColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: taskTags.map((tag) {
-              final color = _parseColor(tag.color);
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: color, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tag.name,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
           ),
         ],
       ),
@@ -741,27 +644,28 @@ class TaskCard extends StatelessWidget {
   }
 
   /// 构建优先级标签 - 可点击修改
-  Widget _buildPriorityTag(TaskPriority priority) {
+  Widget _buildPriorityTag(BuildContext context, TaskPriority priority) {
+    final l = context.l;
     Color color;
     String label;
 
     switch (priority) {
       case TaskPriority.high:
         color = AppTheme.errorColor;
-        label = '高';
+        label = l.priorityHighShort;
         break;
       case TaskPriority.medium:
         color = AppTheme.warningColor;
-        label = '中';
+        label = l.priorityMediumShort;
         break;
       case TaskPriority.low:
         color = AppTheme.successColor;
-        label = '低';
+        label = l.priorityLowShort;
         break;
     }
 
     return GestureDetector(
-      onTap: onPriorityChange != null ? () => _showPriorityDialog() : null,
+      onTap: onPriorityChange != null ? () => _showPriorityPicker(context) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -794,22 +698,110 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  /// 显示优先级选择对话框
-  void _showPriorityDialog() {
-    // 这里通过 onPriorityChange 回调处理
-    // 默认循环切换优先级
-    final priorities = [
-      TaskPriority.low,
-      TaskPriority.medium,
-      TaskPriority.high,
+  /// 弹出优先级选择面板（替代原先不可预测的循环点击）
+  void _showPriorityPicker(BuildContext context) {
+    if (onPriorityChange == null) return;
+    final l = context.l;
+    final options = <(TaskPriority, String, Color)>[
+      (TaskPriority.high, l.priorityHigh, AppTheme.errorColor),
+      (TaskPriority.medium, l.priorityMedium, AppTheme.warningColor),
+      (TaskPriority.low, l.priorityLow, AppTheme.successColor),
     ];
-    final currentIndex = priorities.indexOf(task.priority);
-    final nextIndex = (currentIndex + 1) % priorities.length;
-    onPriorityChange?.call(priorities[nextIndex]);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l.priority,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...options.map((o) {
+                      final isSelected = task.priority == o.$1;
+                      return InkWell(
+                        onTap: () {
+                          onPriorityChange?.call(o.$1);
+                          Navigator.pop(ctx);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 12),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? o.$3.withValues(alpha: 0.12)
+                                : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? o.$3 : Colors.grey.shade200,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.flag_rounded, color: o.$3, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  o.$2,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                    color: isSelected
+                                        ? o.$3
+                                        : AppTheme.textPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Icon(Icons.check_circle_rounded,
+                                    color: o.$3, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 构建状态标签 - 可点击修改
-  Widget _buildStatusTag(TaskStatus status) {
+  Widget _buildStatusTag(BuildContext context, TaskStatus status) {
+    final l = context.l;
     Color color;
     String label;
     IconData icon;
@@ -817,28 +809,28 @@ class TaskCard extends StatelessWidget {
     switch (status) {
       case TaskStatus.pending:
         color = AppTheme.warningColor;
-        label = '待处理';
+        label = l.statusPending;
         icon = Icons.schedule_rounded;
         break;
       case TaskStatus.inProgress:
         color = AppTheme.infoColor;
-        label = '进行中';
+        label = l.statusInProgress;
         icon = Icons.play_circle_filled_rounded;
         break;
       case TaskStatus.completed:
         color = AppTheme.successColor;
-        label = '已完成';
+        label = l.statusCompleted;
         icon = Icons.check_circle_rounded;
         break;
       case TaskStatus.cancelled:
         color = AppTheme.textHintColor;
-        label = '已取消';
+        label = l.statusCancelled;
         icon = Icons.cancel_rounded;
         break;
     }
 
     return GestureDetector(
-      onTap: onStatusChange != null ? () => _cycleStatus() : null,
+      onTap: onStatusChange != null ? () => _showStatusPicker(context) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -871,21 +863,106 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  /// 循环切换状态
-  void _cycleStatus() {
-    final statuses = [
-      TaskStatus.pending,
-      TaskStatus.inProgress,
-      TaskStatus.completed,
-      TaskStatus.cancelled,
+  /// 弹出状态选择面板（替代原先不可预测的循环点击）
+  void _showStatusPicker(BuildContext context) {
+    if (onStatusChange == null) return;
+    final l = context.l;
+    final options = <(TaskStatus, String, IconData, Color)>[
+      (TaskStatus.pending, l.statusPending, Icons.schedule_rounded, AppTheme.warningColor),
+      (TaskStatus.inProgress, l.statusInProgress, Icons.play_circle_filled_rounded, AppTheme.infoColor),
+      (TaskStatus.completed, l.statusCompleted, Icons.check_circle_rounded, AppTheme.successColor),
+      (TaskStatus.cancelled, l.statusCancelled, Icons.cancel_rounded, AppTheme.textHintColor),
     ];
-    final currentIndex = statuses.indexOf(task.status);
-    if (currentIndex == -1) {
-      onStatusChange?.call(statuses[0]);
-      return;
-    }
-    final nextIndex = (currentIndex + 1) % statuses.length;
-    onStatusChange?.call(statuses[nextIndex]);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l.changeStatus,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...options.map((o) {
+                      final isSelected = task.status == o.$1;
+                      return InkWell(
+                        onTap: () {
+                          onStatusChange?.call(o.$1);
+                          Navigator.pop(ctx);
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 12),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? o.$4.withValues(alpha: 0.12)
+                                : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? o.$4 : Colors.grey.shade200,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(o.$3, color: o.$4, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  o.$2,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                    color: isSelected
+                                        ? o.$4
+                                        : AppTheme.textPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Icon(Icons.check_circle_rounded,
+                                    color: o.$4, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 构建时间标签 - 可点击修改
@@ -930,20 +1007,21 @@ class TaskCard extends StatelessWidget {
   }
 
   /// 构建重复周期标签 - 可点击修改
-  Widget _buildRecurringTag() {
+  Widget _buildRecurringTag(BuildContext context) {
+    final l = context.l;
     String label;
     switch (task.recurringRule) {
       case 'daily':
-        label = '每日';
+        label = l.dailyRepeat;
         break;
       case 'weekly':
-        label = '每周';
+        label = l.weeklyRepeat;
         break;
       case 'monthly':
-        label = '每月';
+        label = l.monthlyRepeat;
         break;
       default:
-        label = '周期';
+        label = l.recurringCycleShort;
     }
 
     return GestureDetector(
@@ -988,13 +1066,14 @@ class TaskCard extends StatelessWidget {
   }
 
   /// 构建提醒标签 - 可点击修改
-  Widget _buildReminderTag() {
+  Widget _buildReminderTag(BuildContext context) {
+    final l = context.l;
     String label;
     if (task.reminderMinutes! >= 60) {
       final hours = task.reminderMinutes! ~/ 60;
-      label = '提前$hours小时';
+      label = l.reminderInAdvanceHours(hours);
     } else {
-      label = '提前${task.reminderMinutes}分钟';
+      label = l.reminderInAdvanceMinutes(task.reminderMinutes!);
     }
 
     return GestureDetector(
@@ -1028,72 +1107,6 @@ class TaskCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  /// 构建标签药丸显示
-  Widget _buildTagPills(BuildContext context) {
-    // 只显示任务已关联的标签
-    final taskTags =
-        availableTags?.where((tag) => task.tagIds.contains(tag.id)).toList() ??
-            [];
-
-    if (taskTags.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: taskTags.map((tag) {
-        final color = _parseColor(tag.color);
-        return GestureDetector(
-          onTap: () => _showTagEditDialog(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.12)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.15),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.label_rounded,
-                    size: 8,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  tag.name,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 

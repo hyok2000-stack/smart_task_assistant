@@ -55,10 +55,11 @@ class ConflictResolutionDialog extends StatelessWidget {
                     itemBuilder: (context, index) {
                       return _ConflictCard(
                         conflict: conflicts[index],
-                        onResolve: (keepLocal) async {
+                        onResolve: ({bool keepLocal = true, bool merge = false}) async {
                           await provider.resolveConflict(
                             conflicts[index].taskId,
                             keepLocal: keepLocal,
+                            merge: merge,
                           );
                         },
                       );
@@ -77,16 +78,25 @@ class ConflictResolutionDialog extends StatelessWidget {
                             child: OutlinedButton.icon(
                               onPressed: () => _resolveAll(context, provider, keepLocal: true),
                               icon: const Icon(Icons.cloud_upload, size: 16),
-                              label: const Text('全部保留本地'),
+                              label: const Text('全部本地', style: TextStyle(fontSize: 12)),
                               style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _resolveAll(context, provider, merge: true),
+                              icon: const Icon(Icons.merge, size: 16),
+                              label: const Text('全部合并', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => _resolveAll(context, provider, keepLocal: false),
                               icon: const Icon(Icons.cloud_download, size: 16),
-                              label: const Text('全部使用服务器'),
+                              label: const Text('全部服务器', style: TextStyle(fontSize: 12)),
                               style: OutlinedButton.styleFrom(foregroundColor: Colors.green),
                             ),
                           ),
@@ -110,10 +120,10 @@ class ConflictResolutionDialog extends StatelessWidget {
     );
   }
 
-  Future<void> _resolveAll(BuildContext context, TaskProvider provider, {required bool keepLocal}) async {
+  Future<void> _resolveAll(BuildContext context, TaskProvider provider, {bool keepLocal = false, bool merge = false}) async {
     final ids = provider.conflicts.map((c) => c.taskId).toList();
     for (final id in ids) {
-      await provider.resolveConflict(id, keepLocal: keepLocal);
+      await provider.resolveConflict(id, keepLocal: keepLocal, merge: merge);
     }
     if (context.mounted) Navigator.pop(context);
   }
@@ -121,7 +131,7 @@ class ConflictResolutionDialog extends StatelessWidget {
 
 class _ConflictCard extends StatelessWidget {
   final ConflictInfo conflict;
-  final Future<void> Function(bool keepLocal) onResolve;
+  final Future<void> Function({bool keepLocal, bool merge}) onResolve;
 
   const _ConflictCard({required this.conflict, required this.onResolve});
 
@@ -153,17 +163,25 @@ class _ConflictCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => onResolve(true),
+                  onPressed: () => onResolve(keepLocal: true),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
-                  child: const Text('保留本地'),
+                  child: const Text('本地', style: TextStyle(fontSize: 12)),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => onResolve(false),
+                  onPressed: () => onResolve(merge: true),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
+                  child: const Text('合并', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => onResolve(keepLocal: false),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.green),
-                  child: const Text('使用服务器'),
+                  child: const Text('服务器', style: TextStyle(fontSize: 12)),
                 ),
               ),
             ],

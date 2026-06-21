@@ -64,6 +64,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   // 评论相关
   List<TaskComment> _comments = [];
+  bool _isLoadingComments = false;
   List<BackendDistribution> _taskDistributions = [];
   final _commentController = TextEditingController();
 
@@ -111,6 +112,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
     // 加载评论
     if (widget.isEditing) {
+      _isLoadingComments = true;
       _loadComments();
     }
     // B5: 加载团队成员用于指派
@@ -132,41 +134,40 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   Future<void> _loadComments() async {
     final task = widget.task!;
-    final currentUserId = BackendApiService.instance.userId;
 
-    // 1. Fetch distributions and remote comments from backend
-    final backend = BackendApiService.instance;
-    if (backend.isLoggedIn) {
-      try {
-        final dists = await backend.getDistributionsForTask(task.id);
-        // Save remote comments for dedup, but don't add to main list
-        for (final d in dists) {
-          try {
-            final remoteComments = await backend.getRecipientComments(d.id);
-            if (remoteComments.isNotEmpty) {
-              await TaskCommentService.instance.saveRemoteComments(remoteComments);
-            }
-          } catch (_) {}
-        }
-        // Main comment list: only current user's comments on THIS task
-        final myComments = await TaskCommentService.instance.getComments(task.id);
-        final filtered = myComments.where((c) => c.authorUserId == currentUserId).toList();
-        if (mounted) {
-          setState(() {
-            _comments = filtered;
-            _taskDistributions = dists;
-          });
-        }
-        return;
-      } catch (_) {}
-    }
-
-    // Fallback: local only
-    final myComments = await TaskCommentService.instance.getComments(task.id);
-    final filtered = myComments.where((c) => c.authorUserId == currentUserId).toList();
+    // 1. 先立即从本地缓存显示评论（毫秒级），避免等待后端拉取阻塞首屏
+    final localComments =
+        await TaskCommentService.instance.getComments(task.id);
+    localComments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (mounted) {
-      setState(() => _comments = filtered);
+      setState(() {
+        _comments = localComments;
+        _isLoadingComments = false;
+      });
     }
+
+    // 2. 后台从后端拉取分发与对方评论并落库，拉到后再刷新（自己 + 对方）
+    final backend = BackendApiService.instance;
+    if (!backend.isLoggedIn) return;
+    try {
+      final dists = await backend.getDistributionsForTask(task.id);
+      for (final d in dists) {
+        try {
+          final remoteComments = await backend.getRecipientComments(d.id);
+          if (remoteComments.isNotEmpty) {
+            await TaskCommentService.instance.saveRemoteComments(remoteComments);
+          }
+        } catch (_) {}
+      }
+      final allComments = await TaskCommentService.instance.getComments(task.id);
+      allComments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (mounted) {
+        setState(() {
+          _comments = allComments;
+          _taskDistributions = dists;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -839,61 +840,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 8),
-              // B5: 指派人选择
-              if (_teamMembers.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  '指派给',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _assigneeUserId = null),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _assigneeUserId == null ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(20),
-                            border: _assigneeUserId == null ? Border.all(color: AppTheme.primaryColor) : null,
-                          ),
-                          child: Text('不指派', style: TextStyle(fontSize: 13, color: _assigneeUserId == null ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
-                        ),
-                      ),
-                      ..._teamMembers.map((m) => GestureDetector(
-                        onTap: () => setState(() => _assigneeUserId = m.userId),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _assigneeUserId == m.userId ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(20),
-                            border: _assigneeUserId == m.userId ? Border.all(color: AppTheme.primaryColor) : null,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(radius: 10, backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2), child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?', style: const TextStyle(fontSize: 12))),
-                              const SizedBox(width: 6),
-                              Text(m.displayName, style: TextStyle(fontSize: 13, color: _assigneeUserId == m.userId ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
-                            ],
-                          ),
-                        ),
-                      )),
-                    ],
-                  ),
-                ),
-              ],
               const SizedBox(height: 20),
               // 周期任务
               Container(
@@ -964,17 +910,79 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 const SizedBox(height: 8),
                 _buildSourceInfo(),
               ],
-              // 评论（编辑模式）
-              if (widget.isEditing) ...[
+              // 协作（指派 + 评论合并为一个区块，视觉上关联）
+              if (widget.isEditing || _teamMembers.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Text(
-                  '评论 (${_comments.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  '协作',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                _buildCommentsSection(),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 指派给
+                      if (_teamMembers.isNotEmpty) ...[
+                        Text('指派给', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondaryColor)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            GestureDetector(
+                              onTap: () => setState(() => _assigneeUserId = null),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _assigneeUserId == null ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: _assigneeUserId == null ? Border.all(color: AppTheme.primaryColor) : null,
+                                ),
+                                child: Text('不指派', style: TextStyle(fontSize: 13, color: _assigneeUserId == null ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
+                              ),
+                            ),
+                            ..._teamMembers.map((m) => GestureDetector(
+                              onTap: () => setState(() => _assigneeUserId = m.userId),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _assigneeUserId == m.userId ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: _assigneeUserId == m.userId ? Border.all(color: AppTheme.primaryColor) : null,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircleAvatar(radius: 10, backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2), child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?', style: const TextStyle(fontSize: 12))),
+                                    const SizedBox(width: 6),
+                                    Text(m.displayName, style: TextStyle(fontSize: 13, color: _assigneeUserId == m.userId ? AppTheme.primaryColor : AppTheme.textSecondaryColor)),
+                                  ],
+                                ),
+                              ),
+                            )),
+                          ],
+                        ),
+                        if (widget.isEditing) const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(height: 1),
+                        ),
+                      ],
+                      // 评论
+                      if (widget.isEditing) ...[
+                        Text('评论 (${_comments.length})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondaryColor)),
+                        const SizedBox(height: 8),
+                        _buildCommentsSection(),
+                      ],
+                    ],
+                  ),
+                ),
               ],
               // 分发状态（编辑模式）
               if (widget.isEditing && _taskDistributions.isNotEmpty) ...[
@@ -1043,7 +1051,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 评论列表
-        if (_comments.isEmpty)
+        if (_isLoadingComments)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.primaryColor),
+              ),
+            ),
+          )
+        else if (_comments.isEmpty)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Center(
@@ -1237,11 +1257,62 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final text = _commentController.text.trim();
     if (text.isEmpty || !widget.isEditing) return;
     _commentController.clear();
-    final comment = await TaskCommentService.instance.addLocalComment(
-      taskId: widget.task!.id,
-      content: text,
-    );
-    setState(() => _comments.add(comment));
+    final l = context.l;
+    try {
+      final comment = await TaskCommentService.instance.addLocalComment(
+        taskId: widget.task!.id,
+        content: text,
+      );
+      setState(() => _comments.add(comment));
+      // 后台同步到后端，与首页详情弹窗行为一致；不阻塞 UI
+      _syncCommentToBackend(comment);
+    } catch (e) {
+      // 失败时回填输入内容并提示，避免用户感觉“提交无反应”
+      _commentController.text = text;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.commentFailed(e))),
+        );
+      }
+    }
+  }
+
+  /// 把刚添加的本地评论推送到后端，并刷新同步态展示
+  Future<void> _syncCommentToBackend(TaskComment comment) async {
+    final task = widget.task;
+    if (task == null) return;
+    final api = BackendApiService.instance;
+    if (!api.isLoggedIn) return;
+    bool synced = false;
+    Object? error;
+    try {
+      await api.pushTask(task);
+      await api.addComment(
+        taskId: comment.taskId,
+        content: comment.content,
+        clientCommentId: comment.id,
+        operationId: comment.operationId,
+      );
+      synced = true;
+    } catch (e) {
+      error = e;
+    }
+    try {
+      if (synced) {
+        await TaskCommentService.instance.markSynced(comment.id);
+      } else {
+        await TaskCommentService.instance.markSyncFailed(comment.id, error!);
+      }
+    } catch (_) {}
+    // 就地更新内存中该条评论的同步态
+    final idx = _comments.indexWhere((c) => c.id == comment.id);
+    if (idx != -1) {
+      _comments[idx] = _comments[idx].copyWith(
+        synced: synced,
+        syncError: error?.toString(),
+      );
+    }
+    if (mounted) setState(() {});
   }
 
   Widget _buildPriorityChip(TaskPriority priority, String label, Color color) {
@@ -1814,17 +1885,19 @@ class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> 
   void initState() {
     super.initState();
     _fetchComments();
+    // 进入会话即标记对方评论为已读（触发对方端已读回执）
+    BackendApiService.instance.markCommentsRead(widget.distribution.id).catchError((_) {});
   }
 
   Future<void> _fetchComments() async {
     try {
       final backend = BackendApiService.instance;
       final result = await backend.getRecipientComments(widget.distribution.id);
-      // Only show the other party's comments, not current user's
-      final filtered = result.where((c) => c.authorUserId != widget.currentUserId).toList();
+      // 显示完整会话（自己 + 对方），按服务端时间正序排列
+      result.sort((a, b) => a.serverCreatedAt.compareTo(b.serverCreatedAt));
       if (mounted) {
         setState(() {
-          _comments = filtered;
+          _comments = result;
           _loading = false;
         });
       }
@@ -1835,6 +1908,49 @@ class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> 
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _editComment(BackendTaskComment c) async {
+    final controller = TextEditingController(text: c.content);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑评论'),
+        content: TextField(controller: controller, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('保存')),
+        ],
+      ),
+    );
+    if (!mounted || result == null || result.isEmpty || result == c.content) return;
+    try {
+      await BackendApiService.instance.editComment(taskId: c.taskId, commentId: c.id, content: result);
+      _fetchComments();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('编辑失败：$e')));
+    }
+  }
+
+  Future<void> _deleteComment(BackendTaskComment c) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除评论'),
+        content: const Text('确定删除这条评论？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await BackendApiService.instance.deleteComment(taskId: c.taskId, commentId: c.id);
+      _fetchComments();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败：$e')));
     }
   }
 
@@ -1895,35 +2011,55 @@ class _DistributionCommentsSheetState extends State<_DistributionCommentsSheet> 
                           itemCount: _comments!.length,
                           itemBuilder: (ctx, i) {
                             final c = _comments![i];
+                            final isMine = c.authorUserId == widget.currentUserId;
+                            final otherUserId = widget.distribution.senderUserId == widget.currentUserId
+                                ? widget.distribution.recipientUserId
+                                : widget.distribution.senderUserId;
+                            final readByOther = isMine && c.readByUserIds.contains(otherUserId);
                             final timeStr =
                                 '${c.serverCreatedAt.month}/${c.serverCreatedAt.day} ${c.serverCreatedAt.hour.toString().padLeft(2, '0')}:${c.serverCreatedAt.minute.toString().padLeft(2, '0')}';
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE8F0FE),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        c.authorName ?? widget.otherName,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(timeStr, style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(c.content, style: const TextStyle(fontSize: 14, color: AppTheme.textPrimaryColor)),
-                                ],
+                            return Align(
+                              alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Container(
+                                constraints: BoxConstraints(maxWidth: MediaQuery.of(ctx).size.width * 0.8),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: isMine ? AppTheme.primaryColor.withValues(alpha: 0.12) : const Color(0xFFE8F0FE),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isMine ? '我' : (c.authorName ?? widget.otherName),
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(c.content, style: const TextStyle(fontSize: 14, color: AppTheme.textPrimaryColor)),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(timeStr, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                        if (isMine) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(Icons.done_all_rounded, size: 13, color: readByOther ? AppTheme.primaryColor : Colors.grey.shade400),
+                                          const SizedBox(width: 6),
+                                          GestureDetector(
+                                            onTap: () => _editComment(c),
+                                            child: const Icon(Icons.edit_outlined, size: 14, color: Colors.grey),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          GestureDetector(
+                                            onTap: () => _deleteComment(c),
+                                            child: Icon(Icons.delete_outline, size: 14, color: Colors.red.shade300),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             );
                           },

@@ -18,9 +18,11 @@ class StatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = context.l;
-    return Container(
-      color: AppTheme.backgroundColor,
-      child: Consumer<TaskProvider>(
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l.dataStatistics),
+      ),
+      body: Consumer<TaskProvider>(
         builder: (context, provider, child) {
           final stats = provider.stats;
           final tasks = provider.tasks;
@@ -30,15 +32,6 @@ class StatsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l.dataStatistics,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimaryColor,
-                  ),
-                ),
-                const SizedBox(height: 24),
                 // 总览卡片
                 _buildOverviewCard(context, stats, l),
                 const SizedBox(height: 24),
@@ -808,7 +801,7 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
       if (_period == 'daily') {
         since = now.subtract(const Duration(hours: 24));
       } else if (_period == 'monthly') {
-        since = now.subtract(const Duration(days: 30));
+        since = DateTime(now.year, now.month, 1); // 自然月（本月1日起），而非写死 30 天
       } else {
         since = now.subtract(const Duration(days: 7));
       }

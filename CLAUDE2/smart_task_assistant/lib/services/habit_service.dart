@@ -62,9 +62,9 @@ class HabitService {
     int endHour = defaultEndTime;
 
     // 解析上班时间
-    if (clockInHabit != null) {
+    if (clockInHabit != null && clockInHabit!.referenceTime != null) {
       final parts = clockInHabit!.referenceTime!.split(':');
-      startHour = int.tryParse(parts[0]) ?? defaultStartTime;
+      if (parts.isNotEmpty) startHour = int.tryParse(parts[0]) ?? defaultStartTime;
       debugPrint('    → 使用上班打卡时间: ${clockInHabit!.referenceTime}');
     } else {
       debugPrint('    → 上班打卡未启用或未设置，使用默认时间: ${defaultStartTime}:00');

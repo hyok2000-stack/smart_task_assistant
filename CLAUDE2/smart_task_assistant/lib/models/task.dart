@@ -51,6 +51,7 @@ class Task {
   int? version; // 同步版本号，用于冲突检测
   int? sortOrder; // 排序顺序（置顶=-1，默认=0）
   String? assigneeUserId; // 被指派人ID
+  Map<String, dynamic>? lastSyncedServerData; // 上次同步的服务端快照（本地JSON），三路合并用，仅本地不上行
 
   Task({
     required this.id,
@@ -84,6 +85,7 @@ class Task {
     this.version,
     this.sortOrder,
     this.assigneeUserId,
+    this.lastSyncedServerData,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         tagIds = tagIds ?? [],
@@ -199,6 +201,10 @@ class Task {
         version: json['version'] as int?,
         sortOrder: json['sort_order'] as int?,
         assigneeUserId: json['assignee_user_id'] as String?,
+        lastSyncedServerData: json['last_synced_server'] == null
+            ? null
+            : Map<String, dynamic>.from(
+                jsonDecode(json['last_synced_server'] as String) as Map),
       );
     } on FormatException {
       rethrow; // 重新抛出格式异常
@@ -241,6 +247,9 @@ class Task {
       'version': version,
       'sort_order': sortOrder,
       'assignee_user_id': assigneeUserId,
+      'last_synced_server': lastSyncedServerData != null
+          ? jsonEncode(lastSyncedServerData)
+          : null,
     };
   }
 
@@ -278,6 +287,7 @@ class Task {
     int? version,
     int? sortOrder,
     Object? assigneeUserId = _sentinel,
+    Map<String, dynamic>? lastSyncedServerData,
   }) {
     return Task(
       id: id ?? this.id,
@@ -313,6 +323,7 @@ class Task {
       version: version ?? this.version,
       sortOrder: sortOrder ?? this.sortOrder,
       assigneeUserId: identical(assigneeUserId, _sentinel) ? this.assigneeUserId : assigneeUserId as String?,
+      lastSyncedServerData: lastSyncedServerData ?? this.lastSyncedServerData,
     );
   }
 }

@@ -138,6 +138,7 @@ export interface TaskComment {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
+  readByUserIds?: string[]; // 已读该评论的用户ID（已读回执）
 }
 
 export interface SyncLog {

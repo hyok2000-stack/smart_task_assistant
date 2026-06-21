@@ -21,9 +21,9 @@ class HabitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<HabitProvider>();
-    final progress = provider.getTodayProgressPercentage(habit.id);
-    final completed = provider.todayProgress[habit.id] ?? 0;
+    // 用 select 精确订阅本习惯的进度，避免任一习惯变化都重建本卡片
+    final progress = context.select<HabitProvider, int>((p) => p.getTodayProgressPercentage(habit.id));
+    final completed = context.select<HabitProvider, int>((p) => p.todayProgress[habit.id] ?? 0);
 
     // 计算下次提醒时间（启用的习惯）
     final nextReminderTime = habit.isEnabled

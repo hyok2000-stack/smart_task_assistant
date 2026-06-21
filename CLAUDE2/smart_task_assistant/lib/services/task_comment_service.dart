@@ -13,28 +13,36 @@ class TaskCommentService {
   static final TaskCommentService instance = TaskCommentService._();
   static const _commentsKey = 'task.comments';
 
+  // 内存缓存：首次读取后常驻，避免每次 getComments 都重新读 SharedPreferences + 解析 JSON
+  List<TaskComment>? _memCache;
+
   Future<List<TaskComment>> getComments(String taskId) async {
     return getCommentsForTasks([taskId]);
   }
 
   Future<List<TaskComment>> getCommentsForTasks(List<String> taskIds) async {
     final ids = taskIds.toSet();
-    final comments = await _getAllAndDedup();
-    return comments.where((comment) => ids.contains(comment.taskId)).toList()
+    final all = await _loadAll();
+    return all.where((comment) => ids.contains(comment.taskId)).toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
-  /// Read all comments, dedup, and persist the cleaned list.
-  Future<List<TaskComment>> _getAllAndDedup() async {
+  /// 加载全部评论到内存缓存。首次读盘 + 去重 + 持久化清理；后续直接返回内存（毫秒级）。
+  Future<List<TaskComment>> _loadAll() async {
+    if (_memCache != null) return _memCache!;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_commentsKey);
-    if (raw == null || raw.isEmpty) return [];
+    if (raw == null || raw.isEmpty) {
+      _memCache = [];
+      return _memCache!;
+    }
     final decoded = jsonDecode(raw) as List<dynamic>;
     final comments = decoded
         .map((json) => TaskComment.fromJson(json as Map<String, dynamic>))
         .toList();
 
     final deduped = _dedup(comments);
+    _memCache = deduped;
     if (deduped.length != comments.length) {
       // Persist cleaned data
       await prefs.setString(
@@ -42,17 +50,11 @@ class TaskCommentService {
         jsonEncode(deduped.map((c) => c.toJson()).toList()),
       );
     }
-    return deduped;
+    return _memCache!;
   }
 
   Future<List<TaskComment>> getAllComments() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_commentsKey);
-    if (raw == null || raw.isEmpty) return [];
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .map((json) => TaskComment.fromJson(json as Map<String, dynamic>))
-        .toList();
+    return List<TaskComment>.from(await _loadAll());
   }
 
   Future<TaskComment> addLocalComment({
@@ -71,21 +73,21 @@ class TaskCommentService {
       authorUserId: api.userId,
       authorName: api.nickname,
     );
-    final comments = await getAllComments();
-    comments.add(comment);
-    await _saveAll(comments);
+    final all = await _loadAll();
+    all.add(comment);
+    await _persist(all);
     return comment;
   }
 
   Future<void> saveRemoteComments(
       List<BackendTaskComment> remoteComments) async {
     if (remoteComments.isEmpty) return;
-    final comments = await getAllComments();
+    final all = await _loadAll();
     var changed = false;
 
     for (final remote in remoteComments) {
       if (remote.status == 'deleted') continue;
-      final index = comments.indexWhere(
+      final index = all.indexWhere(
         (comment) =>
             comment.serverId == remote.id ||
             comment.id == remote.clientCommentId ||
@@ -109,15 +111,15 @@ class TaskCommentService {
       );
 
       if (index == -1) {
-        comments.add(remoteComment);
+        all.add(remoteComment);
       } else {
-        comments[index] = remoteComment;
+        all[index] = remoteComment;
       }
       changed = true;
     }
 
     if (changed) {
-      await _saveAll(comments);
+      await _persist(all);
     }
   }
 
@@ -209,15 +211,17 @@ class TaskCommentService {
 
   Future<void> _update(
       String id, TaskComment Function(TaskComment) update) async {
-    final comments = await getAllComments();
-    final index = comments.indexWhere((comment) => comment.id == id);
+    final all = await _loadAll();
+    final index = all.indexWhere((comment) => comment.id == id);
     if (index == -1) return;
-    comments[index] = update(comments[index]);
-    await _saveAll(comments);
+    all[index] = update(all[index]);
+    await _persist(all);
   }
 
-  Future<void> _saveAll(List<TaskComment> comments) async {
+  /// 持久化并同步更新内存缓存
+  Future<void> _persist(List<TaskComment> comments) async {
     final deduped = _dedup(comments);
+    _memCache = deduped;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _commentsKey,

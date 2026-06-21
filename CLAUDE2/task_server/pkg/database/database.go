@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"os"
 	"task_server/internal/config"
 	"task_server/internal/model"
 
@@ -16,6 +17,12 @@ var DB *gorm.DB
 
 func InitDB(cfg *config.DatabaseConfig) error {
 	var err error
+
+	// SQLite 数据库路径：优先 DB_PATH 环境变量（便于放到非云同步目录，规避 OneDrive 等 IO 锁）
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "task_server.db"
+	}
 
 	// 检查是否配置了有效的 PostgreSQL 连接
 	// 只有当 DB_HOST 和 DB_NAME 都不为空时才尝试 PostgreSQL
@@ -67,9 +74,9 @@ func InitDB(cfg *config.DatabaseConfig) error {
 		}
 	}
 
-	// 使用 SQLite 作为默认数据库
-	log.Println("Using SQLite database (task_server.db)...")
-	DB, err = gorm.Open(sqlite.Open("task_server.db"), &gorm.Config{})
+	// 使用 SQLite 作为默认数据库（路径在函数开头已按 DB_PATH 解析）
+	log.Printf("Using SQLite database (%s)...", dbPath)
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("failed to connect to SQLite database: %w", err)
 	}

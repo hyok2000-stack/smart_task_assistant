@@ -89,7 +89,13 @@ class SyncQueueService {
     int succeeded = 0;
     final toRetry = List<SyncQueueItem>.from(_items);
 
+    final now = DateTime.now();
     for (final item in toRetry) {
+      // 指数退避：失败项未到重试时间则跳过，避免立即重试打爆服务端（2^retryCount 秒，上限 5 分钟）
+      if (item.lastRetryAt != null && item.retryCount > 0) {
+        final backoffSeconds = (1 << item.retryCount).clamp(1, 300);
+        if (now.difference(item.lastRetryAt!).inSeconds < backoffSeconds) continue;
+      }
       try {
         await _retryItem(backend, item);
         _items.removeWhere((i) => i.id == item.id);

@@ -27,6 +27,14 @@ class _AIChatDialogState extends State<AIChatDialog>
   late AnimationController _typingAnimationController;
   final List<int> _dotIndices = [0, 1, 2];
 
+  /// 添加一条对话消息，并限制历史最多 50 条（避免长对话内存无限增长）
+  void _addMessage(_ChatMessage msg) {
+    _messages.add(msg);
+    if (_messages.length > 50) {
+      _messages.removeRange(0, _messages.length - 50);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,7 +87,7 @@ class _AIChatDialogState extends State<AIChatDialog>
 
     if (overdueTasks.isNotEmpty || urgentTasks.isNotEmpty) {
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: _buildUrgentTaskMessage(overdueTasks, urgentTasks),
           isUser: false,
           type: ChatMessageType.urgent,
@@ -119,7 +127,7 @@ class _AIChatDialogState extends State<AIChatDialog>
   }
 
   void _addWelcomeMessage() {
-    _messages.add(_ChatMessage(
+    _addMessage(_ChatMessage(
       content:
           '你好！我是智能任务助手 🤖\n\n我可以帮助你：\n• 创建和管理任务\n• 分析任务优先级\n• 提供工作效率建议\n• 解答任务管理相关问题\n\n请问有什么可以帮助你的？',
       isUser: false,
@@ -148,7 +156,7 @@ class _AIChatDialogState extends State<AIChatDialog>
     if (_isLoading) return;
 
     setState(() {
-      _messages.add(_ChatMessage(content: message, isUser: true));
+      _addMessage(_ChatMessage(content: message, isUser: true));
       _isLoading = true;
     });
 
@@ -165,7 +173,7 @@ class _AIChatDialogState extends State<AIChatDialog>
         final parsed = await _aiService.parseTask(message);
         if (parsed != null) {
           setState(() {
-            _messages.add(_ChatMessage(
+            _addMessage(_ChatMessage(
               content: '',
               isUser: false,
               type: ChatMessageType.taskSuggestion,
@@ -203,7 +211,7 @@ class _AIChatDialogState extends State<AIChatDialog>
       );
 
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: result.content,
           isUser: false,
           engineType: result.engineType,
@@ -214,7 +222,7 @@ class _AIChatDialogState extends State<AIChatDialog>
       _scrollToBottom();
     } catch (e) {
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: '抱歉，处理您的请求时出现错误。请稍后重试。',
           isUser: false,
           engineType: '本地规则引擎',
@@ -236,7 +244,7 @@ class _AIChatDialogState extends State<AIChatDialog>
 
       // 显示用户消息
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: '帮我分析任务优先级',
           isUser: true,
         ));
@@ -248,7 +256,7 @@ class _AIChatDialogState extends State<AIChatDialog>
 
       // 显示AI建议
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: '',
           isUser: false,
           type: ChatMessageType.prioritySuggestion,
@@ -260,7 +268,7 @@ class _AIChatDialogState extends State<AIChatDialog>
       _scrollToBottom();
     } catch (e) {
       setState(() {
-        _messages.add(_ChatMessage(
+        _addMessage(_ChatMessage(
           content: '抱歉，分析任务优先级时出现错误：$e',
           isUser: false,
         ));
@@ -1086,7 +1094,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                   );
                   provider.addTask(task);
                   setState(() {
-                    _messages.add(_ChatMessage(
+                    _addMessage(_ChatMessage(
                       content: '任务已创建！',
                       isUser: false,
                     ));

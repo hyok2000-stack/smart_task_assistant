@@ -107,6 +107,8 @@ function requireTeamAdmin(userId: string, teamId: string) {
 
 function canSeeTask(user: User, task: Task, db?: ReturnType<typeof readDb>) {
   if (task.ownerUserId === user.id) return true;
+  // 被指派人(assignee)能看到任务，从而能查看并参与评论——让“指派”真正打通协作
+  if (task.assigneeUserId && task.assigneeUserId === user.id) return true;
   if (user.role === "system_admin") return true;
   const data = db ?? readDb();
   if (user.role === "team_admin") {
@@ -289,6 +291,39 @@ function updateDistributionCommentSummary(db: ReturnType<typeof readDb>, taskId:
   related.updatedAt = now();
 }
 
+// 把挂在 sourceTask（原任务）上的评论镜像到该任务的所有接收方副本。
+// 仅当评论所属任务是某分发的 sourceTask 时才产生镜像；接收方写在副本上的评论
+// 天然双方可见，不需要镜像。单条评论接口与批量同步接口共用此逻辑。
+function mirrorCommentToRecipients(
+  db: ReturnType<typeof readDb>,
+  sourceTaskId: string,
+  authorUserId: string,
+  content: string,
+  operationId: string,
+  teamId: string | undefined,
+  sourceDeviceId: string | undefined,
+  timestamp: string,
+): void {
+  const relatedDists = db.distributions.filter((d) => d.sourceTaskId === sourceTaskId && d.recipientTaskId);
+  for (const dist of relatedDists) {
+    db.comments.push({
+      id: randomUUID(),
+      clientCommentId: randomUUID(),
+      taskId: dist.recipientTaskId!,
+      teamId,
+      authorUserId,
+      content,
+      sourceDeviceId,
+      operationId: `${operationId}-mirror-${dist.id}`,
+      status: "active",
+      serverCreatedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    updateDistributionCommentSummary(db, dist.recipientTaskId!);
+  }
+}
+
 function enrichDistribution(db: ReturnType<typeof readDb>, distribution: TaskDistribution, userId?: string) {
   let unreadCommentCount = 0;
   if (userId && distribution.commentCount > 0 && distribution.lastCommentAt) {
@@ -312,6 +347,25 @@ function enrichDistribution(db: ReturnType<typeof readDb>, distribution: TaskDis
     recipientName: db.users.find((u) => u.id === distribution.recipientUserId)?.nickname ?? "未知",
     unreadCommentCount,
   };
+}
+
+// 指派变化时通知新负责人（被指派人立即在通知中心收到提醒）
+function notifyAssignment(db: ReturnType<typeof readDb>, task: Task, prevAssignee: string | undefined, operatorId: string) {
+  const newAssignee = task.assigneeUserId;
+  if (newAssignee && newAssignee !== prevAssignee && newAssignee !== operatorId) {
+    const operator = db.users.find((u) => u.id === operatorId);
+    db.notifications.push({
+      id: randomUUID(),
+      userId: newAssignee,
+      type: "assignment",
+      taskId: task.id,
+      fromUserId: operatorId,
+      title: `${operator?.nickname ?? "有人"} 把任务指派给了你`,
+      body: task.title,
+      read: false,
+      createdAt: now(),
+    });
+  }
 }
 
 app.get("/api/health", (_req, res) => {
@@ -1235,12 +1289,14 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         } else if (body.force) {
           // Force push: overwrite server version
           const prevStatus = existing.status;
+          const prevAssignee = existing.assigneeUserId;
           const ownerId = existing.ownerUserId;
           const createdAt = existing.createdAt;
           const sourceType = existing.sourceType;
           const sourceTaskId = existing.sourceTaskId;
           const sourceDistributionId = existing.sourceDistributionId;
           Object.assign(existing, incoming, { updatedAt: timestamp, version: existing.version + 1 });
+          notifyAssignment(db, existing, prevAssignee, req.user!.id);
           existing.ownerUserId = ownerId;
           existing.createdAt = createdAt;
           existing.sourceType = sourceType;
@@ -1276,12 +1332,14 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         }
       } else if (incoming.version != null ? incoming.version > existing.version : timestamp >= existing.updatedAt) {
         const prevStatus = existing.status;
+        const prevAssignee = existing.assigneeUserId;
         const ownerId = existing.ownerUserId;
         const createdAt = existing.createdAt;
         const sourceType = existing.sourceType;
         const sourceTaskId = existing.sourceTaskId;
         const sourceDistributionId = existing.sourceDistributionId;
         Object.assign(existing, incoming, { updatedAt: timestamp, version: existing.version + 1 });
+        notifyAssignment(db, existing, prevAssignee, req.user!.id);
         existing.ownerUserId = ownerId;
         existing.createdAt = createdAt;
         existing.sourceType = sourceType;
@@ -1645,6 +1703,14 @@ app.post("/api/distributions/:id/mark-comments-read", auth, (req: AuthedRequest,
       found.recipientLastReadCommentAt = timestamp;
     }
     found.updatedAt = timestamp;
+    // 标记该分发相关任务下的 active 评论为当前用户已读（用于单条已读回执）
+    const relatedTaskIds = [found.sourceTaskId, found.recipientTaskId].filter(Boolean) as string[];
+    for (const c of db.comments) {
+      if (relatedTaskIds.includes(c.taskId) && c.status === "active" && c.authorUserId !== req.user!.id) {
+        if (!c.readByUserIds) c.readByUserIds = [];
+        if (!c.readByUserIds.includes(req.user!.id)) c.readByUserIds.push(req.user!.id);
+      }
+    }
     return found;
   });
   res.json({ ok: true });
@@ -1796,25 +1862,7 @@ app.post("/api/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
     db.comments.push(nextComment);
     updateDistributionCommentSummary(db, task.id);
     // Mirror sender's comment to all recipient task copies
-    const relatedDists = db.distributions.filter((d) => d.sourceTaskId === task.id && d.recipientTaskId);
-    for (const dist of relatedDists) {
-      const mirrorComment: TaskComment = {
-        id: randomUUID(),
-        clientCommentId: randomUUID(),
-        taskId: dist.recipientTaskId!,
-        teamId: task.teamId,
-        authorUserId: req.user!.id,
-        content: body.content,
-        sourceDeviceId: body.sourceDeviceId,
-        operationId: `${operationId}-mirror-${dist.id}`,
-        status: "active",
-        serverCreatedAt: timestamp,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      db.comments.push(mirrorComment);
-      updateDistributionCommentSummary(db, dist.recipientTaskId!);
-    }
+    mirrorCommentToRecipients(db, task.id, req.user!.id, body.content, operationId, task.teamId, body.sourceDeviceId, timestamp);
     db.syncLogs.unshift({
       id: randomUUID(),
       userId: req.user!.id,
@@ -1880,6 +1928,30 @@ app.delete("/api/tasks/:taskId/comments/:commentId", auth, (req: AuthedRequest, 
   res.json({ comment });
 });
 
+// 编辑评论（仅作者本人）
+app.patch("/api/tasks/:taskId/comments/:commentId", auth, (req: AuthedRequest, res) => {
+  const body = z.object({ content: z.string().min(1).max(1000) }).parse(req.body);
+  const comment = mutateDb((db) => {
+    const found = db.comments.find((item) => item.id === req.params.commentId && item.taskId === req.params.taskId);
+    if (!found || found.authorUserId !== req.user!.id) throw new AppError(ErrorCode.NOT_FOUND, "评论不存在或无权编辑");
+    const timestamp = now();
+    found.content = body.content;
+    found.updatedAt = timestamp;
+    updateDistributionCommentSummary(db, found.taskId);
+    // 同步编辑镜像评论，保持两端内容一致
+    const mirrorPrefix = `${found.operationId}-mirror-`;
+    for (const m of db.comments) {
+      if (m.operationId?.startsWith(mirrorPrefix) && m.status === "active") {
+        m.content = body.content;
+        m.updatedAt = timestamp;
+        updateDistributionCommentSummary(db, m.taskId);
+      }
+    }
+    return found;
+  });
+  res.json({ comment });
+});
+
 // Admin: add comment to any task
 app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) => {
   if (req.user!.role !== "system_admin" && req.user!.role !== "team_admin") {
@@ -1890,14 +1962,25 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
     authorUserId: z.string().min(1).optional(),
   }).parse(req.body);
   const comment = mutateDb((db) => {
-    const task = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
+    let task = db.tasks.find((t) => t.id === req.params.taskId && !t.deletedAt);
     if (!task) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在或已删除");
     // If authorUserId specified, verify it exists
     const effectiveAuthorId = body.authorUserId ?? req.user!.id;
     if (body.authorUserId && !db.users.find((u) => u.id === body.authorUserId)) {
       throw new AppError(ErrorCode.NOT_FOUND, "指定用户不存在");
     }
+    // 代发评论时，若指定作者不是当前任务的归属人，则把评论挂到该作者在分发链中的接收副本上，
+    // 避免代多人评论都堆到同一个任务（否则发送方查看分发评论时，所有被分发人的评论会归属到最后一个副本）。
+    if (body.authorUserId && body.authorUserId !== task.ownerUserId) {
+      const sourceId = task.sourceTaskId ?? task.id;
+      const dist = db.distributions.find(
+        (d) => d.sourceTaskId === sourceId && d.recipientUserId === body.authorUserId && d.recipientTaskId,
+      );
+      const recipientTask = dist ? db.tasks.find((t) => t.id === dist.recipientTaskId && !t.deletedAt) : undefined;
+      if (recipientTask) task = recipientTask;
+    }
     const timestamp = now();
+    const operationId = randomUUID();
     const c: TaskComment = {
       id: randomUUID(),
       clientCommentId: randomUUID(),
@@ -1905,7 +1988,7 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
       teamId: task.teamId,
       authorUserId: effectiveAuthorId,
       content: body.content,
-      operationId: randomUUID(),
+      operationId,
       status: "active",
       serverCreatedAt: timestamp,
       createdAt: timestamp,
@@ -1913,6 +1996,8 @@ app.post("/api/admin/tasks/:taskId/comments", auth, (req: AuthedRequest, res) =>
     };
     db.comments.push(c);
     updateDistributionCommentSummary(db, task.id);
+    // 与单条评论接口保持一致：若评论挂在原任务（分发的 sourceTask）上，镜像到各接收方副本
+    mirrorCommentToRecipients(db, task.id, effectiveAuthorId, body.content, operationId, task.teamId, undefined, timestamp);
     return c;
   });
   logOperation("comment_create", req.user!.id, "task", req.params.taskId);
@@ -1975,6 +2060,9 @@ app.post("/api/comments/sync/push", auth, (req: AuthedRequest, res) => {
       };
       db.comments.push(nextComment);
       updateDistributionCommentSummary(db, incoming.taskId);
+      // 与单条评论接口保持一致：若评论挂在原任务（分发的 sourceTask）上，镜像到接收方副本；
+      // 否则经批量重试的发送方评论接收方将看不到。挂在副本上的评论不会产生镜像。
+      mirrorCommentToRecipients(db, incoming.taskId, req.user!.id, incoming.content, incoming.operationId, task.teamId, incoming.sourceDeviceId, timestamp);
       saved.push(nextComment);
       db.syncLogs.unshift({
         id: randomUUID(),

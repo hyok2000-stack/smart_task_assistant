@@ -31,12 +31,16 @@ class AppLocalizations {
   String get success => isZh ? '成功' : 'Success';
   String get error => isZh ? '错误' : 'Error';
   String get retry => isZh ? '重试' : 'Retry';
+  String get loadFailed => isZh ? '加载失败，请重试' : 'Failed to load, tap to retry';
   String get close => isZh ? '关闭' : 'Close';
+  String get viewTask => isZh ? '查看任务' : 'View Task';
 
   // 底部导航
   String get navToday => isZh ? '今天' : 'Today';
   String get navAll => isZh ? '全部' : 'All';
   String get navStats => isZh ? '统计' : 'Stats';
+  String get navHabit => isZh ? '习惯' : 'Habits';
+  String get navCalendar => isZh ? '日历' : 'Calendar';
   String get navSettings => isZh ? '设置' : 'Settings';
 
   // 设置标签页
@@ -384,6 +388,16 @@ class AppLocalizations {
   String get dailyRepeat => isZh ? '每天' : 'Daily';
   String get weeklyRepeat => isZh ? '每周' : 'Weekly';
   String get monthlyRepeat => isZh ? '每月' : 'Monthly';
+  String get yearlyRepeat => isZh ? '每年' : 'Yearly';
+
+  // 任务卡片标签
+  String get deleteTask => isZh ? '删除任务' : 'Delete Task';
+  String get distributed => isZh ? '已分发' : 'Distributed';
+  String get recurringCycleShort => isZh ? '周期' : 'Cycle';
+  String reminderInAdvanceHours(int hours) =>
+      isZh ? '提前$hours小时' : '$hours hr before';
+  String reminderInAdvanceMinutes(int minutes) =>
+      isZh ? '提前$minutes分钟' : '$minutes min before';
 
   // 提醒选项
   String get reminder5Min => isZh ? '5分钟前' : '5 min before';
@@ -443,6 +457,103 @@ class AppLocalizations {
       isZh ? '周一到周五' : 'Mon to Fri';
   String get habitScheduleTypeDailyHint =>
       isZh ? '每天' : 'Every day';
+
+  // 全部任务页 - 筛选与批量
+  String get allTags => isZh ? '全部标签' : 'All Tags';
+  String get dateFrom => isZh ? '起始' : 'From';
+  String get dateTo => isZh ? '截止' : 'To';
+  String get batchMode => isZh ? '批量' : 'Batch';
+  String get recentSearches => isZh ? '最近搜索' : 'Recent Searches';
+  String get clear => isZh ? '清除' : 'Clear';
+  String get clearDeadline => isZh ? '清除截止时间' : 'Clear Deadline';
+
+  // 云同步状态
+  String get syncNotLoggedIn => isZh ? '未登录云同步' : 'Not signed in to cloud sync';
+  String get syncing => isZh ? '正在同步...' : 'Syncing...';
+  String get syncFailedRetry => isZh ? '同步失败，点击重试' : 'Sync failed, tap to retry';
+  String syncCompletedCount(int count) => isZh
+      ? '同步完成，更新 $count 个任务'
+      : 'Synced, $count task(s) updated';
+  String syncFailedError(Object e) => isZh ? '同步失败：$e' : 'Sync failed: $e';
+  String get syncEnabled => isZh ? '云同步已开启' : 'Cloud sync enabled';
+  String lastSyncAt(String time) => isZh ? '最后同步 $time' : 'Last synced $time';
+
+  // 任务评论
+  String get taskComments => isZh ? '任务评论' : 'Task Comments';
+  String get noComments => isZh ? '暂无评论' : 'No comments';
+  String get addComment => isZh ? '添加评论' : 'Add Comment';
+  String get commentHint => isZh ? '输入任务进展、说明或反馈' : 'Enter progress, notes or feedback';
+  String get publish => isZh ? '发布' : 'Post';
+  String commentFailed(Object e) => isZh ? '评论失败：$e' : 'Comment failed: $e';
+  String get synced => isZh ? '已同步' : 'Synced';
+  String get pendingSync => isZh ? '待同步' : 'Pending sync';
+  String get syncFailedShort => isZh ? '同步失败' : 'Sync failed';
+  String get syncFailedMultiline => isZh ? '同步\n失败' : 'Sync\nFailed';
+  String get syncLabelOff => isZh ? '未登录' : 'Off';
+  String get syncLabelSyncing => isZh ? '同步中' : 'Syncing';
+
+  // 分发任务
+  String get distributeToTeam => isZh ? '分发给团队成员' : 'Distribute to Team';
+  String get distributeRemark => isZh ? '分发备注' : 'Remark';
+  String get distributeRemarkHint => isZh ? '可选，例如处理要求或背景说明' : 'Optional, e.g. requirements or context';
+  String get pleaseLoginBackend => isZh ? '请先在设置页登录后台同步' : 'Please sign in to backend sync in Settings first';
+  String get notInAnyTeam => isZh ? '您尚未加入任何团队，请先在后台创建或加入团队' : 'You have not joined any team. Create or join one in the backend first.';
+  String get noTeamMembers => isZh ? '暂无团队成员' : 'No team members';
+  String distributeToMember(String name) => isZh ? '已分发给 $name' : 'Distributed to $name';
+  String distributeFailed(Object e) => isZh ? '分发失败：$e' : 'Distribution failed: $e';
+  String get distributionStatus => isZh ? '分发状态' : 'Distribution Status';
+
+  // 分发状态枚举
+  String get statusSent => isZh ? '已发送' : 'Sent';
+  String get statusReceived => isZh ? '已接收' : 'Received';
+  String get statusViewed => isZh ? '已查看' : 'Viewed';
+  String get statusFailed => isZh ? '失败' : 'Failed';
+  // 角色
+  String get roleSender => isZh ? '发送方' : 'Sender';
+  String get roleRecipient => isZh ? '接收方' : 'Recipient';
+  String get roleAdmin => isZh ? '管理员' : 'Admin';
+
+  // 状态变更日志 / 对方任务状态
+  String get statusChangeLog => isZh ? '状态变更日志' : 'Status Change Log';
+  String get noStatusChangeLogs => isZh ? '暂无状态变更记录' : 'No status change logs';
+  String get unknown => isZh ? '未知' : 'Unknown';
+  String get counterpart => isZh ? '对方' : 'Counterpart';
+  String counterpartTaskStatus(String status) => isZh ? '对方任务状态：$status' : 'Counterpart task status: $status';
+  String counterpartComments(String name) => isZh ? '$name的评论' : '$name\'s Comments';
+  String commentsCount(int count) => isZh ? '$count条评论' : '$count comment(s)';
+  String commentsCountWithSummary(int count, String summary) =>
+      isZh ? '$count条评论：$summary' : '$count comment(s): $summary';
+  String newCommentsCount(int count) => isZh ? '$count条新评论' : '$count new';
+
+  // 通知中心
+  String get notificationCenter => isZh ? '通知中心' : 'Notifications';
+  String get markAllRead => isZh ? '全部已读' : 'Mark all read';
+  String get noNotifications => isZh ? '暂无通知' : 'No notifications';
+
+  // 任务指派
+  String get assignedTo => isZh ? '指派给' : 'Assigned to';
+  String get changeAssignee => isZh ? '更改指派' : 'Change assignee';
+  String get assignTask => isZh ? '指派任务' : 'Assign Task';
+  String get notInTeamCantAssign => isZh ? '未加入团队，无法指派' : 'Not in a team, cannot assign';
+  String get self => isZh ? '（自己）' : '(me)';
+  String get me => isZh ? '我' : 'Me';
+
+  // 批量操作
+  String selectedCount(int n) => isZh ? '已选 $n 项' : '$n selected';
+  String get batchMarkComplete => isZh ? '标记完成' : 'Mark complete';
+  String get batchStart => isZh ? '开始进行' : 'Start';
+  String get batchDelete => isZh ? '批量删除' : 'Delete';
+  String confirmBatchDelete(int n) => isZh ? '确定要删除选中的 $n 个任务吗？' : 'Delete $n selected task(s)?';
+
+  // 周期任务
+  String recurringTaskCompleted(String title) => isZh
+      ? '周期任务「$title」已完成，已自动创建下一期'
+      : 'Recurring task \"$title\" completed, next occurrence created';
+
+  // AI 建议
+  String get aiNoPendingTasks => isZh ? '🎉 今天没有待处理任务！' : '🎉 No pending tasks today!';
+  String aiSuggestionPriority(String title) => isZh ? '💡 优先处理「$title」' : '💡 Priority: \"$title\"';
+  String aiSuggestionNext(String title) => isZh ? '💡 建议处理「$title」' : '💡 Suggested: \"$title\"';
 }
 
 class _AppLocalizationsDelegate

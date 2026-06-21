@@ -342,7 +342,13 @@ class AIService {
       final month = int.tryParse(dateMatch.group(1)!) ?? now.month;
       final day = int.tryParse(dateMatch.group(2)!) ?? now.day;
       var year = now.year;
-      if (month < now.month) year++; // 如果月份已过，则为明年
+      // 明年关键词优先；否则月份已过则进位到明年（注意 month==now.month 不进位，避免"今年本月"误判明年）
+      final isNextYear = title.contains('明年') || title.contains('下一年') || title.contains('下年');
+      if (isNextYear) {
+        year = now.year + 1;
+      } else if (month < now.month) {
+        year++;
+      }
       dueTime =
           DateTime(year, month, day, dueTime?.hour ?? 18, dueTime?.minute ?? 0);
       title = title.replaceAll(dateRegex, '').trim();

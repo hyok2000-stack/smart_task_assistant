@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 13, // 添加 sort_order 和 assignee_user_id 字段
+      version: 14, // 添加 last_synced_server 字段（三路合并的服务端快照）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -100,7 +100,8 @@ class DatabaseHelper {
         owner_user_id TEXT,
         version INTEGER,
         sort_order INTEGER DEFAULT 0,
-        assignee_user_id TEXT
+        assignee_user_id TEXT,
+        last_synced_server TEXT
       )
     ''');
 
@@ -553,6 +554,17 @@ class DatabaseHelper {
         debugPrint('列 assignee_user_id 已存在: $e');
       }
       debugPrint('sort_order / assignee_user_id 字段添加成功');
+    }
+
+    // 版本13 -> 版本14: 添加 last_synced_server（三路合并的服务端快照）
+    if (oldVersion < 14) {
+      try {
+        await db.execute(
+            'ALTER TABLE tasks ADD COLUMN last_synced_server TEXT');
+      } catch (e) {
+        debugPrint('列 last_synced_server 已存在: $e');
+      }
+      debugPrint('last_synced_server 字段添加成功');
     }
 
     // 确保性能索引存在（不升级 schema version）

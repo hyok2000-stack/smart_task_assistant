@@ -3,6 +3,7 @@ import 'dart:io' show File, Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 
@@ -10,6 +11,7 @@ import '../providers/settings_provider.dart';
 import '../providers/task_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
+import '../widgets/error_state_widget.dart';
 import '../widgets/tag_management_dialog.dart';
 import '../services/ai_service.dart';
 import '../services/backend_api_service.dart';
@@ -92,6 +94,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // 正常返回时清除导航恢复标记，避免下次启动误跳转
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.remove('_restore_tab_index');
+      });
       _refreshReminderPermissionState();
     }
   }
@@ -453,6 +459,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           return;
         }
         try {
+          // 保存导航状态，防止进程被杀后丢失设置页面
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('_restore_tab_index', 5);
+
           const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
           await channel.invokeMethod('requestIgnoreBatteryOptimization');
         } catch (_) {}
@@ -533,6 +543,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _requestFullScreenPermission() async {
     if (!Platform.isAndroid) return;
     try {
+      // 保存导航状态，防止进程被杀后丢失设置页面
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('_restore_tab_index', 5);
+
       const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
       final granted = await channel.invokeMethod('requestFullScreenPermission');
       _hasFullScreenPermission = granted == true;
@@ -570,6 +584,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _openNotificationSettings() async {
     if (!Platform.isAndroid) return;
     try {
+      // 保存导航状态，防止进程被杀后丢失设置页面
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('_restore_tab_index', 5);
+
       const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
       await channel.invokeMethod('openNotificationSettings');
     } catch (_) {}
@@ -589,6 +607,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _openExactAlarmSettings() async {
     if (!Platform.isAndroid) return;
     try {
+      // 保存导航状态，防止进程被杀后丢失设置页面
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('_restore_tab_index', 5);
+
       const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
       await channel.invokeMethod('openExactAlarmSettings');
     } catch (_) {}
@@ -1358,19 +1380,27 @@ class _SettingsScreenState extends State<SettingsScreen>
                   const Text('团队管理', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   // 已加入的团队
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: backend.getMyTeams(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final teams = snapshot.data ?? [];
-                      if (teams.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Text('暂未加入任何团队', style: TextStyle(color: Colors.grey)),
-                        );
-                      }
+                  StatefulBuilder(
+                    builder: (context, setInner) {
+                      return FutureBuilder<List<Map<String, dynamic>>>(
+                        future: backend.getMyTeams(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          if (snapshot.hasError) {
+                            return ErrorStateWidget(
+                              compact: true,
+                              onRetry: () => setInner(() {}),
+                            );
+                          }
+                          final teams = snapshot.data ?? [];
+                          if (teams.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Text('暂未加入任何团队', style: TextStyle(color: Colors.grey)),
+                            );
+                          }
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1383,6 +1413,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                             subtitle: Text('ID: ${(team['id'] as String).substring(0, 8)}...'),
                           )),
                         ],
+                      );
+                    },
                       );
                     },
                   ),
