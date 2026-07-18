@@ -14,8 +14,7 @@ class ClipboardMonitorService : Service() {
     private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
     private var lastClipboardContent: String? = null
     
-    private val handler = Handler(Looper.getMainLooper())
-    private var monitorRunnable: Runnable? = null
+    private var listenerRegistered = false
     
     override fun onCreate() {
         super.onCreate()
@@ -99,23 +98,13 @@ class ClipboardMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "ClipboardMonitorService started")
         
-        // 注册剪贴板监听器
-        clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
-        
-        // 启动定期检查（备用方案）
-        startPeriodicCheck()
-        
-        return START_STICKY
-    }
-    
-    private fun startPeriodicCheck() {
-        monitorRunnable = object : Runnable {
-            override fun run() {
-                handleClipboardChange()
-                handler.postDelayed(this, 2000) // 每2秒检查一次
-            }
+        // 服务可能被系统重复启动，监听器只能注册一次。
+        if (!listenerRegistered) {
+            clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
+            listenerRegistered = true
         }
-        handler.post(monitorRunnable!!)
+
+        return START_STICKY
     }
     
     override fun onBind(intent: Intent?): IBinder? {
@@ -127,10 +116,10 @@ class ClipboardMonitorService : Service() {
         Log.d(TAG, "ClipboardMonitorService destroyed")
         
         // 移除监听器
-        clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
-        
-        // 停止定期检查
-        monitorRunnable?.let { handler.removeCallbacks(it) }
+        if (listenerRegistered) {
+            clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
+            listenerRegistered = false
+        }
     }
     
     companion object {
