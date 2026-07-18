@@ -233,9 +233,10 @@ class PresetHabits {
         intervalMinutes: 60,
         scheduleType: 'weekdays',
         iconCode: 0x1F4A7, // 💧
+        // 默认开启声音+振动提醒；语音保持关闭避免太吵
         soundEnabled: true,
         vibrationEnabled: true,
-        voiceEnabled: true,
+        voiceEnabled: false,
         voiceText: '该休息一下了，喝水',
         voiceType: 'female',
         voiceStyle: 'lively',
@@ -253,9 +254,10 @@ class PresetHabits {
         intervalMinutes: 90,
         scheduleType: 'weekdays',
         iconCode: 0x1F6B6, // 🚶
+        // 默认开启声音+振动提醒；语音保持关闭避免太吵
         soundEnabled: true,
         vibrationEnabled: true,
-        voiceEnabled: true,
+        voiceEnabled: false,
         voiceText: '时间到了，起身活动一下',
         voiceType: 'female',
         voiceStyle: 'lively',
@@ -275,9 +277,9 @@ class PresetHabits {
         advanceMinutes: 10, // 提前10分钟
         scheduleType: 'weekdays',
         iconCode: 0x1F4E5, // 📥
-        soundEnabled: true,
-        vibrationEnabled: true,
-        voiceEnabled: true,
+        soundEnabled: false,
+        vibrationEnabled: false,
+        voiceEnabled: false,
         voiceText: '该打卡了',
         voiceType: 'female',
         voiceStyle: 'lively',
@@ -297,9 +299,9 @@ class PresetHabits {
         advanceMinutes: 0, // 到点提醒
         scheduleType: 'weekdays',
         iconCode: 0x1F4E4, // 📤
-        soundEnabled: true,
-        vibrationEnabled: true,
-        voiceEnabled: true,
+        soundEnabled: false,
+        vibrationEnabled: false,
+        voiceEnabled: false,
         voiceText: '下班时间到了',
         voiceType: 'female',
         voiceStyle: 'lively',

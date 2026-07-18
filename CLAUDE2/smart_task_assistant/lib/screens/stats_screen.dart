@@ -7,13 +7,16 @@ import '../providers/task_provider.dart';
 import '../services/backend_api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
+import '../widgets/priority_pie_chart.dart';
 
 /// 统计页面
 class StatsScreen extends StatelessWidget {
   final VoidCallback? onNavigateToAllTasks;
-  final ValueChanged<String>? onNavigateToFiltered; // 'pending', 'completed', 'overdue', 'inProgress', 'highPriority'
+  final ValueChanged<String>?
+      onNavigateToFiltered; // 'pending', 'completed', 'overdue', 'inProgress', 'highPriority'
 
-  const StatsScreen({super.key, this.onNavigateToAllTasks, this.onNavigateToFiltered});
+  const StatsScreen(
+      {super.key, this.onNavigateToAllTasks, this.onNavigateToFiltered});
 
   @override
   Widget build(BuildContext context) {
@@ -22,40 +25,47 @@ class StatsScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(l.dataStatistics),
       ),
-      body: Consumer<TaskProvider>(
-        builder: (context, provider, child) {
-          final stats = provider.stats;
-          final tasks = provider.tasks;
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 以下卡片由 Consumer 驱动（响应任务数据变化）
+            Consumer<TaskProvider>(
+              builder: (context, provider, child) {
+                final stats = provider.stats;
+                final tasks = provider.tasks;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 总览卡片
-                _buildOverviewCard(context, stats, l),
-                const SizedBox(height: 24),
-                // 今日任务统计
-                _buildTodayStatsCard(context, provider, l),
-                const SizedBox(height: 24),
-                // 完成率
-                _buildCompletionRateCard(context, stats, l),
-                const SizedBox(height: 24),
-                // 逾期任务统计
-                _buildOverdueStatsCard(context, provider, l),
-                const SizedBox(height: 24),
-                // 优先级分布
-                _buildPriorityDistributionCard(context, provider, l),
-                const SizedBox(height: 24),
-                // 标签使用统计
-                _buildTagStatsCard(context, provider, l),
-                const SizedBox(height: 24),
-                // C10: 生成报告
-                _buildReportCard(context, provider),
-              ],
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 总览卡片
+                    _buildOverviewCard(context, stats, l),
+                    const SizedBox(height: 24),
+                    // 今日任务统计
+                    _buildTodayStatsCard(context, provider, l),
+                    const SizedBox(height: 24),
+                    // 完成率
+                    _buildCompletionRateCard(context, stats, tasks, l),
+                    const SizedBox(height: 24),
+                    // 逾期任务统计
+                    _buildOverdueStatsCard(context, provider, l),
+                    const SizedBox(height: 24),
+                    // 优先级分布
+                    _buildPriorityDistributionCard(context, provider, l),
+                    const SizedBox(height: 24),
+                    // 标签使用统计
+                    _buildTagStatsCard(context, provider, l),
+                  ],
+                );
+              },
             ),
-          );
-        },
+            const SizedBox(height: 24),
+            // 报告生成器——完全独立，不经过 _buildReportCard 包装，确保 State 稳定
+            const _ReportGenerator(),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }
@@ -92,7 +102,9 @@ class StatsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                l.isZh ? '共 ${stats['total'] ?? 0} 个任务' : '${stats['total'] ?? 0} tasks total',
+                l.isZh
+                    ? '共 ${stats['total'] ?? 0} 个任务'
+                    : '${stats['total'] ?? 0} tasks total',
                 style: TextStyle(
                   color: AppTheme.textPrimaryColor,
                   fontSize: 28,
@@ -151,12 +163,33 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCompletionRateCard(
-      BuildContext context, Map<String, int> stats, AppLocalizations l) {
+  Widget _buildCompletionRateCard(BuildContext context, Map<String, int> stats,
+      List<Task> tasks, AppLocalizations l) {
     final total = stats['total'] ?? 0;
     final completed = stats['completed'] ?? 0;
     final rate =
         total > 0 ? (completed / total * 100).toStringAsFixed(1) : '0.0';
+
+    // 本周 vs 上周完成数趋势（基于 completedAt）
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // 周一作为一周起点（weekday: 1=周一 ... 7=周日）
+    final thisWeekStart = today.subtract(Duration(days: now.weekday - 1));
+    final lastWeekStart = thisWeekStart.subtract(const Duration(days: 7));
+    final lastWeekEnd = thisWeekStart;
+    int completedThisWeek = 0;
+    int completedLastWeek = 0;
+    for (final t in tasks) {
+      if (!t.isCompleted) continue;
+      final ca = t.completedAt;
+      if (ca == null) continue;
+      if (!ca.isBefore(thisWeekStart)) {
+        completedThisWeek++;
+      } else if (!ca.isBefore(lastWeekStart) && ca.isBefore(lastWeekEnd)) {
+        completedLastWeek++;
+      }
+    }
+    final weekDelta = completedThisWeek - completedLastWeek;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -246,9 +279,58 @@ class StatsScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // 本周完成趋势：本周 N 个，较上周 +/-M
+              _buildWeeklyTrendRow(context, completedThisWeek, weekDelta, l),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 本周完成趋势行：本周完成数 + 与上周的环比
+  Widget _buildWeeklyTrendRow(
+      BuildContext context, int thisWeek, int delta, AppLocalizations l) {
+    final isUp = delta > 0;
+    final isDown = delta < 0;
+    final trendColor = isUp
+        ? AppTheme.successColor
+        : (isDown ? AppTheme.errorColor : AppTheme.textHintColor);
+    final trendIcon = isUp
+        ? Icons.trending_up_rounded
+        : (isDown ? Icons.trending_down_rounded : Icons.trending_flat_rounded);
+    final trendText = isUp
+        ? l.moreThanLastWeek(delta)
+        : (isDown ? l.lessThanLastWeek(delta) : l.sameAsLastWeek);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: trendColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(trendIcon, size: 16, color: trendColor),
+          const SizedBox(width: 6),
+          Text(
+            l.completedThisWeek(thisWeek),
+            style: TextStyle(
+              fontSize: 12,
+              color: AppTheme.textSecondaryColor,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            trendText,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: trendColor,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -367,7 +449,9 @@ class StatsScreen extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onNavigateToFiltered != null ? () => onNavigateToFiltered!('overdue') : null,
+        onTap: onNavigateToFiltered != null
+            ? () => onNavigateToFiltered!('overdue')
+            : null,
         borderRadius: BorderRadius.circular(20),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
@@ -549,8 +633,10 @@ class StatsScreen extends StatelessWidget {
                 ...topTags.map((entry) {
                   final tag = tags.firstWhere(
                     (t) => t.id == entry.key,
-                    orElse: () =>
-                        Tag(id: entry.key, name: l.isZh ? '未知标签' : 'Unknown', color: '#999999'),
+                    orElse: () => Tag(
+                        id: entry.key,
+                        name: l.isZh ? '未知标签' : 'Unknown',
+                        color: '#999999'),
                   );
                   final percentage = tasks.isNotEmpty
                       ? (entry.value / tasks.length * 100).toStringAsFixed(1)
@@ -680,14 +766,7 @@ class StatsScreen extends StatelessWidget {
                     ),
               ),
               const SizedBox(height: 20),
-              _buildPriorityBar(
-                  l.highPriority, high, total, AppTheme.highPriorityColor),
-              const SizedBox(height: 12),
-              _buildPriorityBar(l.mediumPriority, medium, total,
-                  AppTheme.mediumPriorityColor),
-              const SizedBox(height: 12),
-              _buildPriorityBar(
-                  l.lowPriority, low, total, AppTheme.lowPriorityColor),
+              PriorityPieChart(high: high, medium: medium, low: low),
             ],
           ),
         ),
@@ -695,49 +774,8 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPriorityBar(String label, int count, int total, Color color) {
-    final percentage =
-        total > 0 ? (count / total * 100).toStringAsFixed(0) : '0';
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13),
-          ),
-        ),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: total > 0 ? count / total : 0,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-              minHeight: 8,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 40,
-          child: Text(
-            '$percentage%',
-            style: TextStyle(
-              fontSize: 13,
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.right,
-          ),
-        ),
-      ],
-    );
-  }
-
   // C10: Report generation card
-  Widget _buildReportCard(BuildContext context, TaskProvider provider) {
+  Widget _buildReportCard(BuildContext context, TaskProvider? provider) {
     final l = context.l;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -745,7 +783,10 @@ class StatsScreen extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -759,21 +800,28 @@ class StatsScreen extends StatelessWidget {
                   color: AppTheme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.assessment_rounded, color: AppTheme.primaryColor, size: 20),
+                child: const Icon(Icons.assessment_rounded,
+                    color: AppTheme.primaryColor, size: 20),
               ),
               const SizedBox(width: 12),
-              Text(l.isZh ? '数据报告' : 'Data Report', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(l.isZh ? '数据报告' : 'Data Report',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 16),
-          _ReportGenerator(),
+          const _ReportGenerator(),
         ],
       ),
     );
   }
 }
 
+/// 报告生成器——完全独立的 StatefulWidget，不依赖外部 Consumer。
+/// 通过 context.read<TaskProvider>() 在生成时获取数据。
 class _ReportGenerator extends StatefulWidget {
+  const _ReportGenerator();
+
   @override
   State<_ReportGenerator> createState() => _ReportGeneratorState();
 }
@@ -782,47 +830,119 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
   Map<String, dynamic>? _report;
   bool _loading = false;
   String _period = 'weekly';
+  int _requestId = 0;
 
   Future<void> _generate() async {
+    final requestedPeriod = _period;
+    final requestedRange = _reportRange(requestedPeriod);
+    final requestId = ++_requestId;
+    debugPrint('===== 报告生成开始, period=$requestedPeriod =====');
     setState(() => _loading = true);
 
-    // 尝试从后端获取，失败则用本地数据
-    Map<String, dynamic>? data;
-    if (BackendApiService.instance.isLoggedIn) {
-      data = await BackendApiService.instance.getReportSummary(period: _period);
-    }
+    Map<String, dynamic> data;
 
-    if (data == null) {
-      // 本地生成报告
-      final provider = Provider.of<TaskProvider>(context, listen: false);
-      final tasks = provider.tasks;
-      final now = DateTime.now();
-      DateTime since;
-      if (_period == 'daily') {
-        since = now.subtract(const Duration(hours: 24));
-      } else if (_period == 'monthly') {
-        since = DateTime(now.year, now.month, 1); // 自然月（本月1日起），而非写死 30 天
+    try {
+      // 尝试从后端获取
+      if (BackendApiService.instance.isLoggedIn) {
+        final remote = await BackendApiService.instance
+            .getReportSummary(
+              period: requestedPeriod,
+              periodStart: requestedRange.start,
+              periodEnd: requestedRange.end,
+            )
+            .timeout(const Duration(seconds: 5));
+        if (remote != null) {
+          data = remote;
+        } else {
+          data = _generateLocalReport(requestedPeriod);
+        }
       } else {
-        since = now.subtract(const Duration(days: 7));
+        data = _generateLocalReport(requestedPeriod);
       }
-      final total = tasks.length;
-      final completed = tasks.where((t) => t.isCompleted).length;
-      final inProgress = tasks.where((t) => t.status == TaskStatus.inProgress).length;
-      final overdue = tasks.where((t) => !t.isCompleted && t.isOverdue).length;
-      data = {
-        'totalTasks': total,
-        'completedTasks': completed,
-        'inProgressTasks': inProgress,
-        'overdueTasks': overdue,
-        'completionRate': total > 0 ? (completed / total * 100) : 0,
-      };
+    } catch (e) {
+      debugPrint('报告生成异常，使用本地数据: $e');
+      data = _generateLocalReport(requestedPeriod);
     }
 
-    if (mounted) {
+    // 快速切换周期时，忽略已经过期的请求结果。
+    if (mounted && requestId == _requestId) {
       setState(() {
         _report = data;
         _loading = false;
       });
+      debugPrint('===== 报告生成完成: $data =====');
+      // 给一个明确的视觉反馈，方便用户确认点击生效
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_periodLabel(requestedPeriod)} 已生成'),
+          duration: const Duration(milliseconds: 800),
+        ),
+      );
+    }
+  }
+
+  String _periodLabel(String period) {
+    switch (period) {
+      case 'daily':
+        return '日报';
+      case 'monthly':
+        return '月报';
+      default:
+        return '周报';
+    }
+  }
+
+  /// 从本地任务数据生成报告
+  Map<String, dynamic> _generateLocalReport(String period) {
+    final tasks = context.read<TaskProvider>().tasks;
+    final range = _reportRange(period);
+    final periodTasks = tasks.where((task) {
+      final dueInPeriod = task.dueTime != null &&
+          !task.dueTime!.isBefore(range.start) &&
+          task.dueTime!.isBefore(range.end);
+      final completedInPeriod = task.completedAt != null &&
+          !task.completedAt!.isBefore(range.start) &&
+          task.completedAt!.isBefore(range.end);
+      return (!task.createdAt.isBefore(range.start) &&
+              task.createdAt.isBefore(range.end)) ||
+          completedInPeriod ||
+          dueInPeriod;
+    }).toList();
+    final total = periodTasks.length;
+    final completed = periodTasks.where((t) => t.isCompleted).length;
+    final inProgress =
+        periodTasks.where((t) => t.status == TaskStatus.inProgress).length;
+    final overdue =
+        periodTasks.where((t) => !t.isCompleted && t.isOverdue).length;
+    return {
+      'totalTasks': total,
+      'completedTasks': completed,
+      'inProgressTasks': inProgress,
+      'overdueTasks': overdue,
+      'completionRate': total > 0 ? (completed / total * 100) : 0,
+      'period': period,
+      'periodStart': range.start.toIso8601String(),
+      'periodEnd': range.end.toIso8601String(),
+    };
+  }
+
+  DateTimeRange _reportRange(String period) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (period) {
+      case 'daily':
+        return DateTimeRange(
+            start: today, end: today.add(const Duration(days: 1)));
+      case 'monthly':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month),
+          end: DateTime(now.year, now.month + 1),
+        );
+      default:
+        final weekStart =
+            today.subtract(Duration(days: today.weekday - DateTime.monday));
+        return DateTimeRange(
+            start: weekStart, end: weekStart.add(const Duration(days: 7)));
     }
   }
 
@@ -831,30 +951,51 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            _periodChip(context.l.isZh ? '日报' : 'Daily', 'daily'),
-            const SizedBox(width: 8),
-            _periodChip(context.l.isZh ? '周报' : 'Weekly', 'weekly'),
-            const SizedBox(width: 8),
-            _periodChip(context.l.isZh ? '月报' : 'Monthly', 'monthly'),
-            const Spacer(),
-            ElevatedButton(
-              onPressed: _loading ? null : _generate,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        LayoutBuilder(
+          builder: (context, constraints) => Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _periodChip(context.l.isZh ? '日报' : 'Daily', 'daily'),
+              _periodChip(context.l.isZh ? '周报' : 'Weekly', 'weekly'),
+              _periodChip(context.l.isZh ? '月报' : 'Monthly', 'monthly'),
+              ElevatedButton(
+                onPressed: _loading
+                    ? null
+                    : () {
+                        debugPrint('报告生成按钮被点击');
+                        _generate();
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  minimumSize: const Size(80, 44),
+                ),
+                child: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(context.l.isZh ? '生成' : 'Generate',
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
               ),
-              child: Text(context.l.isZh ? '生成' : 'Generate', style: const TextStyle(fontSize: 13)),
-            ),
-          ],
+            ],
+          ),
         ),
-        if (_loading) const Padding(
-          padding: EdgeInsets.all(20),
-          child: Center(child: CircularProgressIndicator(color: AppTheme.primaryColor)),
-        ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+                child: CircularProgressIndicator(color: AppTheme.primaryColor)),
+          ),
         if (_report != null && !_loading) ...[
           const SizedBox(height: 16),
           Container(
@@ -864,12 +1005,24 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _reportRow(context.l.isZh ? '总任务数' : 'Total Tasks', '${_report!['totalTasks'] ?? 0}'),
-                _reportRow(context.l.completedTasks, '${_report!['completedTasks'] ?? 0}'),
-                _reportRow(context.l.statusInProgress, '${_report!['inProgressTasks'] ?? 0}'),
-                _reportRow(context.l.overdueTasks, '${_report!['overdueTasks'] ?? 0}'),
-                _reportRow(context.l.completionRate, '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
+                Text(
+                  '${_periodLabel(_report?['period']?.toString() ?? _period)} · $_reportDateRange',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.textSecondaryColor),
+                ),
+                const SizedBox(height: 8),
+                _reportRow(context.l.isZh ? '总任务数' : 'Total Tasks',
+                    '${_report!['totalTasks'] ?? 0}'),
+                _reportRow(context.l.completedTasks,
+                    '${_report!['completedTasks'] ?? 0}'),
+                _reportRow(context.l.statusInProgress,
+                    '${_report!['inProgressTasks'] ?? 0}'),
+                _reportRow(
+                    context.l.overdueTasks, '${_report!['overdueTasks'] ?? 0}'),
+                _reportRow(context.l.completionRate,
+                    '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
               ],
             ),
           ),
@@ -878,18 +1031,41 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
     );
   }
 
+  String get _reportDateRange {
+    final start =
+        DateTime.tryParse(_report?['periodStart']?.toString() ?? '')?.toLocal();
+    final end =
+        DateTime.tryParse(_report?['periodEnd']?.toString() ?? '')?.toLocal();
+    if (start == null || end == null) return '';
+    String format(DateTime value) => '${value.month}/${value.day}';
+    return '${format(start)} - ${format(end.subtract(const Duration(days: 1)))}';
+  }
+
   Widget _periodChip(String label, String value) {
     final selected = _period == value;
     return GestureDetector(
-      onTap: () => setState(() => _period = value),
+      onTap: () {
+        if (_period == value) return;
+        setState(() => _period = value);
+        // 切换周期后自动重新生成报告（如果已有数据或之前生成过）
+        _generate();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey.shade100,
+          color: selected
+              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+              : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(16),
           border: selected ? Border.all(color: AppTheme.primaryColor) : null,
         ),
-        child: Text(label, style: TextStyle(fontSize: 12, color: selected ? AppTheme.primaryColor : AppTheme.textSecondaryColor, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                color: selected
+                    ? AppTheme.primaryColor
+                    : AppTheme.textSecondaryColor,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
       ),
     );
   }
@@ -900,8 +1076,12 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondaryColor)),
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppTheme.textSecondaryColor)),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         ],
       ),
     );

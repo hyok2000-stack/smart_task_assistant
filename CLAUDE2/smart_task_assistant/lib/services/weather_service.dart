@@ -3,9 +3,8 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:http/http.dart' as http;
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/city.dart';
 
@@ -90,6 +89,8 @@ class WeatherService {
   static const String _apiKey = '2ed8821a151fad7c1f9a512e400bf19d';
   static const String _baseUrl =
       'https://restapi.amap.com/v3/weather/weatherInfo';
+  // 高德 IP 定位 API（不需要 Google Play Services，不依赖原生插件）
+  static const String _ipLocateUrl = 'https://restapi.amap.com/v3/ip';
 
   // 城市名称到高德adcode的映射
   static const Map<String, String> _cityAdcodes = {
@@ -116,7 +117,9 @@ class WeatherService {
   static const String _cacheKey = 'weather_cache';
   static const String _selectedCityKey = 'selected_city';
 
-  Position? _currentPosition;
+  // IP 定位结果缓存（城市名 + adcode），替代原 Geolocator 的 Position
+  String? _locatedCity;
+  String? _locatedAdcode;
   WeatherInfo? _currentWeather;
   bool _isLoading = false;
   CityInfo? _selectedCity; // 用户选择的城市
@@ -256,22 +259,19 @@ class WeatherService {
           () => _getWeatherByCity(_selectedCity!.name),
         );
       } else {
-        // 如果用户没有选择城市，尝试使用位置获取天气
-        debugPrint('天气服务：用户未选择城市，尝试使用位置获取天气');
-        _currentPosition = await _getCurrentPositionWithTimeout();
-        if (_currentPosition != null) {
-          debugPrint('天气服务：使用位置获取天气');
+        // 如果用户没有选择城市，尝试使用 IP 定位获取天气
+        debugPrint('天气服务：用户未选择城市，尝试使用 IP 定位获取天气');
+        await _locateByIp();
+        if (_locatedCity != null) {
+          debugPrint('天气服务：IP 定位成功 - $_locatedCity');
           weather = await _getWeatherWithRetry(
-            () => _getWeatherByCoordinates(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-            ),
+            () => _getWeatherByCity(_locatedCity!),
           );
         }
 
-        // 如果位置获取失败，使用默认城市（北京）
+        // 如果 IP 定位失败，使用默认城市（北京）
         if (weather == null) {
-          debugPrint('天气服务：位置获取失败，使用默认城市（北京）获取天气');
+          debugPrint('天气服务：IP 定位失败，使用默认城市（北京）获取天气');
           weather = await _getWeatherWithRetry(
             () => _getWeatherByCity('北京'),
           );
@@ -327,65 +327,35 @@ class WeatherService {
   }
 
   /// 获取当前位置（带超时）
-  Future<Position?> _getCurrentPositionWithTimeout() async {
+  /// 通过高德 IP 定位 API 获取城市信息（纯 HTTP，不需要 Google Play Services，
+  /// 不依赖 geolocator 原生插件，在华为等无 GMS 设备上也不会崩溃）。
+  Future<void> _locateByIp() async {
     try {
-      // 检查位置服务是否启用
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        debugPrint('天气服务：位置服务未启用');
-        // 尝试打开位置服务设置
-        bool opened = await Geolocator.openLocationSettings();
-        if (!opened) {
-          debugPrint('天气服务：无法打开位置服务设置');
-          return null;
-        }
-        // 重新检查
-        serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (!serviceEnabled) {
-          return null;
-        }
+      final url = '$_ipLocateUrl?key=$_apiKey';
+      debugPrint('天气服务：请求 IP 定位...');
+      final response = await http.get(Uri.parse(url)).timeout(_timeout);
+
+      if (response.statusCode != 200) {
+        debugPrint('天气服务：IP 定位 HTTP 错误 - ${response.statusCode}');
+        return;
       }
 
-      // 检查位置权限
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        debugPrint('天气服务：位置权限被拒绝，正在请求权限');
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint('天气服务：位置权限被拒绝');
-          return null;
-        }
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status']?.toString();
+      if (status != '1') {
+        debugPrint('天气服务：IP 定位失败 - ${data['info']}');
+        return;
       }
 
-      if (permission == LocationPermission.deniedForever) {
-        debugPrint('天气服务：位置权限被永久拒绝');
-        return null;
+      final city = data['city'] as String?;
+      final adcode = data['adcode'] as String?;
+      if (city != null && city.isNotEmpty) {
+        _locatedCity = city;
+        _locatedAdcode = adcode;
+        debugPrint('天气服务：IP 定位成功 - 城市: $city, adcode: $adcode');
       }
-
-      if (permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always) {
-        debugPrint('天气服务：已获得位置权限');
-      }
-
-      // 使用超时控制位置获取
-      debugPrint('天气服务：开始获取位置...');
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: _timeout,
-      ).timeout(_timeout, onTimeout: () {
-        debugPrint('天气服务：获取位置超时');
-        return Future.value(null);
-      });
-
-      if (position != null) {
-        debugPrint(
-            '天气服务：位置获取成功 - 纬度: ${position.latitude}, 经度: ${position.longitude}');
-      }
-
-      return position;
     } catch (e) {
-      debugPrint('天气服务：获取位置失败 - $e');
-      return null;
+      debugPrint('天气服务：IP 定位异常 - $e');
     }
   }
 
@@ -527,45 +497,6 @@ class WeatherService {
     }
   }
 
-  /// 根据经纬度获取天气（高德地图API）
-  Future<WeatherInfo?> _getWeatherByCoordinates(double lat, double lon) async {
-    try {
-      // 高德API不支持直接用经纬度查询天气，需要先通过逆地理编码获取adcode
-      debugPrint('天气服务：经纬度查询，先获取adcode');
-
-      String cityName = '未知';
-      String? adcode;
-
-      try {
-        final placemarks = await placemarkFromCoordinates(lat, lon);
-        if (placemarks.isNotEmpty) {
-          cityName = placemarks.first.locality ??
-              placemarks.first.administrativeArea ??
-              placemarks.first.name ??
-              '未知';
-          debugPrint('天气服务：通过逆地理编码获取城市名称 - $cityName');
-
-          // 查找adcode
-          adcode = _cityAdcodes[cityName];
-        }
-      } catch (e) {
-        debugPrint('天气服务：逆地理编码失败 - $e');
-      }
-
-      // 如果获取到adcode，使用高德API查询天气
-      if (adcode != null) {
-        return await _getWeatherByCity(cityName);
-      }
-
-      // 否则返回null，让调用者使用默认城市
-      debugPrint('天气服务：无法获取adcode，经纬度查询失败');
-      return null;
-    } catch (e) {
-      debugPrint('天气服务：网络请求异常 - $e');
-      return null;
-    }
-  }
-
   /// 保存到本地缓存
   Future<void> _saveToCache(WeatherInfo weather) async {
     try {
@@ -603,7 +534,8 @@ class WeatherService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_cacheKey);
       _currentWeather = null;
-      _currentPosition = null;
+      _locatedCity = null;
+      _locatedAdcode = null;
       debugPrint('天气服务：已清除缓存');
     } catch (e) {
       debugPrint('天气服务：清除缓存失败 - $e');

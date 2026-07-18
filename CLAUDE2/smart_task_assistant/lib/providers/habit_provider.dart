@@ -7,6 +7,21 @@ import '../models/habit_log.dart';
 import '../database/database_helper.dart';
 import '../services/habit_service.dart';
 
+/// 习惯记录结果
+///
+/// [logCompletion] 在不同状态下返回不同结果，便于 UI 层决定是否需要
+/// 弹出确认框（避免用户在已达标时误点导致当日进度被清空）。
+enum HabitLogResult {
+  /// 正常记录成功（未达标）
+  recorded,
+
+  /// 已达到今日目标，UI 可提示用户已完成
+  targetReached,
+
+  /// 当日记录已重置（仅在 [resetTodayProgress] 被显式调用后才会出现）
+  reset,
+}
+
 /// 习惯状态管理
 class HabitProvider extends ChangeNotifier {
   final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -21,10 +36,11 @@ class HabitProvider extends ChangeNotifier {
 
   void _notifyNativeDataChanged(String type, [String? id]) {
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    try {
-      _reminderChannel
-          .invokeMethod('notifyDataChanged', {'type': type, 'id': id});
-    } catch (_) {}
+    // invokeMethod 返回 Future，真正的 PlatformException 是异步到达的，
+    // 同步 try/catch 无法捕获——必须用 catchError。
+    _reminderChannel
+        .invokeMethod('notifyDataChanged', {'type': type, 'id': id})
+        .catchError((_) {});
   }
 
   List<Habit> _habits = [];
@@ -123,7 +139,12 @@ class HabitProvider extends ChangeNotifier {
   }
 
   /// 记录完成
-  Future<void> logCompletion(String habitId,
+  ///
+  /// 返回 [HabitLogResult]：
+  /// - [HabitLogResult.recorded]：正常记录成功；
+  /// - [HabitLogResult.targetReached]：已达今日目标，未追加记录，UI 可提示"今日已完成"，
+  ///   如需重置需显式调用 [resetTodayProgress]（避免误点清空当日进度）。
+  Future<HabitLogResult> logCompletion(String habitId,
       {int? count, String status = 'completed'}) async {
     try {
       debugPrint('===== 记录习惯完成: $habitId =====');
@@ -134,21 +155,19 @@ class HabitProvider extends ChangeNotifier {
       // 不需要记录的习惯
       if (!habit.needsRecord) {
         debugPrint('习惯不需要记录: ${habit.title}');
-        return;
+        return HabitLogResult.recorded;
       }
 
-      // 对于有目标的习惯，检查是否已经达到目标
+      // 对于有目标的习惯：已达标时不再自动清空，提示用户已完成。
+      // 重置必须显式调用 [resetTodayProgress]，避免误点导致一天白干。
       if (habit.hasTarget) {
         final currentCount = _todayProgress[habitId] ?? 0;
         debugPrint('当前进度: $currentCount/${habit.targetCount}');
 
-        // 如果已经达到或超过目标，先清除今日记录，然后重新开始
         if (currentCount >= habit.targetCount) {
           debugPrint(
-              '习惯 ${habit.title} 已达标($currentCount/${habit.targetCount})，清除记录后重新开始');
-          await _dbHelper.clearHabitTodayLogs(habit.id);
-          // 直接清空缓存，不需要重新加载
-          _todayProgress[habitId] = 0;
+              '习惯 ${habit.title} 已达标($currentCount/${habit.targetCount})，不再追加记录');
+          return HabitLogResult.targetReached;
         }
       }
 
@@ -174,10 +193,35 @@ class HabitProvider extends ChangeNotifier {
       notifyListeners();
       _notifyNativeDataChanged('habit', habitId);
       debugPrint('习惯记录成功');
+      return HabitLogResult.recorded;
     } catch (e) {
       debugPrint('记录习惯失败: $e');
       _error = e.toString();
       notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// 显式重置某习惯的今日进度（清空当日记录重新开始）。
+  ///
+  /// 应在 UI 层经过二次确认后调用。替代旧版 [logCompletion] 中
+  /// "达标后自动清空" 的隐性行为，避免误操作丢失数据。
+  Future<void> resetTodayProgress(String habitId) async {
+    try {
+      final habit = _habits.firstWhere((h) => h.id == habitId,
+          orElse: () => throw Exception('习惯不存在: $habitId'));
+      if (!habit.hasTarget) return;
+
+      debugPrint('===== 重置习惯今日进度: $habitId =====');
+      await _dbHelper.clearHabitTodayLogs(habitId);
+      _todayProgress[habitId] = 0;
+      notifyListeners();
+      _notifyNativeDataChanged('habit', habitId);
+    } catch (e) {
+      debugPrint('重置习惯今日进度失败: $e');
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
     }
   }
 
@@ -279,6 +323,51 @@ class HabitProvider extends ChangeNotifier {
 
     final completed = _todayProgress[habitId] ?? 0;
     return (completed * 100 ~/ habit.targetCount).clamp(0, 100);
+  }
+
+  /// 获取习惯近 [days] 天的每日完成量（升序），用于 streak 计算与热力图展示。
+  Future<List<({DateTime date, int count})>> getRecentDailyCounts(
+      String habitId,
+      {int days = 30}) async {
+    return _dbHelper.getHabitDailyCounts(habitId, days: days);
+  }
+
+  /// 计算习惯的连续达标天数（streak）。
+  ///
+  /// 规则：从今天起向前数，当天完成量 ≥ [Habit.targetCount] 即视为达标。
+  /// 今天尚未达标不中断 streak（只统计到昨天为止的连续达标天数），
+  /// 这样用户不会因为"今天还没完成"而看到 streak 归零。
+  Future<int> calculateStreak(String habitId) async {
+    try {
+      final habit = _habits.firstWhere((h) => h.id == habitId,
+          orElse: () => throw Exception('习惯不存在: $habitId'));
+      if (!habit.hasTarget) return 0;
+
+      final daily = await _dbHelper.getHabitDailyCounts(habitId, days: 365);
+      if (daily.isEmpty) return 0;
+
+      final target = habit.targetCount;
+      // 按日期降序（最新在前）
+      final desc = daily.reversed.toList();
+      // 今天是否达标：达标则计入 streak，否则从昨天开始数
+      int i = 0;
+      if (desc.first.count < target) {
+        // 今天没达标，跳过今天，从昨天算起
+        i = 1;
+      }
+      int streak = 0;
+      for (; i < desc.length; i++) {
+        if (desc[i].count >= target) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+      return streak;
+    } catch (e) {
+      debugPrint('计算 streak 失败: $e');
+      return 0;
+    }
   }
 
   /// 播报提醒语音

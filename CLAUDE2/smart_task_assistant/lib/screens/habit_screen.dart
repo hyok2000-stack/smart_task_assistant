@@ -208,24 +208,86 @@ class _HabitScreenState extends State<HabitScreen> {
     }
 
     final provider = context.read<HabitProvider>();
-    await provider.logCompletion(habit.id);
+    final result = await provider.logCompletion(habit.id);
 
-    if (mounted) {
+    if (!mounted) return;
+
+    // 先清除之前可能残留的 SnackBar，避免堆积不消失
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    // 已达标：提示并询问是否重置（避免误点清空当日进度）
+    if (result == HabitLogResult.targetReached) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle, color: Colors.white),
+              const Icon(Icons.verified, color: Colors.white),
               const SizedBox(width: 12),
-              Text('${habit.title} 已记录'),
+              Expanded(child: Text('${habit.title} 今日目标已完成 ✓')),
             ],
           ),
           backgroundColor: AppTheme.successColor,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 2),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: '重置',
+            textColor: Colors.white,
+            onPressed: () => _confirmReset(habit),
+          ),
         ),
       );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${habit.title} +1'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  /// 二次确认后重置习惯今日进度
+  Future<void> _confirmReset(Habit habit) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('重置今日进度？'),
+        content: Text(
+          '${habit.title} 今日的记录将被清空并重新开始，此操作不可撤销。',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('重置'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await context.read<HabitProvider>().resetTodayProgress(habit.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${habit.title} 已重置'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 

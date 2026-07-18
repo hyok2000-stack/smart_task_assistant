@@ -18,6 +18,7 @@ export type SyncStatus = "success" | "failed" | "pending";
 export type OperationType =
   | "create"
   | "update"
+  | "status_update"
   | "complete"
   | "delete"
   | "comment_create"

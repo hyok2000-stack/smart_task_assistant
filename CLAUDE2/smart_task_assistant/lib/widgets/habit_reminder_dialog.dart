@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/habit.dart';
 import '../providers/habit_provider.dart';
+import '../services/reminder_service.dart';
 
 /// 习惯提醒对话框
 class HabitReminderDialog extends StatelessWidget {
@@ -21,13 +22,14 @@ class HabitReminderDialog extends StatelessWidget {
         habit.id == 'habit_clock_out';
 
     return Dialog(
+      backgroundColor: Theme.of(context).dialogBackgroundColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).dialogBackgroundColor,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -146,10 +148,19 @@ class HabitReminderDialog extends StatelessWidget {
                   Expanded(
                     child: FilledButton(
                       onPressed: () async {
-                        await provider.logCompletion(habit.id);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
+                        final result = await provider.logCompletion(habit.id);
+                        if (!context.mounted) return;
+                        // 已达标时提示，不静默吞掉
+                        if (result == HabitLogResult.targetReached) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${habit.title} 今日目标已完成 ✓'),
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
                         }
+                        Navigator.of(context).pop();
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: _getHabitColor(habit.id),
@@ -242,8 +253,16 @@ class HabitReminderDialog extends StatelessWidget {
   Widget _buildSnoozeButton(BuildContext context, Habit habit, int minutes, String label) {
     return OutlinedButton(
       onPressed: () {
+        // 真正实现稍后提醒：记录 snooze 时间，期间不再重复触发
+        ReminderService().snoozeHabit(habit.id, minutes);
         Navigator.of(context).pop();
-        // TODO: 实现稍后提醒逻辑
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text('将在 $minutes 分钟后再次提醒'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       },
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

@@ -127,10 +127,33 @@ class ReminderForegroundService : Service() {
         ttsHelper = ReminderTtsHelper(this)
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        // Android 14 (API 34+) 要求 startForeground 显式传入 foregroundServiceType，
+        // 否则抛 ForegroundServiceTypeNotAllowed / MissingForegroundServiceType 崩溃。
+        // Manifest 声明的是 specialUse，这里必须匹配。
+        // 外层 try-catch 兜底：即使 type/权限有异常，降级为非前台服务，避免崩溃。
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground failed, running as background service", e)
+        }
 
         // 电池优化和精确定时权限检查（国产 ROM Doze 模式必需）
-        checkBatteryAndAlarmPermissions()
+        // 延迟执行：避免在前台服务启动的临界区弹 Activity 导致崩溃
+        checkHandler?.postDelayed({
+            try {
+                checkBatteryAndAlarmPermissions()
+            } catch (e: Exception) {
+                Log.w(TAG, "Permission check failed (ignored)", e)
+            }
+        }, 3_000L)
 
         handlerThread = HandlerThread("ReminderCheckThread").apply { start() }
         checkHandler = Handler(handlerThread!!.looper)
@@ -423,23 +446,32 @@ class ReminderForegroundService : Service() {
         }
 
         val needsVoiceHold = try {
-            wakeLock?.acquire(60_000L)
+            // 只在有需要提醒的任务时才获取 WakeLock，避免无任务时白白占 60 秒 CPU 导致发热
             val items = checker?.checkAll(isForeground = false) ?: emptyList()
 
-            Log.d(TAG, "Check found ${items.size} items to trigger")
+            // 无提醒项则跳过 WakeLock、声音、振动等全部操作
+            if (items.isEmpty()) {
+                Log.d(TAG, "No items to trigger, skip wake lock")
+                false
+            } else {
+                // 有提醒才获取 WakeLock（缩短到 15 秒，仅保证声音/TTS 播放）
+                wakeLock?.acquire(15_000L)
 
-            for (item in items) {
-                Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
-                val voiceAcceptedOrNoVoice = triggerReminder(item)
-                if (voiceAcceptedOrNoVoice) {
-                    markReminderDelivered(item)
-                } else {
-                    Log.w(TAG, "Reminder voice was not accepted; keeping state unmarked for retry: ${item.id}")
+                Log.d(TAG, "Check found ${items.size} items to trigger")
+
+                for (item in items) {
+                    Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
+                    val voiceAcceptedOrNoVoice = triggerReminder(item)
+                    if (voiceAcceptedOrNoVoice) {
+                        markReminderDelivered(item)
+                    } else {
+                        Log.w(TAG, "Reminder voice was not accepted; keeping state unmarked for retry: ${item.id}")
+                    }
                 }
-            }
 
-            items.any {
-                it.voiceEnabled && (!it.voiceText.isNullOrBlank() || !it.customVoicePath.isNullOrBlank() || !it.title.isNullOrBlank())
+                items.any {
+                    it.voiceEnabled && (!it.voiceText.isNullOrBlank() || !it.customVoicePath.isNullOrBlank() || !it.title.isNullOrBlank())
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in onHandleCheck", e)

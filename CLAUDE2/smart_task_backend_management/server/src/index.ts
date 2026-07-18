@@ -623,8 +623,13 @@ app.patch("/api/admin/tasks/:taskId", auth, (req: AuthedRequest, res) => {
     if (!found) throw new AppError(ErrorCode.NOT_FOUND, "任务不存在或已删除");
     // team_admin can only edit tasks within their team scope
     if (req.user!.role === "team_admin") {
-      const canSee = canSeeTask(req.user!, found, db);
-      if (!canSee) throw new AppError(ErrorCode.FORBIDDEN, "无权操作此任务");
+      // team_admin 只能改自己团队内的任务（不依赖 canSeeTask 的 assignee 关系，避免越权）
+      const adminTeams = db.teamMembers
+        .filter((m) => m.userId === req.user!.id && m.status === "active")
+        .map((m) => m.teamId);
+      if (!found.teamId || !adminTeams.includes(found.teamId)) {
+        throw new AppError(ErrorCode.FORBIDDEN, "无权操作此任务");
+      }
     }
     if (body.title !== undefined) found.title = body.title;
     if (body.content !== undefined) found.content = body.content;
@@ -1196,7 +1201,8 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
   const saved = mutateDb((db) => {
     const result: Task[] = [];
     for (const incoming of body.tasks) {
-      const timestamp = incoming.updatedAt ?? now();
+      // Server timestamps are authoritative; client clocks may be stale or in the future.
+      const timestamp = now();
       const existing = db.tasks.find((task) => task.id === incoming.id && task.ownerUserId === req.user!.id);
       // Handle soft-delete
       if (incoming.deletedAt && existing) {
@@ -1219,6 +1225,23 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         // Check if another user owns a task with the same ID
         const ownedByOther = db.tasks.find((task) => task.id === incoming.id);
         if (ownedByOther) {
+          // 被指派人(assignee)改 status：允许直接改，不报 ID collision 冲突
+          if (ownedByOther.assigneeUserId === req.user!.id && incoming.status && incoming.status !== ownedByOther.status) {
+            const prevStatus = ownedByOther.status;
+            ownedByOther.status = incoming.status;
+            if (incoming.status === "completed") ownedByOther.completedAt = incoming.completedAt || now();
+            else ownedByOther.completedAt = incoming.completedAt;
+            ownedByOther.version++;
+            ownedByOther.updatedAt = timestamp;
+            recordStatusChange(db, ownedByOther.id, {
+              previousStatus: prevStatus,
+              newStatus: incoming.status,
+              changedByUserId: req.user!.id,
+              source: "recipient",
+            });
+            result.push(ownedByOther);
+            continue;
+          }
           // Report conflict for ID collision so client knows to generate new UUID
           conflicts.push({
             taskId: incoming.id,
@@ -1227,6 +1250,9 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
           });
           result.push(ownedByOther);
           continue;
+        }
+        if (!incoming.title) {
+          throw new AppError(ErrorCode.VALIDATION_ERROR, "新任务标题不能为空");
         }
         // Auto-assign teamId only when user has exactly one active membership
         let userTeam = incoming.teamId;
@@ -1238,6 +1264,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
         }
         const nextTask: Task = {
           ...incoming,
+          title: incoming.title,
           ownerUserId: req.user!.id,
           teamId: userTeam,
           sourceType: incoming.sourceType ?? "local",
@@ -1311,13 +1338,10 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
               previousStatus: prevStatus,
               newStatus: incoming.status,
               changedByUserId: req.user!.id,
-              source: existing.sourceType === "team_distribution" ? "recipient" : "sender",
+              source: "sender",
             });
           }
-          if (existing.sourceType === "team_distribution" && incoming.status) {
-            updateDistributionStatusOnTaskChange(db, existing.id, incoming.status);
-          }
-          if (existing.sourceType !== "team_distribution" && incoming.status && prevStatus !== incoming.status) {
+          if (incoming.status && prevStatus !== incoming.status) {
             propagateSenderStatusToRecipient(db, existing.id, incoming.status, req.user!.id);
           }
           result.push(existing);
@@ -1354,14 +1378,11 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
             previousStatus: prevStatus,
             newStatus: incoming.status,
             changedByUserId: req.user!.id,
-            source: existing.sourceType === "team_distribution" ? "recipient" : "sender",
+            source: "sender",
           });
         }
-        if (existing.sourceType === "team_distribution" && incoming.status) {
-          updateDistributionStatusOnTaskChange(db, existing.id, incoming.status);
-        }
         // Sender's status change → propagate to recipient task copies
-        if (existing.sourceType !== "team_distribution" && incoming.status && prevStatus !== incoming.status) {
+        if (incoming.status && prevStatus !== incoming.status) {
           propagateSenderStatusToRecipient(db, existing.id, incoming.status, req.user!.id);
         }
         result.push(existing);
@@ -1786,33 +1807,53 @@ app.get("/api/reports/summary", auth, (req: AuthedRequest, res) => {
   const period = typeof req.query.period === "string" ? req.query.period : "weekly";
   const db = readDb();
   const now_ = now();
-  let since: string;
-  if (period === "daily") {
-    since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const nowDate = new Date();
+  let periodStart: Date;
+  let periodEnd: Date;
+  const requestedStart = typeof req.query.periodStart === "string" ? new Date(req.query.periodStart) : null;
+  const requestedEnd = typeof req.query.periodEnd === "string" ? new Date(req.query.periodEnd) : null;
+  if (requestedStart && requestedEnd &&
+      !Number.isNaN(requestedStart.getTime()) && !Number.isNaN(requestedEnd.getTime()) &&
+      requestedStart < requestedEnd) {
+    periodStart = requestedStart;
+    periodEnd = requestedEnd;
+  } else if (period === "daily") {
+    periodStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+    periodEnd = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1);
   } else if (period === "monthly") {
-    since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    periodStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+    periodEnd = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1);
   } else {
-    since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    const daysSinceMonday = (nowDate.getDay() + 6) % 7;
+    periodStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - daysSinceMonday);
+    periodEnd = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - daysSinceMonday + 7);
   }
+  const since = periodStart.toISOString();
+  const until = periodEnd.toISOString();
 
   const tasks = db.tasks.filter((t) => t.ownerUserId === req.user!.id && !t.deletedAt);
-  const recent = tasks.filter((t) => t.createdAt >= since || (t.updatedAt >= since));
+  const inPeriod = (value?: string | null) => !!value && value >= since && value < until;
+  const reportTasks = tasks.filter((t) =>
+    inPeriod(t.createdAt) || inPeriod(t.completedAt) || inPeriod(t.dueTime),
+  );
 
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === "completed").length;
-  const inProgressTasks = tasks.filter((t) => t.status === "in_progress").length;
-  const overdueTasks = tasks.filter((t) => t.status !== "completed" && t.dueTime && t.dueTime < now_).length;
-  const recentlyCompleted = recent.filter((t) => t.status === "completed" && t.completedAt && t.completedAt >= since).length;
+  const totalTasks = reportTasks.length;
+  const completedTasks = reportTasks.filter((t) => t.status === "completed").length;
+  const inProgressTasks = reportTasks.filter((t) => t.status === "in_progress").length;
+  const overdueTasks = reportTasks.filter((t) => t.status !== "completed" && t.dueTime && t.dueTime < now_).length;
+  const recentlyCompleted = reportTasks.filter((t) => t.status === "completed" && inPeriod(t.completedAt)).length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const tasksByPriority = {
-    high: tasks.filter((t) => t.priority === "high").length,
-    medium: tasks.filter((t) => t.priority === "medium").length,
-    low: tasks.filter((t) => t.priority === "low").length,
+    high: reportTasks.filter((t) => t.priority === "high").length,
+    medium: reportTasks.filter((t) => t.priority === "medium").length,
+    low: reportTasks.filter((t) => t.priority === "low").length,
   };
 
   res.json({
     period,
+    periodStart: since,
+    periodEnd: until,
     totalTasks,
     completedTasks,
     inProgressTasks,
@@ -2086,7 +2127,7 @@ app.get("/api/comments/sync/pull", auth, (req: AuthedRequest, res) => {
   const comments = db.comments
     .filter((comment) => {
       const task = db.tasks.find((item) => item.id === comment.taskId);
-      return task && canSeeTask(req.user!, task, db) && comment.status === "active" && comment.updatedAt >= since;
+      return task && canSeeTask(req.user!, task, db) && comment.updatedAt >= since;
     })
     .sort((a, b) => a.serverCreatedAt.localeCompare(b.serverCreatedAt))
     .map((c) => ({

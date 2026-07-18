@@ -10,6 +10,8 @@ import '../providers/task_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/task_card.dart';
 import '../widgets/quick_add_modal.dart';
+import '../widgets/task_list_skeleton.dart';
+import '../widgets/task_template_dialog.dart';
 import '../widgets/ai_chat_dialog.dart';
 import '../utils/app_localizations.dart';
 import '../services/weather_service.dart';
@@ -50,8 +52,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Cached futures for FutureBuilders (prevents rebuild from re-triggering)
   final Map<String, Future<List<TaskComment>>> _commentsFutureCache = {};
-  final Map<String, Future<List<BackendDistribution>>> _distributionsFutureCache = {};
-  final Map<String, Future<List<BackendTaskComment>>> _recipientCommentsFutureCache = {};
+  VoidCallback?
+      _triggerCommentsRefresh; // 详情页评论区刷新回调（由 sheet 内 StatefulBuilder 注入）
+  final Map<String, Future<List<BackendDistribution>>>
+      _distributionsFutureCache = {};
+  final Map<String, Future<List<BackendTaskComment>>>
+      _recipientCommentsFutureCache = {};
   final Map<String, bool> _commentsExpanded = {};
   Future<Map<String, dynamic>?>? _teamAndMembersFuture;
 
@@ -210,12 +216,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     ],
                                     // 离线提示点
                                     StreamBuilder<List<ConnectivityResult>>(
-                                      stream: Connectivity().onConnectivityChanged,
-                                      initialData: const [ConnectivityResult.wifi],
+                                      stream:
+                                          Connectivity().onConnectivityChanged,
+                                      initialData: const [
+                                        ConnectivityResult.wifi
+                                      ],
                                       builder: (context, snapshot) {
-                                        final results = snapshot.data ?? [ConnectivityResult.wifi];
-                                        final isOffline = results.contains(ConnectivityResult.none);
-                                        if (!isOffline) return const SizedBox.shrink();
+                                        final results = snapshot.data ??
+                                            [ConnectivityResult.wifi];
+                                        final isOffline = results
+                                            .contains(ConnectivityResult.none);
+                                        if (!isOffline)
+                                          return const SizedBox.shrink();
                                         return Container(
                                           width: 8,
                                           height: 8,
@@ -270,7 +282,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             // AI 建议卡片
-            if (provider.todayTasks.any((t) => !t.isCompleted) && !_isAICardDismissed)
+            if (provider.todayTasks.any((t) => !t.isCompleted) &&
+                !_isAICardDismissed)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -313,7 +326,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             // 待处理任务列表 - 逾期任务排前面，然后是今日任务
-            provider.todayTasks.every((t) => t.isCompleted) && provider.overdueTasks.isEmpty
+            provider.todayTasks.every((t) => t.isCompleted) &&
+                    provider.overdueTasks.isEmpty
                 ? SliverToBoxAdapter(
                     child: provider.todayTasks.isEmpty
                         ? _buildEmptyState()
@@ -325,7 +339,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 const SizedBox(height: 20),
                                 Icon(Icons.emoji_events_rounded,
                                     size: 56,
-                                    color: AppTheme.primaryColor.withValues(alpha: 0.6)),
+                                    color: AppTheme.primaryColor
+                                        .withValues(alpha: 0.6)),
                                 const SizedBox(height: 12),
                                 Text(
                                   l.allTasksCompleted,
@@ -357,11 +372,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     final todayUncompleted = provider.todayTasks
                         .where((t) => !t.isCompleted)
                         .toList();
-                    // 合并：逾期 + 今日（去重）
-                    final overdueIds = overdueUncompleted.map((t) => t.id).toSet();
+
+                    // 「即将到期优先」排序：有截止时间的按 dueTime 升序在前，
+                    // 无截止时间的沉到底部（保持原相对顺序，使用稳定排序）。
+                    // 各组内排序后再合并：逾期区 > 今日区。
+                    overdueUncompleted.sort(_compareByDueTime);
+                    todayUncompleted.sort(_compareByDueTime);
+
+                    final overdueIds =
+                        overdueUncompleted.map((t) => t.id).toSet();
                     final mergedTasks = [
                       ...overdueUncompleted,
-                      ...todayUncompleted.where((t) => !overdueIds.contains(t.id)),
+                      ...todayUncompleted
+                          .where((t) => !overdueIds.contains(t.id)),
                     ];
                     return SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -377,7 +400,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     ? BoxDecoration(
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
-                                          color: AppTheme.errorColor.withValues(alpha: 0.4),
+                                          color: AppTheme.errorColor
+                                              .withValues(alpha: 0.4),
                                           width: 1.5,
                                         ),
                                       )
@@ -385,24 +409,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 child: TaskCard(
                                   task: task,
                                   onTap: () => _showTaskDetail(task),
-                                  isDistributed: provider.distributedTaskIds.contains(task.id),
+                                  isDistributed: provider.distributedTaskIds
+                                      .contains(task.id),
                                   onComplete: () =>
                                       _completeTask(task.id, provider),
-                                  onDelete: () => _deleteTask(task.id, provider),
+                                  onDelete: () =>
+                                      _deleteTask(task.id, provider),
                                   onStart: () => _startTask(task.id, provider),
-                                  onStatusChange: (status) =>
-                                      _changeTaskStatus(task.id, status, provider),
+                                  onStatusChange: (status) => _changeTaskStatus(
+                                      task.id, status, provider),
                                   onPriorityChange: (priority) =>
                                       _changeTaskPriority(
                                           task.id, priority, provider),
-                                  onDueTimeTap: () => _editDueTime(task, provider),
+                                  onDueTimeTap: () =>
+                                      _editDueTime(task, provider),
                                   onReminderTap: () =>
                                       _editReminder(task, provider),
                                   onRecurringTap: () =>
                                       _editRecurring(task, provider),
                                   availableTags: _getAllTags(provider),
-                                  onTagsChanged: (tagIds) =>
-                                      _updateTaskTags(task.id, tagIds, provider),
+                                  onTagsChanged: (tagIds) => _updateTaskTags(
+                                      task.id, tagIds, provider),
+                                  onSaveAsTemplate: () =>
+                                      _saveAsTemplate(task, provider),
                                 ),
                               ),
                             );
@@ -565,27 +594,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       // Date range filter + batch mode toggle
                       Row(
                         children: [
-                          _buildDateRangeChip(l.dateFrom, provider.filterDateFrom, (dt) {
-                            provider.setFilterDateRange(dt, provider.filterDateTo);
+                          _buildDateRangeChip(
+                              l.dateFrom, provider.filterDateFrom, (dt) {
+                            provider.setFilterDateRange(
+                                dt, provider.filterDateTo);
                           }),
                           const SizedBox(width: 8),
-                          _buildDateRangeChip(l.dateTo, provider.filterDateTo, (dt) {
-                            provider.setFilterDateRange(provider.filterDateFrom, dt);
+                          _buildDateRangeChip(l.dateTo, provider.filterDateTo,
+                              (dt) {
+                            provider.setFilterDateRange(
+                                provider.filterDateFrom, dt);
                           }),
-                          if (provider.filterDateFrom != null || provider.filterDateTo != null)
+                          if (provider.filterDateFrom != null ||
+                              provider.filterDateTo != null)
                             Padding(
                               padding: const EdgeInsets.only(left: 4),
                               child: GestureDetector(
-                                onTap: () => provider.setFilterDateRange(null, null),
-                                child: Icon(Icons.clear, size: 16, color: Colors.grey[400]),
+                                onTap: () =>
+                                    provider.setFilterDateRange(null, null),
+                                child: Icon(Icons.clear,
+                                    size: 16, color: Colors.grey[400]),
                               ),
                             ),
                           const Spacer(),
                           // Recent searches
-                          if (provider.recentSearches.isNotEmpty && provider.searchQuery.isEmpty)
+                          if (provider.recentSearches.isNotEmpty &&
+                              provider.searchQuery.isEmpty)
                             GestureDetector(
                               onTap: () => _showRecentSearches(provider),
-                              child: Icon(Icons.history, size: 20, color: Colors.grey[400]),
+                              child: Icon(Icons.history,
+                                  size: 20, color: Colors.grey[400]),
                             ),
                           const SizedBox(width: 8),
                           // Batch mode toggle
@@ -595,20 +633,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               if (!_isBatchMode) _selectedTaskIds.clear();
                             }),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: _isBatchMode ? AppTheme.primaryColor : Colors.grey[100],
+                                color: _isBatchMode
+                                    ? AppTheme.primaryColor
+                                    : Colors.grey[100],
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.checklist, size: 16,
-                                    color: _isBatchMode ? Colors.white : Colors.grey[600]),
+                                  Icon(Icons.checklist,
+                                      size: 16,
+                                      color: _isBatchMode
+                                          ? Colors.white
+                                          : Colors.grey[600]),
                                   const SizedBox(width: 4),
                                   Text(l.batchMode,
-                                    style: TextStyle(fontSize: 12,
-                                      color: _isBatchMode ? Colors.white : Colors.grey[600])),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: _isBatchMode
+                                              ? Colors.white
+                                              : Colors.grey[600])),
                                 ],
                               ),
                             ),
@@ -625,84 +672,111 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 SliverToBoxAdapter(
                   child: _buildBatchToolbar(provider),
                 ),
-              _getFilteredTaskList(provider).isEmpty
-                  ? SliverToBoxAdapter(
-                      child: _buildEmptyState(isWhite: true),
-                    )
-                  : Builder(builder: (context) {
-                      final filteredTasks = _getFilteredTaskList(provider);
-                      return SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final task = filteredTasks[index];
-                            if (task.parentId != null) return const SizedBox.shrink();
-                            final subtasks = provider.subtasksByParentId[task.id] ?? [];
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+              // 加载中：显示骨架屏，避免空数据时误显示"无任务"
+              if (provider.isLoading && provider.tasks.isEmpty)
+                SliverToBoxAdapter(child: TaskListSkeleton(itemCount: 4))
+              else if (_getFilteredTaskList(provider).isEmpty)
+                SliverToBoxAdapter(
+                  child: _buildEmptyState(isWhite: true),
+                )
+              else
+                Builder(builder: (context) {
+                  // toList() 复制一份，避免就地排序污染 provider 内部的 _tasks
+                  final filteredTasks = _getFilteredTaskList(provider).toList();
+                  // 「即将到期优先」：在当前筛选结果内按 dueTime 升序，
+                  // 无截止时间的任务沉底（与今日页排序规则一致）。
+                  filteredTasks.sort(_compareByDueTime);
+                  return SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final task = filteredTasks[index];
+                          if (task.parentId != null)
+                            return const SizedBox.shrink();
+                          final subtasks =
+                              provider.subtasksByParentId[task.id] ?? [];
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: TaskCard(
+                                  task: task,
+                                  onTap: _isBatchMode
+                                      ? () => setState(() {
+                                            if (_selectedTaskIds
+                                                .contains(task.id)) {
+                                              _selectedTaskIds.remove(task.id);
+                                            } else {
+                                              _selectedTaskIds.add(task.id);
+                                            }
+                                          })
+                                      : () => _showTaskDetail(task),
+                                  isDistributed: provider.distributedTaskIds
+                                      .contains(task.id),
+                                  isPinned: provider.isPinned(task.id),
+                                  onPinToggle: () => provider.isPinned(task.id)
+                                      ? provider.unpinTask(task.id)
+                                      : provider.pinTask(task.id),
+                                  selectable: _isBatchMode,
+                                  isSelected:
+                                      _selectedTaskIds.contains(task.id),
+                                  onSelectionChanged: (v) => setState(() {
+                                    if (v) {
+                                      _selectedTaskIds.add(task.id);
+                                    } else {
+                                      _selectedTaskIds.remove(task.id);
+                                    }
+                                  }),
+                                  onComplete: () =>
+                                      _completeTask(task.id, provider),
+                                  onDelete: () =>
+                                      _deleteTask(task.id, provider),
+                                  onStart: () => _startTask(task.id, provider),
+                                  onStatusChange: (status) => _changeTaskStatus(
+                                      task.id, status, provider),
+                                  onPriorityChange: (priority) =>
+                                      _changeTaskPriority(
+                                          task.id, priority, provider),
+                                  onDueTimeTap: () =>
+                                      _editDueTime(task, provider),
+                                  onReminderTap: () =>
+                                      _editReminder(task, provider),
+                                  onRecurringTap: () =>
+                                      _editRecurring(task, provider),
+                                  availableTags: _getAllTags(provider),
+                                  onTagsChanged: (tagIds) => _updateTaskTags(
+                                      task.id, tagIds, provider),
+                                  onSaveAsTemplate: () =>
+                                      _saveAsTemplate(task, provider),
+                                ),
+                              ),
+                              if (subtasks.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
-                                  child: TaskCard(
-                                    task: task,
-                                    onTap: _isBatchMode
-                                        ? () => setState(() {
-                                              if (_selectedTaskIds.contains(task.id)) {
-                                                _selectedTaskIds.remove(task.id);
-                                              } else {
-                                                _selectedTaskIds.add(task.id);
-                                              }
-                                            })
-                                        : () => _showTaskDetail(task),
-                                    isDistributed: provider.distributedTaskIds.contains(task.id),
-                                    isPinned: provider.isPinned(task.id),
-                                    onPinToggle: () => provider.isPinned(task.id)
-                                        ? provider.unpinTask(task.id)
-                                        : provider.pinTask(task.id),
-                                    selectable: _isBatchMode,
-                                    isSelected: _selectedTaskIds.contains(task.id),
-                                    onSelectionChanged: (v) => setState(() {
-                                      if (v) {
-                                        _selectedTaskIds.add(task.id);
-                                      } else {
-                                        _selectedTaskIds.remove(task.id);
-                                      }
-                                    }),
-                                    onComplete: () => _completeTask(task.id, provider),
-                                    onDelete: () => _deleteTask(task.id, provider),
-                                    onStart: () => _startTask(task.id, provider),
-                                    onStatusChange: (status) => _changeTaskStatus(task.id, status, provider),
-                                    onPriorityChange: (priority) => _changeTaskPriority(task.id, priority, provider),
-                                    onDueTimeTap: () => _editDueTime(task, provider),
-                                    onReminderTap: () => _editReminder(task, provider),
-                                    onRecurringTap: () => _editRecurring(task, provider),
-                                    availableTags: _getAllTags(provider),
-                                    onTagsChanged: (tagIds) => _updateTaskTags(task.id, tagIds, provider),
+                                  child: SubtaskList(
+                                    parentTask: task,
+                                    subtasks: subtasks,
+                                    onSubtaskTap: (t) => _showTaskDetail(t),
+                                    onAddSubtask: () {
+                                      Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => AddTaskScreen(
+                                                parentId: task.id),
+                                          ));
+                                    },
                                   ),
                                 ),
-                                if (subtasks.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: SubtaskList(
-                                      parentTask: task,
-                                      subtasks: subtasks,
-                                      onSubtaskTap: (t) => _showTaskDetail(t),
-                                      onAddSubtask: () {
-                                        Navigator.push(context, MaterialPageRoute(
-                                          builder: (_) => AddTaskScreen(parentId: task.id),
-                                        ));
-                                      },
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                          childCount: filteredTasks.length,
-                        ),
+                            ],
+                          );
+                        },
+                        childCount: filteredTasks.length,
                       ),
-                    );
-                  }),
+                    ),
+                  );
+                }),
               const SliverToBoxAdapter(
                 child: SizedBox(height: 100),
               ),
@@ -1083,7 +1157,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bar_chart_rounded, size: 16, color: AppTheme.primaryColor),
+            Icon(Icons.bar_chart_rounded,
+                size: 16, color: AppTheme.primaryColor),
             const SizedBox(width: 4),
             Text(
               l.navStats,
@@ -1176,6 +1251,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildFAB() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // 模板快捷入口（小按钮，点击从模板创建任务）
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: IconButton(
+            tooltip: context.l.templates,
+            icon: const Icon(Icons.bookmark_rounded, size: 22),
+            color: AppTheme.primaryColor,
+            onPressed: _createFromTemplate,
+          ),
+        ),
+        _buildMainFAB(),
+      ],
+    );
+  }
+
+  Widget _buildMainFAB() {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1306,7 +1412,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: CircularProgressIndicator(
                     value: progressPercent,
                     strokeWidth: 6,
-                    backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+                    backgroundColor:
+                        AppTheme.primaryColor.withValues(alpha: 0.1),
                     valueColor: const AlwaysStoppedAnimation<Color>(
                         AppTheme.primaryColor),
                     strokeCap: StrokeCap.round,
@@ -1421,7 +1528,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: const Color(0xFF6366F1).withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+          border:
+              Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
@@ -1475,6 +1583,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _showTaskDetail(Task task) {
     final l = context.l;
+    // 打开详情页时后台拉一次最新评论（含被指派/被分发任务），避免看不到新评论（App 无实时推送）
+    _refreshCommentsFromBackend(task);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1596,7 +1706,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               (x) => x.id == task.id,
                               orElse: () => task,
                             );
-                            if (t.assigneeUserId == null || t.assigneeUserId!.isEmpty) {
+                            if (t.assigneeUserId == null ||
+                                t.assigneeUserId!.isEmpty) {
                               return const SizedBox.shrink();
                             }
                             return _buildAssigneeRow(t);
@@ -1638,8 +1749,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 return const SizedBox.shrink();
                               }
                               final members =
-                                  (snap.data?['members'] as List?) ??
-                                      const [];
+                                  (snap.data?['members'] as List?) ?? const [];
                               if (members.isEmpty) {
                                 return const SizedBox.shrink();
                               }
@@ -1903,7 +2013,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               initialTime: selectedTime,
                               builder: (context, child) {
                                 return MediaQuery(
-                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                  data: MediaQuery.of(context)
+                                      .copyWith(alwaysUse24HourFormat: true),
                                   child: child!,
                                 );
                               },
@@ -2072,7 +2183,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final l = context.l;
     String? selectedRule = task.recurringRule;
     final options = [null, 'daily', 'weekly', 'monthly', 'yearly'];
-    final labels = [l.noRepeat, l.dailyRepeat, l.weeklyRepeat, l.monthlyRepeat, l.yearlyRepeat];
+    final labels = [
+      l.noRepeat,
+      l.dailyRepeat,
+      l.weeklyRepeat,
+      l.monthlyRepeat,
+      l.yearlyRepeat
+    ];
 
     showModalBottomSheet(
       context: context,
@@ -2174,13 +2291,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// 打开任务详情时后台拉一次最新评论（含被指派任务、分发副本），完成后触发评论区重建
+  Future<void> _refreshCommentsFromBackend(Task task) async {
+    if (!BackendApiService.instance.isLoggedIn) return;
+    try {
+      // 拉所有可见评论（含被指派任务 assignee 的评论）
+      final comments = await BackendApiService.instance.pullComments();
+      if (comments.isNotEmpty) {
+        await TaskCommentService.instance.saveRemoteComments(comments);
+      }
+      // 分发评论（副本会话）
+      final dists =
+          await BackendApiService.instance.getDistributionsForTask(task.id);
+      for (final d in dists) {
+        try {
+          final rc =
+              await BackendApiService.instance.getRecipientComments(d.id);
+          if (rc.isNotEmpty) {
+            await TaskCommentService.instance.saveRemoteComments(rc);
+          }
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      _triggerCommentsRefresh?.call();
+    } catch (_) {}
+  }
+
   Widget _buildTaskCommentsSection(Task task) {
     final l = context.l;
     final currentUserId = BackendApiService.instance.userId;
     return StatefulBuilder(
       builder: (context, setOuter) {
+        // 注入刷新回调：后台拉到新评论后清缓存并重建本 StatefulBuilder
+        _triggerCommentsRefresh = () {
+          _commentsFutureCache.remove(task.id);
+          setOuter(() {});
+        };
         return FutureBuilder<List<TaskComment>>(
-          future: _commentsFutureCache.putIfAbsent(task.id, () => TaskCommentService.instance.getComments(task.id)),
+          future: _commentsFutureCache.putIfAbsent(
+              task.id, () => TaskCommentService.instance.getComments(task.id)),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return ErrorStateWidget(
@@ -2196,159 +2345,164 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             final comments = allComments;
             final hasComments = comments.isNotEmpty;
 
-        return StatefulBuilder(
-          builder: (context, setInner) {
-            final isExpanded = _commentsExpanded[task.id] ?? false;
-            // 无评论时直接展开（显示空态 + 添加入口）；有评论时按折叠状态（默认折叠）
-            final showContent = hasComments ? isExpanded : true;
-            return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.12)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  InkWell(
-                    onTap: hasComments
-                        ? () => setInner(
-                            () => _commentsExpanded[task.id] = !isExpanded)
-                        : () => _showAddCommentDialog(task, () => setOuter(() {})),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.chat_bubble_outline_rounded,
-                              size: 18, color: AppTheme.primaryColor),
-                          const SizedBox(width: 8),
-                          Text(
-                            l.taskComments,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimaryColor,
-                            ),
-                          ),
-                          if (hasComments) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                '${comments.length}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          if (hasComments)
-                            AnimatedRotation(
-                              turns: isExpanded ? 0.5 : 0,
-                              duration: const Duration(milliseconds: 200),
-                              child: const Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  size: 22,
-                                  color: AppTheme.textHintColor),
-                            )
-                          else
-                            const Icon(Icons.add,
-                                size: 20, color: AppTheme.primaryColor),
-                        ],
-                      ),
-                    ),
+            return StatefulBuilder(
+              builder: (context, setInner) {
+                final isExpanded = _commentsExpanded[task.id] ?? false;
+                // 无评论时直接展开（显示空态 + 添加入口）；有评论时按折叠状态（默认折叠）
+                final showContent = hasComments ? isExpanded : true;
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.12)),
                   ),
-                  if (showContent) ...[
-                    const SizedBox(height: 8),
-                    if (snapshot.connectionState == ConnectionState.waiting)
-                      const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: LinearProgressIndicator(minHeight: 2),
-                      )
-                    else if (comments.isEmpty)
-                      Row(
-                        children: [
-                          Text(
-                            l.noComments,
-                            style:
-                                TextStyle(color: AppTheme.textSecondaryColor),
-                          ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => _showAddCommentDialog(task, () => setOuter(() {})),
-                            child: Text(l.add),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      ...comments.map(
-                        (comment) => Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        onTap: hasComments
+                            ? () => setInner(
+                                () => _commentsExpanded[task.id] = !isExpanded)
+                            : () => _showAddCommentDialog(
+                                task, () => setOuter(() {})),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
                             children: [
+                              const Icon(Icons.chat_bubble_outline_rounded,
+                                  size: 18, color: AppTheme.primaryColor),
+                              const SizedBox(width: 8),
                               Text(
-                                comment.authorUserId == currentUserId
-                                    ? l.me
-                                    : (comment.authorName ?? l.unknown),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: comment.authorUserId == currentUserId
-                                      ? AppTheme.primaryColor
-                                      : AppTheme.textSecondaryColor,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                comment.content,
+                                l.taskComments,
                                 style: const TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
                                   color: AppTheme.textPrimaryColor,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_formatDateTime(comment.createdAt)} · ${comment.synced ? l.synced : comment.syncError == null ? l.pendingSync : l.syncFailedShort}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: comment.syncError == null
-                                      ? AppTheme.textHintColor
-                                      : AppTheme.errorColor,
+                              if (hasComments) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${comments.length}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
+                              const Spacer(),
+                              if (hasComments)
+                                AnimatedRotation(
+                                  turns: isExpanded ? 0.5 : 0,
+                                  duration: const Duration(milliseconds: 200),
+                                  child: const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 22,
+                                      color: AppTheme.textHintColor),
+                                )
+                              else
+                                const Icon(Icons.add,
+                                    size: 20, color: AppTheme.primaryColor),
                             ],
                           ),
                         ),
                       ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => _showAddCommentDialog(task, () => setOuter(() {})),
-                          child: Text(l.addComment),
-                        ),
-                      ),
+                      if (showContent) ...[
+                        const SizedBox(height: 8),
+                        if (snapshot.connectionState == ConnectionState.waiting)
+                          const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: LinearProgressIndicator(minHeight: 2),
+                          )
+                        else if (comments.isEmpty)
+                          Row(
+                            children: [
+                              Text(
+                                l.noComments,
+                                style: TextStyle(
+                                    color: AppTheme.textSecondaryColor),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () => _showAddCommentDialog(
+                                    task, () => setOuter(() {})),
+                                child: Text(l.add),
+                              ),
+                            ],
+                          )
+                        else ...[
+                          ...comments.map(
+                            (comment) => Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    comment.authorUserId == currentUserId
+                                        ? l.me
+                                        : (comment.authorName ?? l.unknown),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          comment.authorUserId == currentUserId
+                                              ? AppTheme.primaryColor
+                                              : AppTheme.textSecondaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    comment.content,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textPrimaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${_formatDateTime(comment.createdAt)} · ${comment.synced ? l.synced : comment.syncError == null ? l.pendingSync : l.syncFailedShort}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: comment.syncError == null
+                                          ? AppTheme.textHintColor
+                                          : AppTheme.errorColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () => _showAddCommentDialog(
+                                  task, () => setOuter(() {})),
+                              child: Text(l.addComment),
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
-                  ],
-                ],
-              ),
+                  ),
+                );
+              },
             );
           },
         );
-        },
-      );
       },
     );
   }
@@ -2356,64 +2510,105 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _showAddCommentDialog(Task task, VoidCallback? onAdded) {
     final l = context.l;
     final controller = TextEditingController();
+    String? targetTaskId; // null=全部(原任务广播)，否则=某接收方副本 taskId(定向)
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(l.addComment),
-        content: TextField(
-          controller: controller,
-          maxLines: 4,
-          decoration: InputDecoration(
-            hintText: l.commentHint,
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.alternate_email_rounded),
-              tooltip: '@提及成员',
-              onPressed: () => _showMentionPicker(controller),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(l.addComment),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 发送方有分发时，可选目标：全部(广播)或某个接收方(定向)
+              FutureBuilder<List<BackendDistribution>>(
+                future: _distributionsFutureCache.putIfAbsent(
+                    task.id,
+                    () => BackendApiService.instance
+                        .getDistributionsForTask(task.id)),
+                builder: (context, snap) {
+                  final senderDists = (snap.data ?? [])
+                      .where((d) =>
+                          d.sourceTaskId == task.id &&
+                          d.recipientTaskId != null)
+                      .toList();
+                  if (senderDists.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: DropdownButtonFormField<String?>(
+                      value: targetTaskId,
+                      decoration: const InputDecoration(
+                          labelText: '发送给', border: OutlineInputBorder()),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                            value: null, child: Text('全部接收方')),
+                        ...senderDists.map((d) => DropdownMenuItem<String?>(
+                              value: d.recipientTaskId,
+                              child: Text(d.recipientName ?? '接收方'),
+                            )),
+                      ],
+                      onChanged: (v) => setDialog(() => targetTaskId = v),
+                    ),
+                  );
+                },
+              ),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: l.commentHint,
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.alternate_email_rounded),
+                    tooltip: '@提及成员',
+                    onPressed: () => _showMentionPicker(controller),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(l.cancel),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l.cancel),
-          ),
-          TextButton(
-            onPressed: () async {
-              final content = controller.text.trim();
-              if (content.isEmpty) return;
-              Navigator.pop(dialogContext); // 立即关闭对话框（乐观更新）
-              try {
-                final localComment =
-                    await TaskCommentService.instance.addLocalComment(
-                  taskId: task.id,
-                  content: content,
-                );
-
-                // 本地已写入，立即就地刷新评论区（不等网络同步，避免等待数秒才显示）
-                if (!mounted) return;
-                _commentsFutureCache.remove(task.id);
-                _commentsExpanded[task.id] = true;
-                // 评论区可能已被用户关闭（sheet dispose），try-catch 防 setState-after-dispose 异常传播导致白屏
+            TextButton(
+              onPressed: () async {
+                final content = controller.text.trim();
+                if (content.isEmpty) return;
+                Navigator.pop(dialogContext); // 立即关闭对话框（乐观更新）
                 try {
-                  onAdded?.call();
-                } catch (_) {}
+                  final localComment =
+                      await TaskCommentService.instance.addLocalComment(
+                    taskId: targetTaskId ?? task.id,
+                    content: content,
+                  );
 
-                // 后台同步到后端（fire-and-forget，不阻塞 UI 刷新）
-                if (BackendApiService.instance.isLoggedIn) {
-                  _syncCommentToBackend(task, localComment, onAdded);
+                  // 本地已写入，立即就地刷新评论区（不等网络同步，避免等待数秒才显示）
+                  if (!mounted) return;
+                  _commentsFutureCache.remove(task.id);
+                  _commentsExpanded[task.id] = true;
+                  // 评论区可能已被用户关闭（sheet dispose），try-catch 防 setState-after-dispose 异常传播导致白屏
+                  try {
+                    onAdded?.call();
+                  } catch (_) {}
+
+                  // 后台同步到后端（fire-and-forget，不阻塞 UI 刷新）
+                  if (BackendApiService.instance.isLoggedIn) {
+                    _syncCommentToBackend(task, localComment, onAdded);
+                  }
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l.commentFailed(e))),
+                  );
                 }
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l.commentFailed(e))),
-                );
-              }
-            },
-            child: Text(l.publish),
-          ),
-        ],
+              },
+              child: Text(l.publish),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2428,12 +2623,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final selected = await showModalBottomSheet<String>(
         context: context,
         builder: (ctx) => ListView(
-          children: members.map((m) => ListTile(
-            leading: CircleAvatar(child: Text(m.displayName.isNotEmpty ? m.displayName[0] : '?')),
-            title: Text(m.displayName),
-            subtitle: Text('${m.role} ${m.phoneMasked ?? ''}'),
-            onTap: () => Navigator.pop(ctx, m.displayName),
-          )).toList(),
+          children: members
+              .map((m) => ListTile(
+                    leading: CircleAvatar(
+                        child: Text(
+                            m.displayName.isNotEmpty ? m.displayName[0] : '?')),
+                    title: Text(m.displayName),
+                    subtitle: Text('${m.role} ${m.phoneMasked ?? ''}'),
+                    onTap: () => Navigator.pop(ctx, m.displayName),
+                  ))
+              .toList(),
         ),
       );
       if (selected == null) return;
@@ -2443,7 +2642,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final end = sel.end >= 0 ? sel.end : text.length;
       final insert = '@$selected ';
       controller.text = text.replaceRange(start, end, insert);
-      controller.selection = TextSelection.collapsed(offset: start + insert.length);
+      controller.selection =
+          TextSelection.collapsed(offset: start + insert.length);
     } catch (_) {}
   }
 
@@ -2453,7 +2653,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       await BackendApiService.instance.pushTask(task);
       await BackendApiService.instance.addComment(
-        taskId: task.id,
+        taskId: localComment.taskId, // 定向评论用评论的目标 taskId（可能是副本），而非原任务
         content: localComment.content,
         clientCommentId: localComment.id,
         operationId: localComment.operationId,
@@ -2547,86 +2747,97 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             if (snapshot.data == null) {
                               return Center(child: Text(l.notInAnyTeam));
                             }
-                        final teamId = snapshot.data!['teamId'] as String;
-                        final members = snapshot.data!['members'] as List<BackendTeamMember>;
-                        if (members.isEmpty) {
-                          return Center(child: Text(l.noTeamMembers));
-                        }
-                        return Column(
-                          children: [
-                            Expanded(
-                              child: ListView.separated(
-                                controller: scrollController,
-                                itemCount: members.length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
-                                itemBuilder: (context, index) {
-                                  final member = members[index];
-                                  final selected = selectedUserIds.contains(member.userId);
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: member.online
-                                          ? AppTheme.successColor.withValues(alpha: 0.15)
-                                          : AppTheme.textHintColor.withValues(alpha: 0.15),
-                                      child: Icon(
-                                        member.online
-                                            ? Icons.person_rounded
-                                            : Icons.person_off_rounded,
-                                        color: member.online
-                                            ? AppTheme.successColor
-                                            : AppTheme.textHintColor,
-                                      ),
-                                    ),
-                                    title: Text(member.displayName),
-                                    subtitle: Text(
-                                      '${member.role} ${member.phoneMasked ?? ''}',
-                                    ),
-                                    trailing: Checkbox(
-                                      value: selected,
-                                      onChanged: (v) => setInner(() {
-                                        if (v == true) {
-                                          selectedUserIds.add(member.userId);
-                                        } else {
-                                          selectedUserIds.remove(member.userId);
-                                        }
-                                      }),
-                                    ),
-                                    onTap: () => setInner(() {
-                                      if (selected) {
-                                        selectedUserIds.remove(member.userId);
-                                      } else {
-                                        selectedUserIds.add(member.userId);
-                                      }
-                                    }),
-                                  );
-                                },
-                              ),
-                            ),
-                            if (selectedUserIds.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _distributeBatch(
-                                      task,
-                                      selectedUserIds.toList(),
-                                      teamId,
-                                      remarkController.text.trim(),
-                                    ),
-                                    icon: const Icon(Icons.send_rounded),
-                                    label: Text('分发给 ${selectedUserIds.length} 人'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                    ),
+                            final teamId = snapshot.data!['teamId'] as String;
+                            final members = snapshot.data!['members']
+                                as List<BackendTeamMember>;
+                            if (members.isEmpty) {
+                              return Center(child: Text(l.noTeamMembers));
+                            }
+                            return Column(
+                              children: [
+                                Expanded(
+                                  child: ListView.separated(
+                                    controller: scrollController,
+                                    itemCount: members.length,
+                                    separatorBuilder: (_, __) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, index) {
+                                      final member = members[index];
+                                      final selected = selectedUserIds
+                                          .contains(member.userId);
+                                      return ListTile(
+                                        leading: CircleAvatar(
+                                          backgroundColor: member.online
+                                              ? AppTheme.successColor
+                                                  .withValues(alpha: 0.15)
+                                              : AppTheme.textHintColor
+                                                  .withValues(alpha: 0.15),
+                                          child: Icon(
+                                            member.online
+                                                ? Icons.person_rounded
+                                                : Icons.person_off_rounded,
+                                            color: member.online
+                                                ? AppTheme.successColor
+                                                : AppTheme.textHintColor,
+                                          ),
+                                        ),
+                                        title: Text(member.displayName),
+                                        subtitle: Text(
+                                          '${member.role} ${member.phoneMasked ?? ''}',
+                                        ),
+                                        trailing: Checkbox(
+                                          value: selected,
+                                          onChanged: (v) => setInner(() {
+                                            if (v == true) {
+                                              selectedUserIds
+                                                  .add(member.userId);
+                                            } else {
+                                              selectedUserIds
+                                                  .remove(member.userId);
+                                            }
+                                          }),
+                                        ),
+                                        onTap: () => setInner(() {
+                                          if (selected) {
+                                            selectedUserIds
+                                                .remove(member.userId);
+                                          } else {
+                                            selectedUserIds.add(member.userId);
+                                          }
+                                        }),
+                                      );
+                                    },
                                   ),
                                 ),
-                              ),
-                          ],
+                                if (selectedUserIds.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: () => _distributeBatch(
+                                          task,
+                                          selectedUserIds.toList(),
+                                          teamId,
+                                          remarkController.text.trim(),
+                                        ),
+                                        icon: const Icon(Icons.send_rounded),
+                                        label: Text(
+                                            '分发给 ${selectedUserIds.length} 人'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              AppTheme.primaryColor,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 14),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
                         );
-                      },
-                    );
                       },
                     ),
                   ),
@@ -2639,7 +2850,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _distributeBatch(Task task, List<String> userIds, String teamId, String remark) async {
+  Future<void> _distributeBatch(
+      Task task, List<String> userIds, String teamId, String remark) async {
     final l = context.l;
     final navigator = Navigator.of(context);
     try {
@@ -2709,12 +2921,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return StatefulBuilder(
       builder: (context, setInner) {
         return FutureBuilder<List<BackendDistribution>>(
-          future: _distributionsFutureCache.putIfAbsent(task.id, () => BackendApiService.instance.getDistributionsForTask(task.id)),
+          future: _distributionsFutureCache.putIfAbsent(
+              task.id,
+              () =>
+                  BackendApiService.instance.getDistributionsForTask(task.id)),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox(
                 height: 40,
-                child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                child: Center(
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))),
               );
             }
             if (snapshot.hasError) {
@@ -2729,44 +2948,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             final distributions = snapshot.data ?? [];
             if (distributions.isEmpty) return const SizedBox.shrink();
 
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.send_rounded, size: 18, color: AppTheme.primaryColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    l.distributionStatus,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      Icon(Icons.send_rounded,
+                          size: 18, color: AppTheme.primaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        l.distributionStatus,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${distributions.length}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${distributions.length}',
-                      style: TextStyle(fontSize: 12, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
-                    ),
-                  ),
+                  const SizedBox(height: 12),
+                  ...distributions.map((d) => _buildDistributionItem(d)),
                 ],
               ),
-              const SizedBox(height: 12),
-              ...distributions.map((d) => _buildDistributionItem(d)),
-            ],
-          ),
-        );
-      },
+            );
+          },
         );
       },
     );
@@ -2776,7 +3001,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final l = context.l;
     final statusColor = _getDistributionStatusColor(d.status);
     final recipientLabel = d.recipientName ?? l.unknown;
-    final taskStatusText = _getRecipientTaskStatusText(d.recipientTaskStatus, l);
+    final taskStatusText =
+        _getRecipientTaskStatusText(d.recipientTaskStatus, l);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -2800,7 +3026,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Expanded(
                 child: Text(
                   recipientLabel,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
               DistributionStatusWidget(status: d.status, compact: true),
@@ -2810,11 +3037,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(height: 6),
             Row(
               children: [
-                Icon(Icons.assignment_rounded, size: 14, color: AppTheme.textSecondaryColor),
+                Icon(Icons.assignment_rounded,
+                    size: 14, color: AppTheme.textSecondaryColor),
                 const SizedBox(width: 4),
                 Text(
                   l.counterpartTaskStatus(taskStatusText),
-                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondaryColor),
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.textSecondaryColor),
                 ),
               ],
             ),
@@ -2830,32 +3059,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppTheme.infoColor),
+                    Icon(Icons.chat_bubble_outline_rounded,
+                        size: 14, color: AppTheme.infoColor),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         d.lastCommentSummary != null
-                            ? l.commentsCountWithSummary(d.commentCount, d.lastCommentSummary!)
+                            ? l.commentsCountWithSummary(
+                                d.commentCount, d.lastCommentSummary!)
                             : l.commentsCount(d.commentCount),
-                        style: TextStyle(fontSize: 12, color: AppTheme.infoColor),
+                        style:
+                            TextStyle(fontSize: 12, color: AppTheme.infoColor),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (d.unreadCommentCount > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.red,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           l.newCommentsCount(d.unreadCommentCount),
-                          style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600),
                         ),
                       ),
                     const SizedBox(width: 4),
-                    Icon(Icons.chevron_right, size: 16, color: AppTheme.textHintColor),
+                    Icon(Icons.chevron_right,
+                        size: 16, color: AppTheme.textHintColor),
                   ],
                 ),
               ),
@@ -2870,14 +3107,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(Icons.history_rounded, size: 14, color: AppTheme.textSecondaryColor),
+                  Icon(Icons.history_rounded,
+                      size: 14, color: AppTheme.textSecondaryColor),
                   const SizedBox(width: 4),
                   Text(
                     l.statusChangeLog,
-                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondaryColor),
+                    style: TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondaryColor),
                   ),
                   const Spacer(),
-                  Icon(Icons.chevron_right, size: 16, color: AppTheme.textHintColor),
+                  Icon(Icons.chevron_right,
+                      size: 16, color: AppTheme.textHintColor),
                 ],
               ),
             ),
@@ -2889,7 +3129,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _tryAckViewed(BackendDistribution d) {
     final userId = BackendApiService.instance.userId;
-    if (userId != null && d.recipientUserId == userId && d.status == 'received') {
+    if (userId != null &&
+        d.recipientUserId == userId &&
+        d.status == 'received') {
       context.read<TaskProvider>().ackDistributionViewed(d.id);
     }
   }
@@ -2916,22 +3158,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2))),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   l.counterpartComments(d.recipientName ?? l.counterpart),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
               Expanded(
                 child: StatefulBuilder(
                   builder: (context, setInner) {
                     return FutureBuilder<List<BackendTaskComment>>(
-                      future: _recipientCommentsFutureCache.putIfAbsent(d.id, () => BackendApiService.instance.getRecipientComments(d.id)),
+                      future: _recipientCommentsFutureCache.putIfAbsent(
+                          d.id,
+                          () => BackendApiService.instance
+                              .getRecipientComments(d.id)),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
                         if (snapshot.hasError) {
                           return ErrorStateWidget(
@@ -2942,43 +3195,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           );
                         }
                         final allComments = snapshot.data ?? [];
-                        final comments = allComments.where((c) => c.authorUserId != currentUserId).toList();
+                        final comments = allComments
+                            .where((c) => c.authorUserId != currentUserId)
+                            .toList();
                         if (comments.isEmpty) {
                           return Center(child: Text(l.noComments));
                         }
-                    return ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: comments.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final c = comments[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        return ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: comments.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final c = comments[index];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    c.authorName ?? l.unknown,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        c.authorName ?? l.unknown,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        _formatDateTime(c.serverCreatedAt),
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: AppTheme.textHintColor),
+                                      ),
+                                    ],
                                   ),
-                                  const Spacer(),
-                                  Text(
-                                    _formatDateTime(c.serverCreatedAt),
-                                    style: TextStyle(fontSize: 12, color: AppTheme.textHintColor),
-                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(c.content,
+                                      style: const TextStyle(fontSize: 14)),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(c.content, style: const TextStyle(fontSize: 14)),
-                            ],
-                          ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
                     );
                   },
                 ),
@@ -3022,22 +3282,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2))),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   l.statusChangeLog,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
               Expanded(
                 child: StatefulBuilder(
                   builder: (context, setInner) {
                     return FutureBuilder<List<StatusChangeLog>>(
-                      future: BackendApiService.instance.getStatusChangeLogs(d.id),
+                      future:
+                          BackendApiService.instance.getStatusChangeLogs(d.id),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
                         if (snapshot.hasError) {
                           return ErrorStateWidget(
@@ -3048,89 +3317,107 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         if (logs.isEmpty) {
                           return Center(child: Text(l.noStatusChangeLogs));
                         }
-                    return ListView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: logs.length,
-                      itemBuilder: (context, index) {
-                        final log = logs[index];
-                        final sourceColor = log.source == 'recipient'
-                            ? AppTheme.infoColor
-                            : log.source == 'admin'
-                                ? Colors.orange
-                                : AppTheme.successColor;
-                        return IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Timeline line + dot
-                              SizedBox(
-                                width: 32,
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                        color: sourceColor,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    if (index < logs.length - 1)
-                                      Expanded(
-                                        child: Container(width: 2, color: Colors.grey.shade300),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Content
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            log.changedByName ?? l.unknown,
-                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: sourceColor),
+                        return ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: logs.length,
+                          itemBuilder: (context, index) {
+                            final log = logs[index];
+                            final sourceColor = log.source == 'recipient'
+                                ? AppTheme.infoColor
+                                : log.source == 'admin'
+                                    ? Colors.orange
+                                    : AppTheme.successColor;
+                            return IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Timeline line + dot
+                                  SizedBox(
+                                    width: 32,
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: sourceColor,
+                                            shape: BoxShape.circle,
                                           ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: sourceColor.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              sourceLabels[log.source] ?? log.source,
-                                              style: TextStyle(fontSize: 12, color: sourceColor),
-                                            ),
+                                        ),
+                                        if (index < logs.length - 1)
+                                          Expanded(
+                                            child: Container(
+                                                width: 2,
+                                                color: Colors.grey.shade300),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Content
+                                  Expanded(
+                                    child: Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 16),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Text(
+                                                log.changedByName ?? l.unknown,
+                                                style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: sourceColor),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: sourceColor.withValues(
+                                                      alpha: 0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  sourceLabels[log.source] ??
+                                                      log.source,
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: sourceColor),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${statusLabels[log.previousStatus] ?? log.previousStatus} → ${statusLabels[log.newStatus] ?? log.newStatus}',
+                                            style:
+                                                const TextStyle(fontSize: 14),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            _formatDateTime(log.createdAt),
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.textHintColor),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${statusLabels[log.previousStatus] ?? log.previousStatus} → ${statusLabels[log.newStatus] ?? log.newStatus}',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _formatDateTime(log.createdAt),
-                                        style: TextStyle(fontSize: 12, color: AppTheme.textHintColor),
-                                      ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
                     );
                   },
                 ),
@@ -3237,11 +3524,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// 将任务保存为模板
+  Future<void> _saveAsTemplate(Task task, TaskProvider provider) async {
+    final l = context.l;
+    try {
+      await provider.saveTaskAsTemplate(task);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l.savedAsTemplate),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 从模板创建任务
+  Future<void> _createFromTemplate() async {
+    await TaskTemplateDialog.show(context);
+  }
+
+  /// 任务按截止时间升序排序的比较函数（用于「即将到期优先」）。
+  ///
+  /// 规则：
+  /// - 都有 dueTime：按时间升序（越早越靠前）
+  /// - 一方无 dueTime：无截止时间的沉到底部
+  /// - 都无 dueTime：保持相等（稳定排序会保留原相对顺序）
+  int _compareByDueTime(Task a, Task b) {
+    final aNull = a.dueTime == null;
+    final bNull = b.dueTime == null;
+    if (aNull && bNull) return 0;
+    if (aNull) return 1; // a 无截止时间 → 排后面
+    if (bNull) return -1; // b 无截止时间 → a 排前面
+    return a.dueTime!.compareTo(b.dueTime!);
+  }
+
   void _completeTask(String id, TaskProvider provider) {
     final l = context.l;
     final taskIndex = provider.tasks.indexWhere((t) => t.id == id);
     if (taskIndex == -1) return;
     final task = provider.tasks[taskIndex];
+    // 保存原状态，供"撤销"恢复
+    final previousStatus = task.status;
     provider.updateTaskStatus(id, TaskStatus.completed);
 
     if (task.isRecurring) {
@@ -3268,7 +3600,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.check_circle, color: Colors.white),
               const SizedBox(width: 12),
-              Text(l.taskComplete),
+              Expanded(child: Text(l.taskCompletedUndo(task.title))),
             ],
           ),
           behavior: SnackBarBehavior.floating,
@@ -3276,6 +3608,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.all(16),
           backgroundColor: AppTheme.successColor,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: l.undo,
+            textColor: Colors.white,
+            onPressed: () {
+              // 恢复完成前的状态
+              provider.updateTaskStatus(id, previousStatus);
+            },
+          ),
         ),
       );
     }
@@ -3304,7 +3645,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     children: [
                       const Icon(Icons.delete_outline, color: Colors.white),
                       const SizedBox(width: 12),
-                      Text(l.taskDelete),
+                      Text(l.taskDeletedUndo),
                     ],
                   ),
                   behavior: SnackBarBehavior.floating,
@@ -3312,6 +3653,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(12)),
                   margin: const EdgeInsets.all(16),
                   backgroundColor: AppTheme.errorColor,
+                  duration: const Duration(seconds: 5),
+                  action: SnackBarAction(
+                    label: l.undo,
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      final ok = await provider.undoDeleteTask();
+                      if (context.mounted && ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(l.isZh ? '已恢复' : 'Restored'),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
                 ),
               );
             },
@@ -3428,39 +3786,54 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // 展开的任务列表
-          AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: Column(
-              children: completedTasks.map((task) {
-                return Padding(
-                  padding:
-                      const EdgeInsets.only(left: 16, right: 16, bottom: 12),
-                  child: TaskCard(
-                    task: task,
-                    onTap: () => _showTaskDetail(task),
-                    isDistributed: provider.distributedTaskIds.contains(task.id),
-                    onComplete: () => _restoreTask(task.id, provider),
-                    onDelete: () => _deleteTask(task.id, provider),
-                    onStatusChange: (status) =>
-                        _changeTaskStatus(task.id, status, provider),
-                    onPriorityChange: (priority) =>
-                        _changeTaskPriority(task.id, priority, provider),
-                    onDueTimeTap: () => _editDueTime(task, provider),
-                    onReminderTap: () => _editReminder(task, provider),
-                    onRecurringTap: () => _editRecurring(task, provider),
-                    availableTags: _getAllTags(provider),
-                    onTagsChanged: (tagIds) =>
-                        _updateTaskTags(task.id, tagIds, provider),
+          // 展开的任务列表（收起时不构建，避免全量渲染开销）
+          if (_isCompletedExpanded)
+            Column(
+              children: [
+                // 性能优化：已完成任务只渲染最近 20 个，避免全量渲染卡顿
+                ...completedTasks.take(20).map((task) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+                    child: TaskCard(
+                      task: task,
+                      onTap: () => _showTaskDetail(task),
+                      isDistributed:
+                          provider.distributedTaskIds.contains(task.id),
+                      onComplete: () => _restoreTask(task.id, provider),
+                      onDelete: () => _deleteTask(task.id, provider),
+                      onStatusChange: (status) =>
+                          _changeTaskStatus(task.id, status, provider),
+                      onPriorityChange: (priority) =>
+                          _changeTaskPriority(task.id, priority, provider),
+                      onDueTimeTap: () => _editDueTime(task, provider),
+                      onReminderTap: () => _editReminder(task, provider),
+                      onRecurringTap: () => _editRecurring(task, provider),
+                      availableTags: _getAllTags(provider),
+                      onTagsChanged: (tagIds) =>
+                          _updateTaskTags(task.id, tagIds, provider),
+                    ),
+                  );
+                }),
+                // 超过 20 个时提示去全部任务页查看
+                if (completedTasks.length > 20)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 12),
+                    child: TextButton(
+                      onPressed: () => setState(() => _currentIndex = 1),
+                      child: Text(
+                        l.isZh
+                            ? '查看全部 ${completedTasks.length} 个已完成任务'
+                            : 'View all ${completedTasks.length} completed tasks',
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                   ),
-                );
-              }).toList(),
+              ],
             ),
-            crossFadeState: _isCompletedExpanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 200),
-          ),
         ],
       ),
     );
@@ -3570,7 +3943,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Text(body, style: const TextStyle(fontSize: 14, height: 1.5)),
               const SizedBox(height: 12),
               Text(createdAtText,
-                  style: TextStyle(fontSize: 12, color: AppTheme.textHintColor)),
+                  style:
+                      TextStyle(fontSize: 12, color: AppTheme.textHintColor)),
             ],
           ),
         ),
@@ -3632,14 +4006,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.notifications_active_rounded, color: AppTheme.primaryColor, size: 20),
+                      child: const Icon(Icons.notifications_active_rounded,
+                          color: AppTheme.primaryColor, size: 20),
                     ),
                     const SizedBox(width: 12),
-                    Text(l.notificationCenter, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(l.notificationCenter,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     TextButton(
                       onPressed: () async {
-                        await BackendApiService.instance.markAllNotificationsRead();
+                        await BackendApiService.instance
+                            .markAllNotificationsRead();
+                        if (!mounted || !context.mounted) return;
                         _loadUnreadCount();
                         Navigator.pop(context);
                       },
@@ -3651,74 +4030,98 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const Divider(height: 1),
               Expanded(
                 child: StatefulBuilder(builder: (context, setInner) {
-                  final notifFuture = BackendApiService.instance.getNotifications();
+                  final notifFuture =
+                      BackendApiService.instance.getNotifications();
                   return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: notifFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor));
-                    }
-                    if (snapshot.hasError) {
-                      return ErrorStateWidget(
-                        onRetry: () => setInner(() {}),
-                      );
-                    }
-                    final notifications = snapshot.data ?? [];
-                    if (notifications.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            Text(l.noNotifications, style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
-                          ],
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: notifications.length,
-                      separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
-                      itemBuilder: (context, index) {
-                        final n = notifications[index];
-                        final read = n['read'] as bool? ?? false;
-                        final title = n['title'] as String? ?? '';
-                        final body = n['body'] as String? ?? '';
-                        final createdAt = n['createdAt'] as String? ?? '';
-                        final type = n['type'] as String? ?? '';
-                        return ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: (read ? Colors.grey : AppTheme.primaryColor).withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              type == 'mention' ? Icons.alternate_email_rounded
-                                  : type == 'assignment' ? Icons.person_pin_rounded
-                                  : type == 'distribution' ? Icons.send_rounded
-                                  : Icons.info_outline,
-                              size: 18,
-                              color: read ? Colors.grey : AppTheme.primaryColor,
-                            ),
-                          ),
-                          title: Text(title, style: TextStyle(fontWeight: read ? FontWeight.normal : FontWeight.w600, fontSize: 14)),
-                          subtitle: Text(body, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                          trailing: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: read ? Colors.transparent : AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          onTap: () => _showNotificationDetail(n, setInner),
+                    future: notifFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                            child: CircularProgressIndicator(
+                                color: AppTheme.primaryColor));
+                      }
+                      if (snapshot.hasError) {
+                        return ErrorStateWidget(
+                          onRetry: () => setInner(() {}),
                         );
-                      },
-                    );
-                  },
-                    );
+                      }
+                      final notifications = snapshot.data ?? [];
+                      if (notifications.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.notifications_off_outlined,
+                                  size: 48, color: Colors.grey.shade400),
+                              const SizedBox(height: 12),
+                              Text(l.noNotifications,
+                                  style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 15)),
+                            ],
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: notifications.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: Colors.grey.shade100),
+                        itemBuilder: (context, index) {
+                          final n = notifications[index];
+                          final read = n['read'] as bool? ?? false;
+                          final title = n['title'] as String? ?? '';
+                          final body = n['body'] as String? ?? '';
+                          final createdAt = n['createdAt'] as String? ?? '';
+                          final type = n['type'] as String? ?? '';
+                          return ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color:
+                                    (read ? Colors.grey : AppTheme.primaryColor)
+                                        .withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                type == 'mention'
+                                    ? Icons.alternate_email_rounded
+                                    : type == 'assignment'
+                                        ? Icons.person_pin_rounded
+                                        : type == 'distribution'
+                                            ? Icons.send_rounded
+                                            : Icons.info_outline,
+                                size: 18,
+                                color:
+                                    read ? Colors.grey : AppTheme.primaryColor,
+                              ),
+                            ),
+                            title: Text(title,
+                                style: TextStyle(
+                                    fontWeight: read
+                                        ? FontWeight.normal
+                                        : FontWeight.w600,
+                                    fontSize: 14)),
+                            subtitle: Text(body,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12)),
+                            trailing: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: read
+                                    ? Colors.transparent
+                                    : AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            onTap: () => _showNotificationDetail(n, setInner),
+                          );
+                        },
+                      );
+                    },
+                  );
                 }),
               ),
             ],
@@ -3736,17 +4139,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return FutureBuilder<String>(
       future: nameFuture,
       builder: (context, snapshot) {
-        final name = snapshot.hasError ? l.unknown : (snapshot.data ?? l.loading);
+        final name =
+            snapshot.hasError ? l.unknown : (snapshot.data ?? l.loading);
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Icon(Icons.person_outline_rounded, size: 18, color: AppTheme.textSecondaryColor),
+              Icon(Icons.person_outline_rounded,
+                  size: 18, color: AppTheme.textSecondaryColor),
               const SizedBox(width: 8),
-              Text(l.assignedTo, style: TextStyle(fontSize: 13, color: AppTheme.textSecondaryColor)),
+              Text(l.assignedTo,
+                  style: TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondaryColor)),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
@@ -3754,9 +4162,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.person_rounded, size: 14, color: AppTheme.primaryColor),
+                    Icon(Icons.person_rounded,
+                        size: 14, color: AppTheme.primaryColor),
                     const SizedBox(width: 4),
-                    Text(name, style: TextStyle(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w500)),
+                    Text(name,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -3782,7 +4195,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final teams = await BackendApiService.instance.getMyTeams();
       if (teams.isEmpty) return userId;
-      final members = await BackendApiService.instance.getTeamMembers(teams.first['id'] as String);
+      final members = await BackendApiService.instance
+          .getTeamMembers(teams.first['id'] as String);
       for (final m in members) {
         _userNameCache[m.userId] = m.displayName;
       }
@@ -3819,9 +4233,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    const Icon(Icons.person_add_rounded, color: AppTheme.primaryColor),
+                    const Icon(Icons.person_add_rounded,
+                        color: AppTheme.primaryColor),
                     const SizedBox(width: 12),
-                    Text(l.assignTask, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(l.assignTask,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -3834,7 +4251,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Padding(
                           padding: EdgeInsets.all(32),
-                          child: Center(child: CircularProgressIndicator(color: AppTheme.primaryColor)),
+                          child: Center(
+                              child: CircularProgressIndicator(
+                                  color: AppTheme.primaryColor)),
                         );
                       }
                       if (snapshot.hasError) {
@@ -3849,44 +4268,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       }
                       final data = snapshot.data;
                       if (data == null) {
-                    return Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text(l.notInTeamCantAssign, style: const TextStyle(color: AppTheme.textSecondaryColor)),
-                    );
-                  }
-                  final members = data['members'] as List<BackendTeamMember>;
-                  final currentUserId = BackendApiService.instance.userId;
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: members.length,
-                    itemBuilder: (context, index) {
-                      final m = members[index];
-                      final isCurrentAssignee = task.assigneeUserId == m.userId;
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isCurrentAssignee ? AppTheme.primaryColor : Colors.grey.shade300,
-                          child: Text(
-                            m.displayName.isNotEmpty ? m.displayName[0] : '?',
-                            style: TextStyle(color: isCurrentAssignee ? Colors.white : Colors.grey.shade700, fontSize: 14),
-                          ),
-                        ),
-                        title: Text(m.displayName),
-                        subtitle: m.userId == currentUserId ? Text(l.self, style: const TextStyle(fontSize: 12)) : null,
-                        trailing: isCurrentAssignee
-                            ? const Icon(Icons.check_circle, color: AppTheme.primaryColor)
-                            : null,
-                        onTap: () {
-                          final provider = context.read<TaskProvider>();
-                          provider.updateTask(task.copyWith(assigneeUserId: m.userId));
-                          Navigator.pop(context);
+                        return Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(l.notInTeamCantAssign,
+                              style: const TextStyle(
+                                  color: AppTheme.textSecondaryColor)),
+                        );
+                      }
+                      final members =
+                          data['members'] as List<BackendTeamMember>;
+                      final currentUserId = BackendApiService.instance.userId;
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: members.length,
+                        itemBuilder: (context, index) {
+                          final m = members[index];
+                          final isCurrentAssignee =
+                              task.assigneeUserId == m.userId;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: isCurrentAssignee
+                                  ? AppTheme.primaryColor
+                                  : Colors.grey.shade300,
+                              child: Text(
+                                m.displayName.isNotEmpty
+                                    ? m.displayName[0]
+                                    : '?',
+                                style: TextStyle(
+                                    color: isCurrentAssignee
+                                        ? Colors.white
+                                        : Colors.grey.shade700,
+                                    fontSize: 14),
+                              ),
+                            ),
+                            title: Text(m.displayName),
+                            subtitle: m.userId == currentUserId
+                                ? Text(l.self,
+                                    style: const TextStyle(fontSize: 12))
+                                : null,
+                            trailing: isCurrentAssignee
+                                ? const Icon(Icons.check_circle,
+                                    color: AppTheme.primaryColor)
+                                : null,
+                            onTap: () {
+                              final provider = context.read<TaskProvider>();
+                              provider.updateTask(
+                                  task.copyWith(assigneeUserId: m.userId));
+                              Navigator.pop(context);
+                            },
+                          );
                         },
                       );
                     },
                   );
                 },
-                    );
-                  },
               ),
               const SizedBox(height: 20),
             ],
@@ -3896,7 +4332,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDateRangeChip(String label, DateTime? value, ValueChanged<DateTime?> onChanged) {
+  Widget _buildDateRangeChip(
+      String label, DateTime? value, ValueChanged<DateTime?> onChanged) {
     final hasValue = value != null;
     return GestureDetector(
       onTap: () async {
@@ -3911,18 +4348,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: hasValue ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.grey[100],
+          color: hasValue
+              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+              : Colors.grey[100],
           borderRadius: BorderRadius.circular(8),
-          border: hasValue ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)) : null,
+          border: hasValue
+              ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3))
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.date_range, size: 14, color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
+            Icon(Icons.date_range,
+                size: 14,
+                color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
             const SizedBox(width: 4),
             Text(
               hasValue ? '${value.month}/${value.day}' : label,
-              style: TextStyle(fontSize: 12, color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: hasValue ? AppTheme.primaryColor : Colors.grey[500]),
             ),
           ],
         ),
@@ -3943,7 +4388,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(l.recentSearches, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+                Text(l.recentSearches,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87)),
                 TextButton(
                   onPressed: () {
                     provider.clearRecentSearches();
@@ -3957,13 +4406,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: provider.recentSearches.map((s) => ActionChip(
-                label: Text(s, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-                onPressed: () {
-                  provider.setSearchQuery(s);
-                  Navigator.pop(context);
-                },
-              )).toList(),
+              children: provider.recentSearches
+                  .map((s) => ActionChip(
+                        label: Text(s,
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.black87)),
+                        onPressed: () {
+                          provider.setSearchQuery(s);
+                          Navigator.pop(context);
+                        },
+                      ))
+                  .toList(),
             ),
           ],
         ),
@@ -3976,7 +4429,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final allTasks = _getFilteredTaskList(provider)
         .where((t) => t.parentId == null)
         .toList();
-    final allSelected = allTasks.isNotEmpty && allTasks.every((t) => _selectedTaskIds.contains(t.id));
+    final allSelected = allTasks.isNotEmpty &&
+        allTasks.every((t) => _selectedTaskIds.contains(t.id));
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       color: AppTheme.primaryColor.withValues(alpha: 0.06),
@@ -3992,44 +4446,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               }
             }),
           ),
-          Text(l.selectedCount(_selectedTaskIds.length), style: const TextStyle(fontSize: 13)),
+          Text(l.selectedCount(_selectedTaskIds.length),
+              style: const TextStyle(fontSize: 13)),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.check_circle_outline, size: 20),
             tooltip: l.batchMarkComplete,
-            onPressed: _selectedTaskIds.isEmpty ? null : () async {
-              await provider.batchUpdateTasks(_selectedTaskIds.toList(), status: TaskStatus.completed);
-              setState(() { _selectedTaskIds.clear(); });
-            },
+            onPressed: _selectedTaskIds.isEmpty
+                ? null
+                : () async {
+                    await provider.batchUpdateTasks(_selectedTaskIds.toList(),
+                        status: TaskStatus.completed);
+                    setState(() {
+                      _selectedTaskIds.clear();
+                    });
+                  },
           ),
           IconButton(
             icon: const Icon(Icons.play_circle_outline, size: 20),
             tooltip: l.batchStart,
-            onPressed: _selectedTaskIds.isEmpty ? null : () async {
-              await provider.batchUpdateTasks(_selectedTaskIds.toList(), status: TaskStatus.inProgress);
-              setState(() { _selectedTaskIds.clear(); });
-            },
+            onPressed: _selectedTaskIds.isEmpty
+                ? null
+                : () async {
+                    await provider.batchUpdateTasks(_selectedTaskIds.toList(),
+                        status: TaskStatus.inProgress);
+                    setState(() {
+                      _selectedTaskIds.clear();
+                    });
+                  },
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 20),
             tooltip: l.batchDelete,
-            onPressed: _selectedTaskIds.isEmpty ? null : () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: Text(l.confirmDelete),
-                  content: Text(l.confirmBatchDelete(_selectedTaskIds.length)),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(_, false), child: Text(l.cancel)),
-                    TextButton(onPressed: () => Navigator.pop(_, true), child: Text(l.delete)),
-                  ],
-                ),
-              );
-              if (confirm == true) {
-                await provider.batchDeleteTasks(_selectedTaskIds.toList());
-                setState(() { _selectedTaskIds.clear(); });
-              }
-            },
+            onPressed: _selectedTaskIds.isEmpty
+                ? null
+                : () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text(l.confirmDelete),
+                        content:
+                            Text(l.confirmBatchDelete(_selectedTaskIds.length)),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(_, false),
+                              child: Text(l.cancel)),
+                          TextButton(
+                              onPressed: () => Navigator.pop(_, true),
+                              child: Text(l.delete)),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await provider
+                          .batchDeleteTasks(_selectedTaskIds.toList());
+                      setState(() {
+                        _selectedTaskIds.clear();
+                      });
+                    }
+                  },
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +6,8 @@ import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/sync_queue_item.dart';
 import '../models/tag.dart';
+import '../models/habit.dart';
+import '../models/habit_log.dart';
 import '../database/storage_service.dart';
 import '../database/database_helper.dart';
 import '../services/backend_api_service.dart';
@@ -29,10 +32,12 @@ class TaskProvider extends ChangeNotifier {
 
   void _notifyNativeDataChanged(String type, [String? id]) {
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    try {
-      _reminderChannel
-          .invokeMethod('notifyDataChanged', {'type': type, 'id': id});
-    } catch (_) {}
+    // invokeMethod 返回 Future，真正的 PlatformException 是异步到达的，
+    // 同步 try/catch 无法捕获——必须用 catchError，否则在 release 模式下
+    // 会触发原生崩溃。
+    _reminderChannel
+        .invokeMethod('notifyDataChanged', {'type': type, 'id': id})
+        .catchError((_) {});
   }
 
   List<Task> _tasks = [];
@@ -44,6 +49,11 @@ class TaskProvider extends ChangeNotifier {
   bool _isBackendSyncing = false;
   bool _isSyncRunning = false;
   bool _suppressNotify = false;
+  // 自动备份节流：上次备份时间，5 分钟内不重复备份
+  DateTime? _lastAutoBackupAt;
+  static const _autoBackupThrottle = Duration(minutes: 5);
+  // 最近一次删除的任务（供 UI 层"撤销删除"恢复）
+  Task? _lastDeletedTask;
   DateTime? _lastBackendSyncAt;
   String? _backendSyncError;
   int _pendingBackendSyncCount = 0;
@@ -54,6 +64,10 @@ class TaskProvider extends ChangeNotifier {
   // 缓存的筛选列表
   List<Task> _cachedCompletedTasks = [];
   List<Task> _cachedActiveTasks = [];
+  // filteredTasks 的惰性缓存：在 _tasks 或筛选条件变更时失效。
+  // 避免在 build 中多次访问 filteredTasks getter 时重复计算（每次都
+  // 串联多个 where().toList()）。约定：调用方不应就地修改返回的 List。
+  List<Task>? _filteredTasksCache;
   final BackendApiService _backend = BackendApiService.instance;
 
   // 筛选条件
@@ -91,6 +105,10 @@ class TaskProvider extends ChangeNotifier {
 
   /// 筛选后的任务列表
   List<Task> get filteredTasks {
+    // 惰性缓存：命中则直接返回，避免 build 中重复计算
+    final cached = _filteredTasksCache;
+    if (cached != null) return cached;
+
     var result = _tasks;
 
     if (_filterStatus != null) {
@@ -106,15 +124,18 @@ class TaskProvider extends ChangeNotifier {
     }
 
     if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      // 预构建 tagId -> tagName 映射，支持按标签名搜索
+      final tagNameById = {
+        for (final tag in _tags) tag.id: tag.name.toLowerCase(),
+      };
       result = result
-          .where(
-            (t) =>
-                t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                (t.content?.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ) ??
-                    false),
-          )
+          .where((t) =>
+              t.title.toLowerCase().contains(q) ||
+              (t.content?.toLowerCase().contains(q) ?? false) ||
+              (t.assignee?.toLowerCase().contains(q) ?? false) ||
+              // 按标签名匹配
+              t.tagIds.any((id) => (tagNameById[id] ?? '').contains(q)))
           .toList();
     }
 
@@ -128,6 +149,7 @@ class TaskProvider extends ChangeNotifier {
       }).toList();
     }
 
+    _filteredTasksCache = result;
     return result;
   }
 
@@ -234,22 +256,20 @@ class TaskProvider extends ChangeNotifier {
       var tags = await _storage.getAllTags();
       debugPrint('从数据库加载到 ${tags.length} 个标签');
 
-      debugPrint('正在计算逾期任务...');
-      final overdue = await _storage.getOverdueTasks();
-      debugPrint('计算得到 ${overdue.length} 个逾期任务');
-
       debugPrint('===== 数据加载完成 =====');
       debugPrint('任务数量: ${tasks.length}');
       debugPrint('标签数量: ${tags.length}');
-      debugPrint('逾期任务: ${overdue.length}');
 
       _tasks = tasks;
+      // 全量重载后，filteredTasks 缓存失效
+      _filteredTasksCache = null;
 
       // 初始化默认标签（如果不存在）
       tags = await _ensureDefaultTags(tags);
 
       _tags = tags;
-      // 逾期任务：未完成、未取消且已过截止时间
+      // 逾期任务：未完成、未取消且已过截止时间（基于已加载的 tasks 在内存计算，
+      // 不再单独查询数据库——避免与内存视图不一致）
       _overdueTasks = tasks
           .where(
             (t) =>
@@ -402,6 +422,12 @@ class TaskProvider extends ChangeNotifier {
         await _createRecurringTask(task);
       }
 
+      // 子任务→父任务联动：子任务刚完成时，若父任务的所有子任务都已完成，
+      // 则自动完成父任务（避免用户手动再点一次）。
+      if (wasJustCompleted && task.parentId != null) {
+        await _maybeCompleteParentTask(task.parentId!);
+      }
+
       // 重新计算今日任务和逾期任务
       _refreshTaskLists();
 
@@ -411,6 +437,38 @@ class TaskProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+    }
+  }
+
+  /// 检查并自动完成父任务（当所有子任务都已完成时）。
+  ///
+  /// 子任务父子联动：用户逐个完成子任务后，最后一个完成时自动把父任务
+  /// 也标记为已完成，避免用户还要手动再点一次父任务（与主流待办应用一致）。
+  /// 仅当父任务存在、未取消、且有子任务时才触发。
+  Future<void> _maybeCompleteParentTask(String parentId) async {
+    try {
+      final parentIndex = _tasks.indexWhere((t) => t.id == parentId);
+      if (parentIndex == -1) return;
+      final parent = _tasks[parentIndex];
+
+      // 父任务已完成或已取消，无需联动
+      if (parent.isCompleted || parent.status == TaskStatus.cancelled) return;
+
+      final subtasks = _tasks.where((t) => t.parentId == parentId).toList();
+      if (subtasks.isEmpty) return; // 无子任务不触发
+
+      final allCompleted = subtasks.every((t) => t.isCompleted);
+      if (!allCompleted) return;
+
+      debugPrint('子任务全部完成，自动完成父任务: ${parent.title}');
+      final updatedParent = parent.copyWith(
+        status: TaskStatus.completed,
+        completedAt: DateTime.now(),
+      );
+      await _storage.updateTask(updatedParent);
+      _tasks[parentIndex] = updatedParent;
+    } catch (e) {
+      debugPrint('自动完成父任务失败: $e');
     }
   }
 
@@ -574,6 +632,8 @@ class TaskProvider extends ChangeNotifier {
     _cachedActiveTasks = _tasks
         .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
         .toList();
+    // _tasks 已变更，filteredTasks 缓存失效
+    _filteredTasksCache = null;
   }
 
   /// 关闭任务提醒（由原生层 FullScreenActivity 触发）
@@ -596,11 +656,31 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
+  /// 触发自动备份（节流：5 分钟内只备份一次）。
+  /// 用于关键操作（删除、批量操作）后保护数据安全。
+  Future<void> _triggerAutoBackup() async {
+    try {
+      final now = DateTime.now();
+      if (_lastAutoBackupAt != null &&
+          now.difference(_lastAutoBackupAt!) < _autoBackupThrottle) {
+        return; // 节流窗口内，跳过
+      }
+      _lastAutoBackupAt = now;
+      await _storage.autoBackup();
+    } catch (e) {
+      debugPrint('触发自动备份失败: $e');
+    }
+  }
+
   /// 删除任务
   Future<void> deleteTask(String id) async {
     try {
       // Save real task data before removing
       final realTask = _tasks.where((t) => t.id == id).firstOrNull;
+      // 删除前缓存任务对象，供 UI 层"撤销删除"恢复
+      _lastDeletedTask = realTask;
+      // 删除前触发一次自动备份（节流），作为数据安全兜底
+      await _triggerAutoBackup();
       await _storage.deleteTask(id);
       _tasks.removeWhere((t) => t.id == id);
 
@@ -618,6 +698,26 @@ class TaskProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+    }
+  }
+
+  /// 撤销最近一次删除（由 UI 层 SnackBar 的"撤销"按钮触发）。
+  /// 将缓存的任务重新插回 DB 和内存列表。返回是否恢复成功。
+  Future<bool> undoDeleteTask() async {
+    final task = _lastDeletedTask;
+    if (task == null) return false;
+    try {
+      await _storage.insertTask(task);
+      _tasks.insert(0, task);
+      _refreshTaskLists();
+      _lastDeletedTask = null; // 只能撤销一次
+      notifyListeners();
+      _notifyNativeDataChanged('task', task.id);
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
     }
   }
 
@@ -686,18 +786,21 @@ class TaskProvider extends ChangeNotifier {
   /// 设置筛选状态
   void setFilterStatus(TaskStatus? status) {
     _filterStatus = status;
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
   /// 设置筛选优先级
   void setFilterPriority(TaskPriority? priority) {
     _filterPriority = priority;
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
   /// 设置筛选标签
   void setFilterTag(String? tagId) {
     _filterTagId = tagId;
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
@@ -705,12 +808,14 @@ class TaskProvider extends ChangeNotifier {
   void setSearchQuery(String query) {
     _searchQuery = query;
     if (query.trim().isNotEmpty) _addRecentSearch(query.trim());
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
   void setFilterDateRange(DateTime? from, DateTime? to) {
     _filterDateFrom = from;
     _filterDateTo = to;
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
@@ -745,6 +850,7 @@ class TaskProvider extends ChangeNotifier {
     _filterPriority = null;
     _filterTagId = null;
     _searchQuery = '';
+    _filteredTasksCache = null;
     notifyListeners();
   }
 
@@ -900,34 +1006,91 @@ class TaskProvider extends ChangeNotifier {
     try {
       debugPrint('===== 开始导入数据 =====');
 
-      // 解析任务列表
+      // 导入前强制生成一份自动备份，防止导入覆盖后无法恢复
+      _lastAutoBackupAt = null; // 绕过节流，确保本次一定备份
+      await _triggerAutoBackup();
+
+      // 解析任务列表（按 updatedAt 比对，避免旧备份覆盖本地新数据）
       final tasksData = data['tasks'] as List?;
       if (tasksData != null) {
         debugPrint('准备导入 ${tasksData.length} 个任务');
-
+        // 建立本地任务的 updatedAt 索引
+        final localUpdatedMap = {
+          for (final t in _tasks) t.id: t.updatedAt,
+        };
+        int imported = 0, skipped = 0;
         for (final taskData in tasksData) {
           try {
             final task = Task.fromJson(taskData as Map<String, dynamic>);
+            // 碰撞检测：本地已有同 ID 且本地更新时不覆盖
+            final localUpdatedAt = localUpdatedMap[task.id];
+            if (localUpdatedAt != null &&
+                task.updatedAt.isBefore(localUpdatedAt)) {
+              debugPrint('跳过任务（本地更新）: ${task.title}');
+              skipped++;
+              continue;
+            }
             await _storage.insertTask(task);
-            debugPrint('导入任务: ${task.title}');
+            imported++;
           } catch (e) {
             debugPrint('导入任务失败: $e');
           }
         }
+        debugPrint('任务导入完成: 导入 $imported, 跳过(本地更新) $skipped');
       }
 
-      // 解析标签列表
+      // 解析标签列表（标签无 updatedAt，采用「不存在才导入」策略，
+      // 避免覆盖本地用户已修改的颜色/排序）
       final tagsData = data['tags'] as List?;
       if (tagsData != null) {
         debugPrint('准备导入 ${tagsData.length} 个标签');
-
+        final localTagIds = _tags.map((t) => t.id).toSet();
         for (final tagData in tagsData) {
           try {
             final tag = Tag.fromJson(tagData as Map<String, dynamic>);
+            if (localTagIds.contains(tag.id)) {
+              debugPrint('跳过标签（本地已存在）: ${tag.name}');
+              continue;
+            }
             await _storage.insertTag(tag);
             debugPrint('导入标签: ${tag.name}');
           } catch (e) {
             debugPrint('导入标签失败: $e');
+          }
+        }
+      }
+
+      // 解析习惯列表（v2.0 备份格式新增）
+      final habitsData = data['habits'] as List?;
+      if (habitsData != null) {
+        debugPrint('准备导入 ${habitsData.length} 个习惯');
+        final dbHelper = DatabaseHelper();
+        final existingHabitIds = (await dbHelper.getAllHabits()).map((h) => h.id).toSet();
+        for (final habitData in habitsData) {
+          try {
+            final habit = Habit.fromJson(habitData as Map<String, dynamic>);
+            // 习惯不存在时才导入，已存在则跳过（避免覆盖用户当前习惯配置）
+            if (!existingHabitIds.contains(habit.id)) {
+              await dbHelper.insertHabit(habit);
+              debugPrint('导入习惯: ${habit.title}');
+            }
+          } catch (e) {
+            debugPrint('导入习惯失败: $e');
+          }
+        }
+      }
+
+      // 解析习惯日志（v2.0 备份格式新增）
+      final habitLogsData = data['habitLogs'] as List?;
+      if (habitLogsData != null) {
+        debugPrint('准备导入 ${habitLogsData.length} 条习惯日志');
+        final dbHelper = DatabaseHelper();
+        for (final logData in habitLogsData) {
+          try {
+            final log = HabitLog.fromJson(logData as Map<String, dynamic>);
+            await dbHelper.insertHabitLog(log);
+          } catch (e) {
+            debugPrint('导入习惯日志失败: $e');
           }
         }
       }
@@ -1449,6 +1612,85 @@ class TaskProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('重置数据库连接失败: $e');
       rethrow;
+    }
+  }
+
+  // ==================== 任务模板 ====================
+  //
+  // 模板存储在 SharedPreferences（JSON 数组），避免 DB schema 变更。
+  // 模板保留创建任务所需字段（标题、描述、优先级、标签、提醒、周期等），
+  // 不含运行时状态（id/状态/时间戳）。
+
+  static const String _templatesPrefsKey = 'task_templates_v1';
+
+  /// 获取所有任务模板（按创建时间倒序）。
+  Future<List<Task>> getTaskTemplates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_templatesPrefsKey);
+      if (raw == null || raw.isEmpty) return [];
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => Task.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('加载任务模板失败: $e');
+      return [];
+    }
+  }
+
+  /// 将任务保存为模板（保留标题、描述、优先级、标签、提醒、周期等配置）。
+  Future<void> saveTaskAsTemplate(Task task) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final templates = await getTaskTemplates();
+
+      // 模板副本：清空运行时字段，生成新模板 id
+      final template = task.copyWith(
+        id: 'tpl_${const Uuid().v4()}',
+        status: TaskStatus.pending,
+        createdAt: DateTime.now(),
+        completedAt: null,
+        startTime: null,
+        version: 1,
+      );
+      templates.insert(0, template);
+      await prefs.setString(
+          _templatesPrefsKey, jsonEncode(templates.map((t) => t.toJson()).toList()));
+      debugPrint('已保存任务模板: ${template.title}');
+    } catch (e) {
+      debugPrint('保存任务模板失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 从模板创建一个新任务（生成新 id，状态重置为待处理，不设截止时间）。
+  Future<Task> createTaskFromTemplate(String templateId) async {
+    final templates = await getTaskTemplates();
+    final tpl = templates.firstWhere((t) => t.id == templateId);
+    final newTask = tpl.copyWith(
+      id: const Uuid().v4(),
+      status: TaskStatus.pending,
+      createdAt: DateTime.now(),
+      completedAt: null,
+      dueTime: null, // 从模板创建时不带原截止时间，由用户重新设定
+      startTime: null,
+      version: 1,
+    );
+    await addTask(newTask);
+    return newTask;
+  }
+
+  /// 删除模板。
+  Future<void> deleteTaskTemplate(String templateId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final templates = await getTaskTemplates();
+      templates.removeWhere((t) => t.id == templateId);
+      await prefs.setString(
+          _templatesPrefsKey, jsonEncode(templates.map((t) => t.toJson()).toList()));
+    } catch (e) {
+      debugPrint('删除任务模板失败: $e');
     }
   }
 }

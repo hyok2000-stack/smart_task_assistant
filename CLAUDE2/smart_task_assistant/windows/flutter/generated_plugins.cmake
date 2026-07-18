@@ -7,7 +7,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   flutter_secure_storage_windows
   flutter_tts
-  geolocator_windows
   permission_handler_windows
   share_plus
   url_launcher_windows

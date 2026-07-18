@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../models/task_suggestion.dart';
+import 'secure_storage_service.dart';
 
 /// AI聊天结果
 class ChatResult {
@@ -52,9 +53,13 @@ class AIConfig {
     );
   }
 
+  /// 序列化为 JSON 用于持久化。
+  ///
+  /// 注意：出于安全考虑，[apiKey] **不写入** 持久化的 JSON，
+  /// 改由 [AIService] 单独存入 SecureStorage（见 [AIService._apiKeySecureKey]）。
+  /// 内存中的 [AIConfig.apiKey] 仍正常用于运行时 HTTP 请求。
   Map<String, dynamic> toJson() => {
         'provider': provider,
-        'apiKey': apiKey,
         'baseUrl': baseUrl,
         'model': model,
         'enabled': enabled,
@@ -63,6 +68,7 @@ class AIConfig {
   factory AIConfig.fromJson(Map<String, dynamic> json) {
     return AIConfig(
       provider: json['provider'] ?? 'local',
+      // 兼容旧版本：旧 JSON 中可能残留 apiKey，读取后由 AIService 迁移到 SecureStorage
       apiKey: json['apiKey'] ?? '',
       baseUrl: json['baseUrl'] ?? '',
       model: json['model'] ?? '',
@@ -95,6 +101,10 @@ class ParsedTask {
 /// AI 服务（单例模式）
 class AIService {
   static const String _configKey = 'ai_config';
+  // apiKey 在 SecureStorage 中的独立键名（不再写入 SharedPreferences）
+  static const String _apiKeySecureKey = 'ai_service.apiKey';
+  // 迁移标记：把旧版 ai_config JSON 中残留的明文 apiKey 迁走
+  static const String _aiJsonMigratedKey = 'ai_config_apikey_migrated_v1';
   static final AIService _instance = AIService._internal();
 
   factory AIService() => _instance;
@@ -119,9 +129,28 @@ class AIService {
       final configJson = prefs.getString(_configKey);
       if (configJson != null) {
         _config = AIConfig.fromJson(jsonDecode(configJson));
+
+        // 一次性迁移：若旧 JSON 中残留了明文 apiKey，迁到 SecureStorage 后清空内存字段，
+        // 避免明文继续留在 prefs 的 ai_config 中
+        if (prefs.getBool(_aiJsonMigratedKey) != true && _config.apiKey.isNotEmpty) {
+          await SecureStorageService.instance
+              .write(_apiKeySecureKey, _config.apiKey);
+          await prefs.setBool(_aiJsonMigratedKey, true);
+          debugPrint('已将 ai_config 中的明文 apiKey 迁移至 SecureStorage');
+        }
+        _config = _config.copyWith(
+            apiKey: ''); // 清空内存中的 apiKey，下方从安全存储重新读取
         debugPrint(
             'AI配置加载成功: enabled=${_config.enabled}, provider=${_config.provider}, baseUrl=${_config.baseUrl}');
       }
+
+      // 从安全存储读取 apiKey 合并到内存配置
+      final secureApiKey =
+          await SecureStorageService.instance.read(_apiKeySecureKey);
+      if (secureApiKey != null && secureApiKey.isNotEmpty) {
+        _config = _config.copyWith(apiKey: secureApiKey);
+      }
+
       _configLoaded = true;
     } catch (e) {
       debugPrint('加载 AI 配置失败: $e');
@@ -129,8 +158,14 @@ class AIService {
   }
 
   /// 保存配置
+  ///
+  /// 安全改进：apiKey 单独存入 SecureStorage，不再混入 SharedPreferences 的 JSON。
   Future<void> saveConfig() async {
     try {
+      // apiKey 走安全存储
+      await SecureStorageService.instance
+          .write(_apiKeySecureKey, _config.apiKey);
+      // 其余字段（toJson 已不含 apiKey）写入 prefs
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_configKey, jsonEncode(_config.toJson()));
     } catch (e) {
@@ -1007,11 +1042,17 @@ class AIService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        final content = data['choices'][0]['message']['content'] as String;
+        // 智谱等 provider 可能返回 content null/空（如触发审核或深度思考模式），做防御
+        final message = data['choices']?[0]?['message'] as Map<String, dynamic>?;
+        var content = (message?['content'] as String?) ?? '';
+        // content 为空时尝试 reasoning_content（部分 provider 把内容放这里）
+        if (content.isEmpty) {
+          content = (message?['reasoning_content'] as String?) ?? '';
+        }
         final engineName = currentModelDisplayName;
 
         return ChatResult(
-          content: content,
+          content: content.isEmpty ? '（AI 返回了空内容，可能触发了内容审核，请换个问法试试）' : content,
           engineType: engineName,
           isFromAI: true,
         );

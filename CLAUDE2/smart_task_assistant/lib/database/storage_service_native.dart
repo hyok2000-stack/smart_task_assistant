@@ -1,7 +1,9 @@
 /// 原生平台存储服务实现
 /// 使用SQLite数据库
 
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'storage_service.dart';
 import 'database_helper.dart';
 import '../models/task.dart';
@@ -10,6 +12,7 @@ import '../models/tag.dart';
 /// 原生平台存储实现（使用SQLite）
 class NativeStorageService implements StorageService {
   final DatabaseHelper _db = DatabaseHelper();
+  static const String _backupKey = 'native_auto_backup_v1';
 
   @override
   Future<void> init() async {
@@ -83,6 +86,69 @@ class NativeStorageService implements StorageService {
 
   @override
   Future<List<Task>> getOverdueTasks() => _db.getOverdueTasks();
+
+  /// 自动备份（Native 端）：将当前所有任务+标签导出为 JSON 快照存入 SharedPreferences。
+  /// 作为 SQLite 之外的额外恢复途径（例如迁移失败、数据库损坏时）。
+  @override
+  Future<void> autoBackup() async {
+    try {
+      final tasks = await _db.getAllTasks();
+      final tags = await _db.getAllTags();
+      final backupData = {
+        'version': '1.0',
+        'platform': 'native',
+        'backupTime': DateTime.now().toIso8601String(),
+        'tasks': tasks.map((t) => t.toJson()).toList(),
+        'tags': tags.map((t) => t.toJson()).toList(),
+      };
+      final encoded = jsonEncode(backupData);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_backupKey, encoded);
+      debugPrint('原生自动备份完成: ${tasks.length} 个任务, ${tags.length} 个标签');
+    } catch (e) {
+      debugPrint('原生自动备份失败: $e');
+    }
+  }
+
+  /// 获取自动备份数据
+  @override
+  Future<Map<String, dynamic>?> getAutoBackup() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_backupKey);
+      if (json == null) return null;
+      return jsonDecode(json) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('读取原生备份失败: $e');
+      return null;
+    }
+  }
+
+  /// 从备份数据恢复（覆盖当前任务和标签）
+  @override
+  Future<bool> restoreFromBackup(Map<String, dynamic> backupData) async {
+    try {
+      // 恢复标签
+      if (backupData['tags'] != null) {
+        final List<dynamic> tagsJson = backupData['tags'];
+        for (final json in tagsJson) {
+          await _db.insertTag(Tag.fromJson(json as Map<String, dynamic>));
+        }
+      }
+      // 恢复任务
+      if (backupData['tasks'] != null) {
+        final List<dynamic> tasksJson = backupData['tasks'];
+        for (final json in tasksJson) {
+          await _db.insertTask(Task.fromJson(json as Map<String, dynamic>));
+        }
+      }
+      debugPrint('原生从备份恢复完成');
+      return true;
+    } catch (e) {
+      debugPrint('原生从备份恢复失败: $e');
+      return false;
+    }
+  }
 }
 
 /// 创建原生存储服务实例

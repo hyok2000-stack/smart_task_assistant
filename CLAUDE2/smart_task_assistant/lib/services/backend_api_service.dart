@@ -121,7 +121,9 @@ class BackendTaskComment {
       status: json['status'] as String,
       serverCreatedAt: DateTime.parse(json['serverCreatedAt'] as String),
       authorName: json['authorName'] as String?,
-      readByUserIds: (json['readByUserIds'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      readByUserIds:
+          (json['readByUserIds'] as List?)?.map((e) => e.toString()).toList() ??
+              const [],
     );
   }
 }
@@ -233,7 +235,10 @@ class PullResult {
   final List<Task> tasks;
   final List<String> deletedTaskIds;
   final List<BackendTaskComment> comments;
-  PullResult({this.tasks = const [], this.deletedTaskIds = const [], this.comments = const []});
+  PullResult(
+      {this.tasks = const [],
+      this.deletedTaskIds = const [],
+      this.comments = const []});
 }
 
 class BackendApiService {
@@ -525,7 +530,8 @@ class BackendApiService {
         options: _authOptions(),
       ),
     );
-    return (response.data?['team'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    return (response.data?['team'] ?? <String, dynamic>{})
+        as Map<String, dynamic>;
   }
 
   Future<List<BackendTeamMember>> getTeamMembers(String teamId) async {
@@ -561,7 +567,8 @@ class BackendApiService {
       ),
     );
     return BackendDistribution.fromJson(
-      (response.data?['distribution'] ?? <String, dynamic>{}) as Map<String, dynamic>,
+      (response.data?['distribution'] ?? <String, dynamic>{})
+          as Map<String, dynamic>,
     );
   }
 
@@ -585,8 +592,11 @@ class BackendApiService {
   }
 
   /// 批量推送任务到服务端
-  Future<List<ConflictInfo>> pushTasks(List<Task> tasks, {List<String>? deletedIds}) async {
-    if (!isLoggedIn || (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty))) return [];
+  Future<List<ConflictInfo>> pushTasks(List<Task> tasks,
+      {List<String>? deletedIds}) async {
+    if (!isLoggedIn ||
+        (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty)))
+      return [];
     final items = <Map<String, dynamic>>[];
     for (final task in tasks) {
       items.add(taskToBackendJson(task));
@@ -600,7 +610,8 @@ class BackendApiService {
     final allConflicts = <ConflictInfo>[];
     const batchSize = 50;
     for (var i = 0; i < items.length; i += batchSize) {
-      final batch = items.sublist(i, i + batchSize > items.length ? items.length : i + batchSize);
+      final batch = items.sublist(
+          i, i + batchSize > items.length ? items.length : i + batchSize);
       final response = await _request(
         () => _dio.post<Map<String, dynamic>>(
           '$baseUrl/tasks/sync/push',
@@ -650,7 +661,8 @@ class BackendApiService {
   }
 
   /// 拉取远端任务（后端同时返回 comments，一并返回以减少请求）
-  Future<PullResult> pullTasks({DateTime? since, List<Task>? localTasks}) async {
+  Future<PullResult> pullTasks(
+      {DateTime? since, List<Task>? localTasks}) async {
     if (!isLoggedIn) return PullResult();
     final response = await _request(
       () => _dio.get<Map<String, dynamic>>(
@@ -674,7 +686,8 @@ class BackendApiService {
         if (id is String) deletedIds.add(id);
         continue;
       }
-      final localMatch = localTasks?.where((t) => t.id == jsonMap['id']).firstOrNull;
+      final localMatch =
+          localTasks?.where((t) => t.id == jsonMap['id']).firstOrNull;
       activeTasks.add(taskFromBackendJson(jsonMap, localTask: localMatch));
     }
 
@@ -686,7 +699,8 @@ class BackendApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastSyncAtKey, DateTime.now().toIso8601String());
 
-    return PullResult(tasks: activeTasks, deletedTaskIds: deletedIds, comments: comments);
+    return PullResult(
+        tasks: activeTasks, deletedTaskIds: deletedIds, comments: comments);
   }
 
   Future<DateTime?> getLastSyncAt() async {
@@ -710,7 +724,8 @@ class BackendApiService {
         .toList();
   }
 
-  Future<List<BackendDistribution>> getDistributionsForTask(String taskId) async {
+  Future<List<BackendDistribution>> getDistributionsForTask(
+      String taskId) async {
     if (!isLoggedIn) return [];
     final response = await _request(
       () => _dio.get<Map<String, dynamic>>(
@@ -725,7 +740,8 @@ class BackendApiService {
         .toList();
   }
 
-  Future<List<BackendTaskComment>> getRecipientComments(String distributionId) async {
+  Future<List<BackendTaskComment>> getRecipientComments(
+      String distributionId) async {
     if (!isLoggedIn) return [];
     final response = await _request(
       () => _dio.get<Map<String, dynamic>>(
@@ -735,12 +751,13 @@ class BackendApiService {
     );
     final list = response.data?['comments'] as List? ?? [];
     return list
-        .map((json) =>
-            BackendTaskComment.fromJson(json as Map<String, dynamic>))
+        .map(
+            (json) => BackendTaskComment.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
-  Future<List<StatusChangeLog>> getStatusChangeLogs(String distributionId) async {
+  Future<List<StatusChangeLog>> getStatusChangeLogs(
+      String distributionId) async {
     if (!isLoggedIn) return [];
     final response = await _request(
       () => _dio.get<Map<String, dynamic>>(
@@ -750,13 +767,13 @@ class BackendApiService {
     );
     final list = response.data?['logs'] as List? ?? [];
     return list
-        .map((json) =>
-            StatusChangeLog.fromJson(json as Map<String, dynamic>))
+        .map((json) => StatusChangeLog.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   /// 确认收到分发任务
-  Future<void> ackDistribution(String distributionId, {required String status}) async {
+  Future<void> ackDistribution(String distributionId,
+      {required String status}) async {
     if (!isLoggedIn) return;
     await _request(
       () => _dio.post<Map<String, dynamic>>(
@@ -797,7 +814,8 @@ class BackendApiService {
       ),
     );
     return BackendTaskComment.fromJson(
-      (response.data?['comment'] ?? <String, dynamic>{}) as Map<String, dynamic>,
+      (response.data?['comment'] ?? <String, dynamic>{})
+          as Map<String, dynamic>,
     );
   }
 
@@ -816,7 +834,8 @@ class BackendApiService {
       ),
     );
     return BackendTaskComment.fromJson(
-      (response.data?['comment'] ?? <String, dynamic>{}) as Map<String, dynamic>,
+      (response.data?['comment'] ?? <String, dynamic>{})
+          as Map<String, dynamic>,
     );
   }
 
@@ -825,7 +844,7 @@ class BackendApiService {
     required String taskId,
     required String commentId,
   }) async {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) throw Exception('未登录');
     await _request(
       () => _dio.delete<Map<String, dynamic>>(
         '$baseUrl/tasks/$taskId/comments/$commentId',
@@ -929,13 +948,23 @@ class BackendApiService {
 
   // ---- Reports ----
 
-  Future<Map<String, dynamic>?> getReportSummary({String period = 'weekly'}) async {
+  Future<Map<String, dynamic>?> getReportSummary({
+    String period = 'weekly',
+    DateTime? periodStart,
+    DateTime? periodEnd,
+  }) async {
     if (!isLoggedIn) return null;
     try {
       final response = await _request(
         () => _dio.get<Map<String, dynamic>>(
           '$baseUrl/reports/summary',
-          queryParameters: {'period': period},
+          queryParameters: {
+            'period': period,
+            if (periodStart != null)
+              'periodStart': periodStart.toUtc().toIso8601String(),
+            if (periodEnd != null)
+              'periodEnd': periodEnd.toUtc().toIso8601String(),
+          },
           options: _authOptions(),
         ),
       );
@@ -1048,7 +1077,8 @@ class BackendApiService {
       'isRecurring': task.isRecurring,
       'recurringRule': task.recurringRule,
       'tagIds': task.tagIds.isNotEmpty ? task.tagIds : null,
-      'attachmentPaths': task.attachmentPaths.isNotEmpty ? task.attachmentPaths : null,
+      'attachmentPaths':
+          task.attachmentPaths.isNotEmpty ? task.attachmentPaths : null,
       'reminderMinutes': task.reminderMinutes,
       'reminderDismissed': task.reminderDismissed,
       'reminderVoiceEnabled': task.reminderVoiceEnabled,
@@ -1075,12 +1105,16 @@ class BackendApiService {
     );
   }
 
-  Future<Response<T>> _request<T>(Future<Response<T>> Function() action, {bool allowRelogin = true}) async {
+  Future<Response<T>> _request<T>(Future<Response<T>> Function() action,
+      {bool allowRelogin = true}) async {
     try {
       return await action();
     } on DioException catch (e) {
       // 401 token 过期：尝试用保存的凭据静默重登后重放一次
-      if (allowRelogin && e.response?.statusCode == 401 && _account != null && _password != null) {
+      if (allowRelogin &&
+          e.response?.statusCode == 401 &&
+          _account != null &&
+          _password != null) {
         try {
           await _silentRelogin();
           return _request(action, allowRelogin: false);
@@ -1093,7 +1127,8 @@ class BackendApiService {
         throw BackendError.fromJson(data);
       }
       if (data is Map && data['message'] != null) {
-        throw BackendError(code: 'SERVER_ERROR', message: data['message'] as String);
+        throw BackendError(
+            code: 'SERVER_ERROR', message: data['message'] as String);
       }
       if (data is String && data.isNotEmpty) {
         throw BackendError(code: 'SERVER_ERROR', message: data);
@@ -1124,7 +1159,8 @@ class BackendApiService {
   }
 
   /// Helper: get nullable value from json, fall back to localTask only if key is absent or value is null
-  T? _jsonOrLocal<T>(Map<String, dynamic> json, String key, T? Function()? localGetter) {
+  T? _jsonOrLocal<T>(
+      Map<String, dynamic> json, String key, T? Function()? localGetter) {
     if (json.containsKey(key) && json[key] != null) {
       final v = json[key];
       // Coerce numeric types: double → int when T is int
@@ -1154,45 +1190,91 @@ class BackendApiService {
     final isStatusOnly = !json.containsKey('title') && localTask != null;
     if (isStatusOnly) {
       return localTask.copyWith(
-        status: json.containsKey('status') ? _statusFromBackend(json['status'] as String?) : null,
-        completedAt: json.containsKey('completedAt') ? _parseDateField(json['completedAt']) : localTask.completedAt,
-        version: json.containsKey('version') ? (json['version'] as num?)?.toInt() : localTask.version,
-        updatedAt: json.containsKey('updatedAt') ? _parseDateField(json['updatedAt']) ?? localTask.updatedAt : localTask.updatedAt,
+        status: json.containsKey('status')
+            ? _statusFromBackend(json['status'] as String?)
+            : null,
+        completedAt: json.containsKey('completedAt')
+            ? _parseDateField(json['completedAt'])
+            : localTask.completedAt,
+        version: json.containsKey('version')
+            ? (json['version'] as num?)?.toInt()
+            : localTask.version,
+        updatedAt: json.containsKey('updatedAt')
+            ? _parseDateField(json['updatedAt']) ?? localTask.updatedAt
+            : localTask.updatedAt,
       );
     }
-    final sourceType = json.containsKey('sourceType') ? (json['sourceType'] as String?) : (localTask?.sourceType);
+    final sourceType = json.containsKey('sourceType')
+        ? (json['sourceType'] as String?)
+        : (localTask?.sourceType);
     final task = Task(
       id: json['id'] as String,
       title: json['title'] as String,
       content: _jsonOrLocal(json, 'content', () => localTask?.content),
       status: _statusFromBackend(json['status'] as String?),
       priority: _priorityFromBackend(json['priority'] as String?),
-      startTime: json.containsKey('startTime') ? _parseDateField(json['startTime']) : localTask?.startTime,
-      dueTime: json.containsKey('dueTime') ? _parseDateField(json['dueTime']) : localTask?.dueTime,
-      completedAt: json.containsKey('completedAt') ? _parseDateField(json['completedAt']) : localTask?.completedAt,
+      startTime: json.containsKey('startTime')
+          ? _parseDateField(json['startTime'])
+          : localTask?.startTime,
+      dueTime: json.containsKey('dueTime')
+          ? _parseDateField(json['dueTime'])
+          : localTask?.dueTime,
+      completedAt: json.containsKey('completedAt')
+          ? _parseDateField(json['completedAt'])
+          : localTask?.completedAt,
       assignee: _jsonOrLocal(json, 'assignee', () => localTask?.assignee),
       parentId: _jsonOrLocal(json, 'parentId', () => localTask?.parentId),
-      isRecurring: json.containsKey('isRecurring') ? _parseBool(json['isRecurring'], localFallback: localTask?.isRecurring) : (localTask?.isRecurring ?? false),
-      recurringRule: _jsonOrLocal(json, 'recurringRule', () => localTask?.recurringRule),
-      tagIds: json.containsKey('tagIds') ? _parseStringList(json['tagIds']) ?? [] : (localTask?.tagIds ?? []),
-      attachmentPaths: json.containsKey('attachmentPaths') ? _parseStringList(json['attachmentPaths']) ?? [] : (localTask?.attachmentPaths ?? []),
-      reminderMinutes: _jsonOrLocal(json, 'reminderMinutes', () => localTask?.reminderMinutes),
-      reminderDismissed: json.containsKey('reminderDismissed') ? _parseBool(json['reminderDismissed'], localFallback: localTask?.reminderDismissed) : (localTask?.reminderDismissed ?? false),
-      reminderVoiceEnabled: json.containsKey('reminderVoiceEnabled') ? _parseBool(json['reminderVoiceEnabled'], defaultValue: true, localFallback: localTask?.reminderVoiceEnabled) : (localTask?.reminderVoiceEnabled ?? true),
-      reminderVoiceType: _jsonOrLocal(json, 'reminderVoiceType', () => localTask?.reminderVoiceType),
-      reminderVoiceStyle: _jsonOrLocal(json, 'reminderVoiceStyle', () => localTask?.reminderVoiceStyle),
-      reminderVoiceSpeed: _jsonOrLocal(json, 'reminderVoiceSpeed', () => localTask?.reminderVoiceSpeed),
-      reminderCustomVoicePath: _jsonOrLocal(json, 'reminderCustomVoicePath', () => localTask?.reminderCustomVoicePath),
+      isRecurring: json.containsKey('isRecurring')
+          ? _parseBool(json['isRecurring'],
+              localFallback: localTask?.isRecurring)
+          : (localTask?.isRecurring ?? false),
+      recurringRule:
+          _jsonOrLocal(json, 'recurringRule', () => localTask?.recurringRule),
+      tagIds: json.containsKey('tagIds')
+          ? _parseStringList(json['tagIds']) ?? []
+          : (localTask?.tagIds ?? []),
+      attachmentPaths: json.containsKey('attachmentPaths')
+          ? _parseStringList(json['attachmentPaths']) ?? []
+          : (localTask?.attachmentPaths ?? []),
+      reminderMinutes: _jsonOrLocal(
+          json, 'reminderMinutes', () => localTask?.reminderMinutes),
+      reminderDismissed: json.containsKey('reminderDismissed')
+          ? _parseBool(json['reminderDismissed'],
+              localFallback: localTask?.reminderDismissed)
+          : (localTask?.reminderDismissed ?? false),
+      reminderVoiceEnabled: json.containsKey('reminderVoiceEnabled')
+          ? _parseBool(json['reminderVoiceEnabled'],
+              defaultValue: true,
+              localFallback: localTask?.reminderVoiceEnabled)
+          : (localTask?.reminderVoiceEnabled ?? true),
+      reminderVoiceType: _jsonOrLocal(
+          json, 'reminderVoiceType', () => localTask?.reminderVoiceType),
+      reminderVoiceStyle: _jsonOrLocal(
+          json, 'reminderVoiceStyle', () => localTask?.reminderVoiceStyle),
+      reminderVoiceSpeed: _jsonOrLocal(
+          json, 'reminderVoiceSpeed', () => localTask?.reminderVoiceSpeed),
+      reminderCustomVoicePath: _jsonOrLocal(json, 'reminderCustomVoicePath',
+          () => localTask?.reminderCustomVoicePath),
       sourceType: sourceType,
-      sourceTaskId: _jsonOrLocal(json, 'sourceTaskId', () => localTask?.sourceTaskId),
-      sourceDistributionId: _jsonOrLocal(json, 'sourceDistributionId', () => localTask?.sourceDistributionId),
+      sourceTaskId:
+          _jsonOrLocal(json, 'sourceTaskId', () => localTask?.sourceTaskId),
+      sourceDistributionId: _jsonOrLocal(
+          json, 'sourceDistributionId', () => localTask?.sourceDistributionId),
       teamId: _jsonOrLocal(json, 'teamId', () => localTask?.teamId),
-      ownerUserId: _jsonOrLocal(json, 'ownerUserId', () => localTask?.ownerUserId),
+      ownerUserId:
+          _jsonOrLocal(json, 'ownerUserId', () => localTask?.ownerUserId),
       version: _jsonOrLocal(json, 'version', () => localTask?.version),
       sortOrder: _jsonOrLocal(json, 'sortOrder', () => localTask?.sortOrder),
-      assigneeUserId: _jsonOrLocal(json, 'assigneeUserId', () => localTask?.assigneeUserId),
-      createdAt: json.containsKey('createdAt') ? (_parseDate(json['createdAt']) ?? localTask?.createdAt ?? DateTime.now()) : (localTask?.createdAt ?? DateTime.now()),
-      updatedAt: _parseDate(json['updatedAt']) ?? localTask?.updatedAt ?? DateTime.now(),
+      assigneeUserId:
+          _jsonOrLocal(json, 'assigneeUserId', () => localTask?.assigneeUserId),
+      createdAt: json.containsKey('createdAt')
+          ? (_parseDate(json['createdAt']) ??
+              localTask?.createdAt ??
+              DateTime.now())
+          : (localTask?.createdAt ?? DateTime.now()),
+      updatedAt: _parseDate(json['updatedAt']) ??
+          localTask?.updatedAt ??
+          DateTime.now(),
     );
 
     return task;

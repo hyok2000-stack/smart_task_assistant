@@ -32,10 +32,23 @@ class MainActivity : FlutterActivity() {
     private var reminderEventSink: EventChannel.EventSink? = null
 
     private fun dispatchReminderService(intent: Intent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+        try {
+            // Android 13+ 需要通知权限才能启动前台服务显示通知，
+            // 未授权时启动前台服务会导致崩溃。检查权限后再启动。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val nm = NotificationManagerCompat.from(this)
+                if (!nm.areNotificationsEnabled()) {
+                    Log.w("MainActivity", "Notifications not enabled, skipping foreground service start")
+                    return
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to start foreground service (ignored)", e)
         }
     }
 
@@ -86,6 +99,37 @@ class MainActivity : FlutterActivity() {
 
         setupClipboardChannels(flutterEngine)
         setupReminderChannels(flutterEngine)
+        setupFileChannels(flutterEngine)
+    }
+
+    // --- File open channel (open content URI via system Intent) ---
+
+    private fun setupFileChannels(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smarttask.smart_task_assistant/file")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openFile" -> {
+                        val uri = call.argument<String>("uri")
+                        if (uri == null) {
+                            result.error("INVALID_ARG", "uri is required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                data = Uri.parse(uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            Log.w("MainActivity", "Failed to open file: $uri", e)
+                            result.error("OPEN_FAILED", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     // --- Clipboard channels (existing) ---
@@ -136,6 +180,15 @@ class MainActivity : FlutterActivity() {
         reminderMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REMINDER_METHOD_CHANNEL)
         reminderMethodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "isGmsAvailable" -> {
+                    // 检测 Google Play Services 是否可用（华为设备通常不可用）
+                    try {
+                        val isAvailable = isGooglePlayServicesAvailable(this)
+                        result.success(isAvailable)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
                 "startService" -> {
                     try {
                         ReminderForegroundService.start(this)
@@ -395,6 +448,21 @@ class MainActivity : FlutterActivity() {
                 ReminderBridge.getInstance().eventSink = null
             }
         })
+    }
+
+    /**
+     * 检测 Google Play Services 是否可用。
+     * 华为设备（HarmonyOS/EMUI）通常没有 GMS。
+     */
+    private fun isGooglePlayServicesAvailable(context: Context): Boolean {
+        return try {
+            val pm = context.packageManager
+            // 检查 Google Play Services 包是否存在
+            pm.getPackageInfo("com.google.android.gms", 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     override fun onDestroy() {

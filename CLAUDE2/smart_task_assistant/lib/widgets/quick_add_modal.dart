@@ -27,6 +27,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
   bool _isLoading = false;
   bool _isAILoading = false;
   ParsedTask? _parsedTask;
+  // 解析出的标题（用户可在预览中修正），为空时回退到 parsed.title
+  String? _editableTitle;
 
   // 可编辑的任务属性
   TaskPriority _selectedPriority = TaskPriority.medium;
@@ -225,14 +227,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
       final parsed = _parsedTask!;
 
-      // 使用用户选择的优先级和截止时间
-      // 如果未设置截止时间，自动设置为创建时间+24小时
-      final dueTime =
-          _selectedDueTime ?? DateTime.now().add(const Duration(hours: 24));
+      // 使用用户选择的优先级和截止时间。
+      // 不再静默默认 +24h：无截止时间时存 null，让任务作为「无期限待办」存在，
+      // 避免用户不知情地给所有任务强加截止时间（用户可在弹窗内主动设置）。
+      final dueTime = _selectedDueTime;
 
       final task = Task(
         id: const Uuid().v4(),
-        title: parsed.title,
+        title: (_editableTitle?.isNotEmpty == true)
+            ? _editableTitle!
+            : parsed.title,
         content: _controller.text,
         dueTime: dueTime,
         priority: _selectedPriority,
@@ -1100,6 +1104,38 @@ class _QuickAddModalState extends State<QuickAddModal> {
     );
   }
 
+  /// 编辑解析出的标题（AI 解析出错时用户可修正）。
+  Future<void> _editParsedTitle(String original) async {
+    final controller = TextEditingController(text: _editableTitle ?? original);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改任务标题'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '标题',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      setState(() => _editableTitle = result);
+    }
+  }
+
   Widget _buildParsedPreview() {
     final parsed = _parsedTask!;
     return Container(
@@ -1152,12 +1188,18 @@ class _QuickAddModalState extends State<QuickAddModal> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    parsed.title,
+                    _editableTitle ?? parsed.title,
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                ),
+                // 编辑解析标题（AI 解析出错时用户可修正）
+                GestureDetector(
+                  onTap: () => _editParsedTitle(parsed.title),
+                  child: Icon(Icons.edit_outlined,
+                      size: 16, color: Colors.grey.shade500),
                 ),
               ],
             ),

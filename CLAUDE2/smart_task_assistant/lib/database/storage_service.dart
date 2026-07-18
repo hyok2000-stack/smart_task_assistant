@@ -20,6 +20,16 @@ abstract class StorageService {
   Future<void> deleteTag(String id);
   Future<Map<String, int>> getTaskStats();
   Future<List<Task>> getOverdueTasks();
+
+  /// 生成一份自动备份快照。各平台实现各自的持久化方式。
+  /// 建议在关键写入（批量保存、清空、导入前）调用。
+  Future<void> autoBackup();
+
+  /// 获取最近的自动备份数据（用于恢复）。
+  Future<Map<String, dynamic>?> getAutoBackup();
+
+  /// 从备份数据恢复。
+  Future<bool> restoreFromBackup(Map<String, dynamic> backupData);
 }
 
 /// Web端存储实现（使用SharedPreferences）
@@ -61,6 +71,9 @@ class WebStorageService implements StorageService {
   }
 
   Future<void> _saveTasks() async {
+    // 写入前先生成一份自动备份快照，避免 JSON 解析异常导致全量丢失
+    // （Web 端所有任务存在单条字符串里，无回滚点则一次异常即全毁）
+    await autoBackup();
     final encoded = jsonEncode(_tasks.map((t) => t.toJson()).toList());
     await _prefs?.setString(_tasksKey, encoded);
   }
@@ -178,6 +191,7 @@ class WebStorageService implements StorageService {
   }
 
   /// 自动备份数据到本地存储
+  @override
   Future<void> autoBackup() async {
     try {
       final backupData = {
@@ -196,7 +210,8 @@ class WebStorageService implements StorageService {
   }
 
   /// 获取自动备份数据
-  Map<String, dynamic>? getAutoBackup() {
+  @override
+  Future<Map<String, dynamic>?> getAutoBackup() async {
     final backupJson = _prefs?.getString(_backupKey);
     if (backupJson != null) {
       return jsonDecode(backupJson) as Map<String, dynamic>;
@@ -205,6 +220,7 @@ class WebStorageService implements StorageService {
   }
 
   /// 从备份数据恢复
+  @override
   Future<bool> restoreFromBackup(Map<String, dynamic> backupData) async {
     try {
       // 恢复标签

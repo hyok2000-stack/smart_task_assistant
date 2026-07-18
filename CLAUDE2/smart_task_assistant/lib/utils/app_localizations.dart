@@ -545,6 +545,33 @@ class AppLocalizations {
   String get batchDelete => isZh ? '批量删除' : 'Delete';
   String confirmBatchDelete(int n) => isZh ? '确定要删除选中的 $n 个任务吗？' : 'Delete $n selected task(s)?';
 
+  // 滑动操作（任务卡片）
+  String get swipeComplete => isZh ? '完成' : 'Complete';
+  String get swipeUndoComplete => isZh ? '恢复' : 'Undo';
+  String get swipeStart => isZh ? '开始' : 'Start';
+  String get swipeDelete => isZh ? '删除' : 'Delete';
+
+  // 撤销操作
+  String get undo => isZh ? '撤销' : 'Undo';
+  String taskCompletedUndo(String title) =>
+      isZh ? '已完成「$title」' : 'Completed "$title"';
+  String get undoDelete => isZh ? '恢复删除' : 'Undo delete';
+  String get taskDeletedUndo => isZh ? '任务已删除' : 'Task deleted';
+
+  // 任务模板
+  String get saveAsTemplate => isZh ? '保存为模板' : 'Save as template';
+  String get savedAsTemplate => isZh ? '已保存为模板' : 'Saved as template';
+  String get templates => isZh ? '任务模板' : 'Templates';
+
+  // 完成趋势
+  String completedThisWeek(int n) =>
+      isZh ? '本周完成 $n 个' : '$n completed this week';
+  String moreThanLastWeek(int n) =>
+      isZh ? '较上周 +$n' : '+$n vs last week';
+  String lessThanLastWeek(int n) =>
+      isZh ? '较上周 $n' : '$n vs last week';
+  String get sameAsLastWeek => isZh ? '与上周持平' : 'Same as last week';
+
   // 周期任务
   String recurringTaskCompleted(String title) => isZh
       ? '周期任务「$title」已完成，已自动创建下一期'

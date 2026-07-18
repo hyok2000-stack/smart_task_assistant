@@ -23,7 +23,9 @@ class TaskCommentService {
   Future<List<TaskComment>> getCommentsForTasks(List<String> taskIds) async {
     final ids = taskIds.toSet();
     final all = await _loadAll();
-    return all.where((comment) => ids.contains(comment.taskId)).toList()
+    return all
+        .where((comment) => ids.contains(comment.taskId) && !comment.deleted)
+        .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
@@ -86,7 +88,23 @@ class TaskCommentService {
     var changed = false;
 
     for (final remote in remoteComments) {
-      if (remote.status == 'deleted') continue;
+      if (remote.status == 'deleted') {
+        // 远端已删除 → 同步删除本地对应评论（多端删除一致）
+        final before = all.length;
+        all.removeWhere((c) =>
+            c.serverId == remote.id ||
+            c.id == remote.clientCommentId ||
+            c.operationId == remote.operationId);
+        if (all.length != before) changed = true;
+        continue;
+      }
+      // 本地已软删除（墓碑）→ 跳过拉回，保持删除意图，等待向服务端 DELETE
+      final tombstoned = all.any((c) =>
+          c.deleted &&
+          (c.serverId == remote.id ||
+           c.id == remote.clientCommentId ||
+           c.operationId == remote.operationId));
+      if (tombstoned) continue;
       final index = all.indexWhere(
         (comment) =>
             comment.serverId == remote.id ||
@@ -133,53 +151,100 @@ class TaskCommentService {
     if (pending.isEmpty) return 0;
     var successCount = 0;
 
-    // 先确保所有待同步评论的任务已推送到服务端
+    // 分类：待删除（墓碑+已同步）/ 待编辑（已同步，内容变更）/ 待新增（纯本地）
+    final toDelete =
+        pending.where((c) => c.deleted && c.serverId != null).toList();
+    final toEdit =
+        pending.where((c) => !c.deleted && c.serverId != null).toList();
+    final toAdd =
+        pending.where((c) => !c.deleted && c.serverId == null).toList();
+
+    // 缓存任务同步结果，避免同一任务重复推送
     final syncedTaskIds = <String>{};
     final failedTaskIds = <String>{};
-    for (final comment in pending) {
-      if (syncedTaskIds.contains(comment.taskId) || failedTaskIds.contains(comment.taskId)) continue;
+
+    Future<bool> ensureSynced(String taskId) async {
+      if (syncedTaskIds.contains(taskId)) return true;
+      if (failedTaskIds.contains(taskId)) return false;
       try {
-        await ensureTaskSynced(comment.taskId);
-        syncedTaskIds.add(comment.taskId);
+        await ensureTaskSynced(taskId);
+        syncedTaskIds.add(taskId);
+        return true;
       } catch (e) {
         debugPrint('评论所属任务推送失败: $e');
-        failedTaskIds.add(comment.taskId);
+        failedTaskIds.add(taskId);
+        return false;
       }
     }
 
-    // 跳过任务推送失败的评论
-    final syncable = pending.where((c) => syncedTaskIds.contains(c.taskId)).toList();
+    // 1. 同步删除（向服务端 DELETE，成功后清除本地墓碑）
+    for (final comment in toDelete) {
+      if (!await ensureSynced(comment.taskId)) continue;
+      try {
+        await backend.deleteComment(
+          taskId: comment.taskId,
+          commentId: comment.serverId!,
+        );
+        await hardDeleteComment(comment.id);
+        successCount++;
+      } catch (e) {
+        debugPrint('评论删除同步失败: $e');
+      }
+    }
 
-    // 使用批量推送接口
-    final batch = syncable
-        .map((c) => <String, String>{
-              'taskId': c.taskId,
-              'content': c.content,
-              'clientCommentId': c.id,
-              'operationId': c.operationId,
-            })
-        .toList();
-
-    try {
-      await backend.pushCommentsBatch(batch);
-      for (final comment in pending) {
+    // 2. 同步编辑（向服务端 PATCH，成功后标记已同步）
+    for (final comment in toEdit) {
+      if (!await ensureSynced(comment.taskId)) continue;
+      try {
+        await backend.editComment(
+          taskId: comment.taskId,
+          commentId: comment.serverId!,
+          content: comment.content,
+        );
         await markSynced(comment.id);
         successCount++;
+      } catch (e) {
+        await markSyncFailed(comment.id, e);
       }
-    } catch (error) {
-      // 批量推送失败，回退逐条推送
-      for (final comment in syncable) {
-        try {
-          await backend.addComment(
-            taskId: comment.taskId,
-            content: comment.content,
-            clientCommentId: comment.id,
-            operationId: comment.operationId,
-          );
+    }
+
+    // 3. 同步新增（批量推送）
+    if (toAdd.isNotEmpty) {
+      for (final comment in toAdd) {
+        await ensureSynced(comment.taskId);
+      }
+      final syncable =
+          toAdd.where((c) => syncedTaskIds.contains(c.taskId)).toList();
+      final batch = syncable
+          .map((c) => <String, String>{
+                'taskId': c.taskId,
+                'content': c.content,
+                'clientCommentId': c.id,
+                'operationId': c.operationId,
+              })
+          .toList();
+
+      try {
+        await backend.pushCommentsBatch(batch);
+        for (final comment in syncable) {
           await markSynced(comment.id);
           successCount++;
-        } catch (e) {
-          await markSyncFailed(comment.id, e);
+        }
+      } catch (error) {
+        // 批量推送失败，回退逐条推送
+        for (final comment in syncable) {
+          try {
+            await backend.addComment(
+              taskId: comment.taskId,
+              content: comment.content,
+              clientCommentId: comment.id,
+              operationId: comment.operationId,
+            );
+            await markSynced(comment.id);
+            successCount++;
+          } catch (e) {
+            await markSyncFailed(comment.id, e);
+          }
         }
       }
     }
@@ -191,6 +256,20 @@ class TaskCommentService {
     await _update(
       id,
       (comment) => comment.copyWith(
+        synced: true,
+        syncError: null,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  /// 创建评论 push 成功后，回填服务端真实 id（serverId）并标记已同步。
+  /// 必须回填，否则后续编辑/删除会用本地 clientCommentId 调后端导致 404。
+  Future<void> attachServerId(String localId, String serverId) async {
+    await _update(
+      localId,
+      (comment) => comment.copyWith(
+        serverId: serverId,
         synced: true,
         syncError: null,
         updatedAt: DateTime.now(),
@@ -211,10 +290,60 @@ class TaskCommentService {
 
   Future<void> _update(
       String id, TaskComment Function(TaskComment) update) async {
+    await _updateReturning(id, update);
+  }
+
+  /// 与 [_update] 相同，但返回更新后的对象（找不到时返回 null）。
+  Future<TaskComment?> _updateReturning(
+      String id, TaskComment Function(TaskComment) update) async {
+    final all = await _loadAll();
+    final index = all.indexWhere((comment) => comment.id == id);
+    if (index == -1) return null;
+    final updated = update(all[index]);
+    all[index] = updated;
+    await _persist(all);
+    return updated;
+  }
+
+  /// 编辑本地评论：落库并标记为待同步（synced=false）。
+  /// 在线时由调用方立即 PATCH 后端；离线则由 syncPendingComments 重试。
+  Future<TaskComment?> editLocalComment(String id, String content) async {
+    return _updateReturning(
+      id,
+      (c) => c.copyWith(
+        content: content,
+        updatedAt: DateTime.now(),
+        synced: false,
+        syncError: null,
+      ),
+    );
+  }
+
+  /// 删除本地评论。
+  /// - 纯本地评论（无 serverId，后端不存在）：直接硬删除。
+  /// - 已同步评论（有 serverId）：软删除（置墓碑 deleted=true，synced=false），
+  ///   等待 syncPendingComments 向后端 DELETE；DELETE 成功后由 [hardDeleteComment] 清除墓碑。
+  Future<void> deleteLocalComment(String id) async {
     final all = await _loadAll();
     final index = all.indexWhere((comment) => comment.id == id);
     if (index == -1) return;
-    all[index] = update(all[index]);
+    final comment = all[index];
+    if (comment.serverId == null) {
+      all.removeAt(index);
+    } else {
+      all[index] = comment.copyWith(
+        deleted: true,
+        synced: false,
+        updatedAt: DateTime.now(),
+      );
+    }
+    await _persist(all);
+  }
+
+  /// 硬删除：从存储中彻底移除（用于后端 DELETE 成功后清除墓碑）。
+  Future<void> hardDeleteComment(String id) async {
+    final all = await _loadAll();
+    all.removeWhere((comment) => comment.id == id);
     await _persist(all);
   }
 
@@ -285,9 +414,12 @@ class TaskCommentService {
     return result;
   }
 
-  /// Score: prefer synced and with serverId
+  /// Score: prefer synced and with serverId；墓碑(deleted)权重最高，确保删除意图不被覆盖
   static int _score(TaskComment c) =>
-      (c.synced ? 10 : 0) + (c.serverId != null ? 5 : 0) + (c.authorName != null ? 1 : 0);
+      (c.deleted ? 1000 : 0) +
+      (c.synced ? 10 : 0) +
+      (c.serverId != null ? 5 : 0) +
+      (c.authorName != null ? 1 : 0);
 
   /// Merge: combine fields from both, keeping the more complete value
   static TaskComment _merge(TaskComment a, TaskComment b) {
@@ -297,6 +429,7 @@ class TaskCommentService {
       syncError: a.syncError ?? b.syncError,
       authorName: a.authorName ?? b.authorName,
       authorUserId: a.authorUserId ?? b.authorUserId,
+      deleted: a.deleted || b.deleted,
     );
   }
 

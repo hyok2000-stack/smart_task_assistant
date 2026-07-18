@@ -62,7 +62,21 @@ class ClipboardMonitorService : Service() {
             .build()
         
         // 启动前台服务
-        startForeground(1, notification)
+        // Android 14 (API 34+) 要求显式传入 foregroundServiceType，与 Manifest 的 specialUse 匹配
+        // 外层 try-catch 兜底，降级为非前台服务避免崩溃
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    1,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(1, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground failed, running as background", e)
+        }
     }
     
     private fun handleClipboardChange() {

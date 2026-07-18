@@ -27,7 +27,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 class AppSettings extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.light; // 默认浅色主题
   Locale _locale = const Locale('zh', 'CN');
-  bool _clipboardMonitorEnabled = true; // 默认开启
+  bool _clipboardMonitorEnabled = false; // 默认关闭：剪贴板监控涉及隐私，需用户主动开启
   bool _notificationsEnabled = true;
 
   ThemeMode get themeMode => _themeMode;
@@ -73,7 +73,8 @@ void main() {
   // 全局错误边界：任何 widget build 抛异常时显示友好提示，避免 release 模式渲染成白屏；
   // 同时打印异常堆栈，便于定位偶发性白页面的根因。
   ErrorWidget.builder = (FlutterErrorDetails details) {
-    debugPrint('===== Widget build error =====\n${details.exception}\n${details.stack}');
+    debugPrint(
+        '===== Widget build error =====\n${details.exception}\n${details.stack}');
     // 把异常摘要展示在页面上（可选中复制/截图）。release 模式下 debugPrint 不可见，
     // 这样用户能把错误信息反馈出来，便于定位偶发性渲染异常的根因。
     final errorSummary = details.exception.toString();
@@ -86,10 +87,12 @@ void main() {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                const Icon(Icons.error_outline,
+                    size: 44, color: Colors.redAccent),
                 const SizedBox(height: 12),
                 const Text('页面渲染异常',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 220),
@@ -102,7 +105,8 @@ void main() {
                   child: SingleChildScrollView(
                     child: SelectableText(
                       errorSummary,
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.black54),
                     ),
                   ),
                 ),
@@ -119,24 +123,39 @@ void main() {
 
   initializeDateFormatting();
 
-  // 创建 Provider 实例
-  final taskProvider = TaskProvider();
-  final settingsProvider = SettingsProvider();
-  final habitProvider = HabitProvider();
+  // 异步异常全局兜底：release 模式下，任何 fire-and-forget Future 抛出的未捕获异常
+  // 会被 Dart VM 转成原生崩溃（"应用停止运行"）。runZonedGuarded 把这类异常转为
+  // 可记录的非致命错误，避免 App 崩溃。必须在 runApp 之前调用。
+  runZonedGuarded(() {
+    // Flutter 框架自身（widget build 等）的同步异常兜底
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      debugPrint(
+          '===== FlutterError =====\n${details.exception}\n${details.stack}');
+    };
 
-  // 初始化提醒服务（使用单例实例）
-  final reminderService = ReminderService();
+    // 创建 Provider 实例
+    final taskProvider = TaskProvider();
+    final settingsProvider = SettingsProvider();
+    final habitProvider = HabitProvider();
 
-  // 设置提醒状态重置回调
-  taskProvider.onReminderReset = reminderService.clearReminderState;
-  habitProvider.onReminderReset = reminderService.clearHabitReminderState;
+    // 初始化提醒服务（使用单例实例）
+    final reminderService = ReminderService();
 
-  runApp(MyApp(
-    taskProvider: taskProvider,
-    settingsProvider: settingsProvider,
-    habitProvider: habitProvider,
-    reminderService: reminderService,
-  ));
+    // 设置提醒状态重置回调
+    taskProvider.onReminderReset = reminderService.clearReminderState;
+    habitProvider.onReminderReset = reminderService.clearHabitReminderState;
+
+    runApp(MyApp(
+      taskProvider: taskProvider,
+      settingsProvider: settingsProvider,
+      habitProvider: habitProvider,
+      reminderService: reminderService,
+    ));
+  }, (error, stack) {
+    // zone 内所有未捕获的异步异常都到这里，记录但不崩溃
+    debugPrint('===== 未捕获的异步异常 =====\n$error\n$stack');
+  });
 }
 
 class MyApp extends StatefulWidget {
@@ -206,8 +225,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // 应用从后台恢复
         _notifyNativeForeground();
         widget.reminderService.isAppForeground = true;
-        debugPrint('应用恢复，重置数据库连接并重新加载数据...');
-        _reloadDataWithReset();
+        // 仅刷新内存数据（后台期间原生层可能修改过 DB）。
+        // 不再强制重置数据库连接：database getter 自带 ping 失效检测，
+        // 真正失效时会自动重连，无需每次回前台都关闭正常连接并重建。
+        debugPrint('应用恢复，刷新内存数据...');
+        _reloadData();
         break;
       case AppLifecycleState.paused:
         // 应用进入后台
@@ -290,7 +312,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _clearNativeReminderState(String id) async {
     if (!Platform.isAndroid) return;
     try {
-      await _reminderMethodChannel.invokeMethod('clearContinualState', {'id': id});
+      await _reminderMethodChannel
+          .invokeMethod('clearContinualState', {'id': id});
     } catch (e) {
       debugPrint('Failed to clear native reminder state: $e');
     }
@@ -317,13 +340,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case 'dismissed':
         if (type == 'task') {
           // Update task's reminder_dismissed field via provider
-          widget.taskProvider.dismissReminder(id);
+          widget.taskProvider.dismissReminder(id).catchError((e) {
+            debugPrint('dismissReminder 失败（已忽略）: $e');
+          });
         }
         break;
       case 'completed':
         if (type == 'habit') {
           // Log habit completion via provider
-          widget.habitProvider.logCompletion(id);
+          widget.habitProvider.logCompletion(id).then<void>(
+            (_) {},
+            onError: (Object e, StackTrace stackTrace) {
+              debugPrint('logCompletion 失败（已忽略）: $e');
+            },
+          );
           // 清除原生层提醒状态，停止持续提醒
           _clearNativeReminderState(id);
         }
@@ -331,9 +361,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case 'edit':
         if (type == 'task') {
           // 导航到任务编辑页
-          final task = widget.taskProvider.tasks
-              .where((t) => t.id == id)
-              .firstOrNull;
+          final task =
+              widget.taskProvider.tasks.where((t) => t.id == id).firstOrNull;
           if (task != null) {
             navigatorKey.currentState?.push(
               MaterialPageRoute(
@@ -371,6 +400,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
     await _loadData(resetDatabase: true);
   }
+
+  /// 仅刷新内存数据，不重置数据库连接（用于回前台等高频场景）。
+  ///
+  /// database getter 内部已对 sqlite_master 做 ping 检测，连接真正失效时会
+  /// 自动重连——所以无需像 [_reloadDataWithReset] 那样每次都关闭正常连接。
+  Future<void> _reloadData() async {
+    debugPrint('Reloading in-memory data (no db reset)');
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    await _loadData(resetDatabase: false);
+  }
+
   Future<void> _loadData({bool resetDatabase = false}) async {
     try {
       if (resetDatabase) {
@@ -402,19 +445,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('习惯数: ${widget.habitProvider.habits.length}');
 
       // 异步预热评论内存缓存，避免首次打开任务详情时阻塞读盘数秒
-      TaskCommentService.instance.getAllComments();
+      // fire-and-forget：必须加 catchError，否则异常会触发原生崩溃
+      TaskCommentService.instance.getAllComments().then<void>(
+        (_) {},
+        onError: (Object e, StackTrace stackTrace) {
+          debugPrint('预热评论缓存失败（已忽略）: $e');
+        },
+      );
 
       // 预初始化 TTS 引擎（避免首次播报时延迟）
       await TTSService().init();
       TTSService().volume = widget.settingsProvider.ttsVolume;
       debugPrint('===== TTSService 预初始化完成 =====');
 
-      // 数据加载完成后初始化提醒服务
-      widget.reminderService.init(
+      // 数据加载完成后初始化提醒服务（fire-and-forget，加 catchError 防崩溃）
+      widget.reminderService
+          .init(
         widget.taskProvider,
         widget.habitProvider,
         navigatorKey,
-      );
+      )
+          .catchError((e) {
+        debugPrint('提醒服务初始化失败（已忽略）: $e');
+      });
 
       // 启动原生提醒服务（Android）
       await _startNativeReminderService();
@@ -423,8 +476,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       clipboardMonitorService.init(navigatorKey, (content) {
         _showQuickAddWithContent(content);
       });
-      // 默认启用剪贴板监视
-      clipboardMonitorService.setEnabled(true);
+      // 按用户设置启用剪贴板监控（默认关闭，涉及隐私需用户主动开启）
+      clipboardMonitorService.setEnabled(appSettings.clipboardMonitorEnabled);
 
       if (mounted) {
         setState(() {
@@ -450,6 +503,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       showQuickAddModal(context, initialContent: content);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(

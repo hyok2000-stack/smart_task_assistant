@@ -11,6 +11,10 @@ class TaskComment {
   final String? authorName;
   final String? serverId;
 
+  /// 软删除墓碑：true 表示用户已删除，仅本地保留待同步 DELETE 到后端。
+  /// UI 读取（getComments）会过滤掉墓碑；同步成功后硬删除。
+  final bool deleted;
+
   const TaskComment({
     required this.id,
     required this.taskId,
@@ -23,6 +27,7 @@ class TaskComment {
     this.authorUserId,
     this.authorName,
     this.serverId,
+    this.deleted = false,
   });
 
   TaskComment copyWith({
@@ -37,6 +42,7 @@ class TaskComment {
     String? authorUserId,
     String? authorName,
     String? serverId,
+    bool? deleted,
   }) {
     return TaskComment(
       id: id ?? this.id,
@@ -50,6 +56,7 @@ class TaskComment {
       authorUserId: authorUserId ?? this.authorUserId,
       authorName: authorName ?? this.authorName,
       serverId: serverId ?? this.serverId,
+      deleted: deleted ?? this.deleted,
     );
   }
 
@@ -66,6 +73,7 @@ class TaskComment {
       authorUserId: json['authorUserId'] as String?,
       authorName: json['authorName'] as String?,
       serverId: json['serverId'] as String?,
+      deleted: json['deleted'] as bool? ?? false,
     );
   }
 
@@ -82,6 +90,7 @@ class TaskComment {
       if (authorUserId != null) 'authorUserId': authorUserId,
       if (authorName != null) 'authorName': authorName,
       if (serverId != null) 'serverId': serverId,
+      'deleted': deleted,
     };
   }
 }

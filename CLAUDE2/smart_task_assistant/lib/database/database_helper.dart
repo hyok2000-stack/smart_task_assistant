@@ -584,59 +584,22 @@ class DatabaseHelper {
   /// 插入任务（存在则更新，不触发级联删除）
   Future<void> insertTask(Task task) async {
     final db = await database;
-    debugPrint('===== DatabaseHelper.insertTask =====');
-    debugPrint('任务ID: ${task.id}');
-    debugPrint('任务标题: ${task.title}');
-    debugPrint('截止时间: ${task.dueTime}');
-    debugPrint('状态: ${task.status}');
 
     final existing = await db.query('tasks', where: 'id = ?', whereArgs: [task.id]);
-    int result;
     if (existing.isNotEmpty) {
-      result = await db.update('tasks', task.toJson(), where: 'id = ?', whereArgs: [task.id]);
+      await db.update('tasks', task.toJson(), where: 'id = ?', whereArgs: [task.id]);
     } else {
-      result = await db.insert('tasks', task.toJson(), conflictAlgorithm: ConflictAlgorithm.fail);
+      await db.insert('tasks', task.toJson(), conflictAlgorithm: ConflictAlgorithm.fail);
     }
-
-    debugPrint('插入结果: $result (行ID)');
-
-    // 验证插入
-    final savedTask = await db.query(
-      'tasks',
-      where: 'id = ?',
-      whereArgs: [task.id],
-    );
-    debugPrint('数据库验证: 找到 ${savedTask.length} 条匹配记录');
-    debugPrint('====================================');
   }
 
   /// 获取所有任务
   Future<List<Task>> getAllTasks() async {
     final db = await database;
-    debugPrint('===== DatabaseHelper.getAllTasks 开始 =====');
-
-    // 先查询总数量
-    final total = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM tasks')) ??
-        0;
-    debugPrint('数据库中的任务总数: $total');
-
     final List<Map<String, dynamic>> maps = await db.query(
       'tasks',
       orderBy: 'created_at DESC',
     );
-
-    debugPrint('查询到的任务记录数: ${maps.length}');
-
-    if (maps.isNotEmpty) {
-      debugPrint('前3个任务ID和标题:');
-      for (int i = 0; i < maps.length && i < 3; i++) {
-        debugPrint('  ${i + 1}. ID: ${maps[i]['id']}, 标题: ${maps[i]['title']}');
-      }
-    }
-
-    debugPrint('===== DatabaseHelper.getAllTasks 完成 =====');
-
     return List.generate(maps.length, (i) => Task.fromJson(maps[i]));
   }
 
@@ -1060,6 +1023,44 @@ class DatabaseHelper {
       counts.putIfAbsent(id, () => 0);
     }
     return counts;
+  }
+
+  /// 获取某习惯最近 [days] 天每天的完成总量（status=completed）。
+  ///
+  /// 返回按日期升序的列表，每项为 (日期, 完成总量)。
+  /// 用于计算连续打卡天数（streak）和近 7 天热力图展示。
+  Future<List<({DateTime date, int count})>> getHabitDailyCounts(
+      String habitId, {int days = 30}) async {
+    final db = await database;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = today.subtract(Duration(days: days - 1));
+
+    final rows = await db.rawQuery(
+      "SELECT completed_at, SUM(count) AS total FROM habit_logs "
+      "WHERE habit_id = ? AND completed_at >= ? AND status = 0 "
+      "GROUP BY date(completed_at) "
+      "ORDER BY completed_at ASC",
+      [habitId, start.toIso8601String()],
+    );
+
+    // 映射成 {dateKey: count}
+    final map = <String, int>{};
+    for (final row in rows) {
+      final completedAtStr = row['completed_at'] as String;
+      final dt = DateTime.parse(completedAtStr);
+      final key = DateTime(dt.year, dt.month, dt.day).toIso8601String();
+      map[key] = (row['total'] as int?) ?? 0;
+    }
+
+    // 填充连续的每一天（包括没有记录的 0 天），方便 UI 直接渲染
+    final result = <({DateTime date, int count})>[];
+    for (int i = 0; i < days; i++) {
+      final d = start.add(Duration(days: i));
+      final key = d.toIso8601String();
+      result.add((date: d, count: map[key] ?? 0));
+    }
+    return result;
   }
 
   /// 清除习惯今日日志（达标后重置）

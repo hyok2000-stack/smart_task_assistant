@@ -1,0 +1,277 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import '../theme/app_theme.dart';
+
+/// 任务附件选择器。
+///
+/// 支持多文件选择、复制到应用内部目录、列表展示、删除。
+/// 复用 add_task_screen 中语音文件的「复制到内部存储」模式，
+/// 确保附件在任务创建后仍可访问。
+class AttachmentPicker extends StatefulWidget {
+  /// 当前已选附件路径列表
+  final List<String> attachmentPaths;
+
+  /// 附件变化回调
+  final ValueChanged<List<String>> onChanged;
+
+  const AttachmentPicker({
+    super.key,
+    required this.attachmentPaths,
+    required this.onChanged,
+  });
+
+  @override
+  State<AttachmentPicker> createState() => _AttachmentPickerState();
+}
+
+class _AttachmentPickerState extends State<AttachmentPicker> {
+  List<String> get _paths => widget.attachmentPaths;
+  bool _picking = false;
+
+  Future<void> _pickFiles() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result == null || result.files.isEmpty) {
+        if (mounted) setState(() => _picking = false);
+        return;
+      }
+
+      // 华为/部分 Android 设备上 FilePicker 的 path 和 bytes 都可能为 null，
+      // 只返回 identifier（content URI）。不再复制文件，直接存可用的引用。
+      final newPaths = <String>[];
+      for (final file in result.files) {
+        // 优先用 identifier（Android 上是 content URI），其次 path
+        final ref = file.identifier ?? file.path;
+        if (ref != null && ref.isNotEmpty) {
+          newPaths.add(ref);
+          debugPrint('附件已添加: name=${file.name}, ref=$ref');
+        } else {
+          debugPrint('附件无可用引用: name=${file.name}, '
+              'hasPath=${file.path != null}, '
+              'hasIdentifier=${file.identifier != null}, '
+              'size=${file.size}');
+        }
+      }
+
+      if (newPaths.isNotEmpty) {
+        widget.onChanged([..._paths, ...newPaths]);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('无法获取该文件的引用，请尝试从文件管理器中选择'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('附件选择异常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加附件失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  /// 从字节内容保存附件到应用内部目录
+  Future<String?> _saveBytesToInternalStorage(
+      Uint8List bytes, String fileName) async {
+    try {
+      final dir = Directory(
+          '${(await getApplicationDocumentsDirectory())}/attachments');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final destPath = '${dir.path}/$fileName';
+      final file = File(destPath);
+      await file.writeAsBytes(bytes);
+      return destPath;
+    } catch (e) {
+      debugPrint('保存附件字节失败: $e');
+      return null;
+    }
+  }
+
+  /// 从文件路径复制附件到应用内部目录（path 回退方案）
+  Future<String?> _copyToInternalStorage(String sourcePath) async {
+    try {
+      final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists()) return null;
+
+      final dir = Directory(
+          '${(await getApplicationDocumentsDirectory())}/attachments');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      final fileName = sourcePath.split(Platform.pathSeparator).last;
+      final destPath = '${dir.path}/$fileName';
+      await sourceFile.copy(destPath);
+      return destPath;
+    } catch (e) {
+      debugPrint('复制附件失败: $e');
+      return null;
+    }
+  }
+
+  void _removeAt(int index) {
+    final newList = List<String>.from(_paths);
+    newList.removeAt(index);
+    widget.onChanged(newList);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 已选附件列表
+        if (_paths.isNotEmpty) ...[
+          for (int i = 0; i < _paths.length; i++)
+            _buildAttachmentItem(_paths[i], i),
+          const SizedBox(height: 8),
+        ],
+        // 添加按钮
+        InkWell(
+          onTap: _picking ? null : _pickFiles,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: AppTheme.primaryColor.withValues(alpha: 0.4),
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _picking
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(Icons.attach_file,
+                        size: 18, color: AppTheme.primaryColor),
+                const SizedBox(width: 6),
+                Text(
+                  _paths.isEmpty ? '添加附件' : '继续添加',
+                  style: TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 提取文件名——兼容 content:// URI 和普通路径
+  String _extractFileName(String path) {
+    // content://com.android.providers.../document/xxx%2F文件名.pdf
+    if (path.startsWith('content://')) {
+      // 尝试从 URI 最后一段提取
+      final decoded = Uri.decodeFull(path);
+      final lastSegment = decoded.split('/').last;
+      // 去掉可能的 primary%3A 前缀
+      if (lastSegment.contains('%2F')) {
+        return lastSegment.split('%2F').last;
+      }
+      return lastSegment.isNotEmpty ? lastSegment : '附件';
+    }
+    return path.split(Platform.pathSeparator).last;
+  }
+
+  /// 用系统应用打开附件。
+  /// content:// URI 通过原生 Intent.ACTION_VIEW 打开（OpenFilex 不支持 content URI）。
+  Future<void> _openAttachment(String path) async {
+    try {
+      const channel = MethodChannel('com.smarttask.smart_task_assistant/file');
+      await channel.invokeMethod('openFile', {'uri': path});
+    } on PlatformException catch (e) {
+      debugPrint('打开附件失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.code == 'OPEN_FAILED'
+                ? '无法打开此文件，可能没有对应的应用'
+                : '打开失败: ${e.message}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('打开附件异常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开失败: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildAttachmentItem(String path, int index) {
+    final fileName = _extractFileName(path);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.insert_drive_file_outlined,
+              size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          // 点击文件名可打开预览
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _openAttachment(path),
+              child: Text(
+                fileName,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.primaryColor,
+                  decoration: TextDecoration.underline,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          // 打开按钮
+          GestureDetector(
+            onTap: () => _openAttachment(path),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(Icons.open_in_new, size: 16, color: Colors.blue[400]),
+            ),
+          ),
+          // 删除按钮
+          GestureDetector(
+            onTap: () => _removeAt(index),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(Icons.close, size: 16, color: Colors.grey[500]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

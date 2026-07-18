@@ -9,6 +9,7 @@ import '../models/task.dart';
 import '../models/tag.dart';
 import '../models/task_comment.dart';
 import '../providers/task_provider.dart';
+import '../widgets/attachment_picker.dart';
 import '../services/ai_service.dart';
 import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
@@ -43,6 +44,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _isProcessing = false;
   bool _aiDetected = false;
   String? _aiSuggestion;
+  // 待采纳的 AI 建议（含 priority/dueTime），点击提示条时应用
+  Map<String, dynamic>? _pendingSuggestion;
 
   // 语音提醒设置
   bool _reminderVoiceEnabled = true; // 默认启用语音
@@ -50,6 +53,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   String? _reminderVoiceStyle; // standard/gentle/lively
   String? _reminderVoiceSpeed; // slow/normal/fast
   String? _reminderCustomVoicePath; // 自定义语音文件路径
+  List<String> _attachmentPaths = []; // 任务附件路径列表
 
   // 预设提醒选项（简化版）- 在build方法中初始化
   late List<Map<String, dynamic>> _reminderOptions;
@@ -67,6 +71,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   bool _isLoadingComments = false;
   List<BackendDistribution> _taskDistributions = [];
   final _commentController = TextEditingController();
+  String? _commentTargetTaskId; // null=全部(原任务广播)，否则=某接收方副本 taskId(定向)
 
   // B5: 指派人
   String? _assigneeUserId;
@@ -100,6 +105,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _reminderVoiceStyle = widget.task!.reminderVoiceStyle;
       _reminderVoiceSpeed = widget.task!.reminderVoiceSpeed;
       _reminderCustomVoicePath = widget.task!.reminderCustomVoicePath;
+      _attachmentPaths = List.from(widget.task!.attachmentPaths);
     } else {
       // 新建任务时，默认启用提醒(10分钟)，语音跟随系统默认
       _dueTime = widget.initialDueTime;
@@ -190,12 +196,24 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       {'minutes': 30, 'label': '30${l.minBefore}'},
       {'minutes': 60, 'label': l.hourBefore},
     ];
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _confirmDiscardChanges();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.isEditing ? l.editTask : l.newTask),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async {
+            if (_hasUnsavedChanges) {
+              await _confirmDiscardChanges();
+            } else {
+              if (mounted) Navigator.pop(context);
+            }
+          },
         ),
         actions: [
           if (widget.isEditing)
@@ -215,61 +233,70 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // AI智能识别提示
+              // AI智能识别提示（点击采纳建议的优先级和截止时间）
               if (_aiDetected && _aiSuggestion != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primaryColor.withValues(alpha: 0.1),
-                        AppTheme.secondaryColor.withValues(alpha: 0.1),
+                InkWell(
+                  onTap: _applyAISuggestion,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primaryColor.withValues(alpha: 0.1),
+                          AppTheme.secondaryColor.withValues(alpha: 0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome,
+                            color: AppTheme.primaryColor,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l.aiDetected,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _aiSuggestion!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.touch_app_rounded,
+                          color: AppTheme.primaryColor,
+                          size: 18,
+                        ),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.auto_awesome,
-                          color: AppTheme.primaryColor,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l.aiDetected,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _aiSuggestion!,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               // 任务标题
@@ -314,6 +341,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   fontSize: 16,
                   color: AppTheme.textPrimaryColor,
                 ),
+              ),
+              const SizedBox(height: 20),
+              // 附件
+              Text(
+                '附件',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              AttachmentPicker(
+                attachmentPaths: _attachmentPaths,
+                onChanged: (paths) =>
+                    setState(() => _attachmentPaths = paths),
               ),
               const SizedBox(height: 20),
               // 截止时间
@@ -472,11 +513,28 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   style: const TextStyle(fontSize: 14),
                                   onChanged: (value) {
                                     final minutes = int.tryParse(value);
-                                    if (minutes != null && minutes > 0) {
+                                    // 范围校验：1-10080 分钟（最多提前 7 天）
+                                    if (minutes != null &&
+                                        minutes >= 1 &&
+                                        minutes <= 10080) {
                                       setState(() {
                                         _customReminderMinutes = minutes;
                                         _reminderMinutes = minutes;
                                       });
+                                    } else if (value.isNotEmpty) {
+                                      // 输入超出范围时给用户即时反馈
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            l.isZh
+                                                ? '提醒时间需在 1-10080 分钟之间（最多提前 7 天）'
+                                                : 'Reminder must be between 1 and 10080 minutes (max 7 days)',
+                                          ),
+                                          duration:
+                                              const Duration(seconds: 2),
+                                        ),
+                                      );
                                     }
                                   },
                                 ),
@@ -1001,7 +1059,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           ),
         ),
       ),
-    );
+      ),  // Scaffold 闭合
+    );  // PopScope 闭合
   }
 
   Widget _buildSourceInfo() {
@@ -1073,6 +1132,34 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         else
           ..._comments.map((comment) => _buildCommentItem(comment)),
         const SizedBox(height: 8),
+        // 发送目标选择：发送方有分发时，可选“全部接收方”(广播)或某个接收方(定向)
+        if (_taskDistributions.any((d) => d.sourceTaskId == widget.task?.id && d.recipientTaskId != null))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Text('发送给:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButton<String?>(
+                    value: _commentTargetTaskId,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('全部接收方')),
+                      ..._taskDistributions
+                          .where((d) => d.sourceTaskId == widget.task?.id && d.recipientTaskId != null)
+                          .map((d) => DropdownMenuItem<String?>(
+                                value: d.recipientTaskId,
+                                child: Text(d.recipientName ?? '接收方'),
+                              )),
+                    ],
+                    onChanged: (v) => setState(() => _commentTargetTaskId = v),
+                  ),
+                ),
+              ],
+            ),
+          ),
         // 新增评论输入
         Row(
           children: [
@@ -1135,6 +1222,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 const SizedBox(width: 4),
                 Icon(Icons.cloud_done_outlined, size: 12, color: Colors.green.shade400),
               ],
+              const Spacer(),
+              if (isMine) ...[
+                GestureDetector(
+                  onTap: () => _editMainComment(comment),
+                  child: const Icon(Icons.edit_outlined, size: 14, color: Colors.grey),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _deleteMainComment(comment),
+                  child: Icon(Icons.delete_outline, size: 14, color: Colors.red.shade300),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),
@@ -1142,6 +1241,97 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editMainComment(TaskComment c) async {
+    final controller = TextEditingController(text: c.content);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑评论'),
+        content: TextField(controller: controller, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('保存')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || result == null || result.isEmpty || result == c.content) return;
+    try {
+      // 1. 先落本地持久化（标记 synced=false 待同步）——保证刷新/重进后编辑不丢失
+      final updated = await TaskCommentService.instance.editLocalComment(c.id, result);
+      if (updated == null || !mounted) return;
+      setState(() {
+        final idx = _comments.indexWhere((x) => x.id == c.id);
+        if (idx != -1) _comments[idx] = updated;
+      });
+      // 2. 已同步评论且在线 → 立即 PATCH 后端；失败保留 synced=false，由 syncPendingComments 自动重试
+      if (c.serverId != null && BackendApiService.instance.isLoggedIn) {
+        try {
+          await BackendApiService.instance.editComment(
+            taskId: c.taskId,
+            commentId: c.serverId!,
+            content: result,
+          );
+          await TaskCommentService.instance.markSynced(c.id);
+          if (!mounted) return;
+          setState(() {
+            final idx = _comments.indexWhere((x) => x.id == c.id);
+            if (idx != -1) {
+              _comments[idx] = _comments[idx].copyWith(synced: true, syncError: null);
+            }
+          });
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已保存到本地，将在联网后自动同步')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('编辑失败：$e')));
+    }
+  }
+
+  Future<void> _deleteMainComment(TaskComment c) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除评论'),
+        content: const Text('确定删除这条评论？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      // 1. 先落本地（纯本地评论直接硬删；已同步评论置墓碑待同步，避免被 pull 拉回）
+      await TaskCommentService.instance.deleteLocalComment(c.id);
+      if (!mounted) return;
+      setState(() => _comments.removeWhere((x) => x.id == c.id));
+      // 2. 已同步评论且在线 → 立即 DELETE 后端；成功则清除墓碑，失败保留墓碑自动重试
+      if (c.serverId != null && BackendApiService.instance.isLoggedIn) {
+        try {
+          await BackendApiService.instance.deleteComment(
+            taskId: c.taskId,
+            commentId: c.serverId!,
+          );
+          await TaskCommentService.instance.hardDeleteComment(c.id);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已从本地删除，将在联网后自动同步')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败：$e')));
+    }
   }
 
   Widget _buildDistributionItem(BackendDistribution d) {
@@ -1260,7 +1450,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final l = context.l;
     try {
       final comment = await TaskCommentService.instance.addLocalComment(
-        taskId: widget.task!.id,
+        taskId: _commentTargetTaskId ?? widget.task!.id,
         content: text,
       );
       setState(() => _comments.add(comment));
@@ -1285,31 +1475,35 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (!api.isLoggedIn) return;
     bool synced = false;
     Object? error;
+    String? serverId;
     try {
       await api.pushTask(task);
-      await api.addComment(
+      final remote = await api.addComment(
         taskId: comment.taskId,
         content: comment.content,
         clientCommentId: comment.id,
         operationId: comment.operationId,
       );
+      // 回填服务端真实 id：后续编辑/删除需用它定位评论，否则会拿本地 clientCommentId 调后端 → 404
+      serverId = remote.id;
       synced = true;
     } catch (e) {
       error = e;
     }
     try {
-      if (synced) {
-        await TaskCommentService.instance.markSynced(comment.id);
-      } else {
-        await TaskCommentService.instance.markSyncFailed(comment.id, error!);
+      if (synced && serverId != null) {
+        await TaskCommentService.instance.attachServerId(comment.id, serverId);
+      } else if (!synced && error != null) {
+        await TaskCommentService.instance.markSyncFailed(comment.id, error);
       }
     } catch (_) {}
-    // 就地更新内存中该条评论的同步态
+    // 就地更新内存中该条评论的同步态与 serverId
     final idx = _comments.indexWhere((c) => c.id == comment.id);
     if (idx != -1) {
       _comments[idx] = _comments[idx].copyWith(
         synced: synced,
         syncError: error?.toString(),
+        serverId: serverId,
       );
     }
     if (mounted) setState(() {});
@@ -1524,16 +1718,36 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       setState(() {
         _aiDetected = true;
         _aiSuggestion = 'AI 建议：$reason。点击采纳';
-        if (suggestion['suggestedPriority'] != null && suggestion['suggestedPriority'] != _priority) {
-          _priority = suggestion['suggestedPriority'] as TaskPriority;
-        }
+        // 暂存建议，不自动应用——用户点击提示条才采纳（避免静默改动用户设置）
+        _pendingSuggestion = suggestion;
       });
     } else {
       setState(() {
         _aiDetected = false;
         _aiSuggestion = null;
+        _pendingSuggestion = null;
       });
     }
+  }
+
+  /// 采纳 AI 建议（点击提示条触发）：应用建议的优先级和截止时间。
+  void _applyAISuggestion() {
+    final suggestion = _pendingSuggestion;
+    if (suggestion == null) return;
+    setState(() {
+      final suggestedPriority = suggestion['suggestedPriority'] as TaskPriority?;
+      if (suggestedPriority != null) {
+        _priority = suggestedPriority;
+      }
+      final suggestedDueTime = suggestion['suggestedDueTime'] as DateTime?;
+      if (suggestedDueTime != null) {
+        _dueTime = suggestedDueTime;
+      }
+      // 采纳后清除提示
+      _aiDetected = false;
+      _aiSuggestion = null;
+      _pendingSuggestion = null;
+    });
   }
 
   /// 选择自定义语音文件
@@ -1642,10 +1856,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _selectDueTime() async {
+    final now = DateTime.now();
+    // 新建任务默认从今天开始选；编辑模式若原截止时间在过去，允许保留（取较早者）
+    final earliest = (widget.isEditing && _dueTime != null && _dueTime!.isBefore(now))
+        ? _dueTime!
+        : now;
     final date = await showDatePicker(
       context: context,
-      initialDate: _dueTime ?? DateTime.now(),
-      firstDate: DateTime(2020),
+      initialDate: _dueTime ?? now,
+      firstDate: earliest,
       lastDate: DateTime(2100),
     );
 
@@ -1708,6 +1927,55 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
   }
 
+  /// 检测表单是否有未保存的改动（用于防误退出）。
+  bool get _hasUnsavedChanges {
+    if (widget.isEditing && widget.task != null) {
+      // 编辑模式：与原任务比较关键字段
+      final t = widget.task!;
+      return _titleController.text.trim() != t.title ||
+          _contentController.text.trim() != (t.content ?? '') ||
+          _dueTime != t.dueTime ||
+          _priority != t.priority ||
+          _status != t.status ||
+          _selectedTagIds.length != t.tagIds.length ||
+          !_selectedTagIds.every((id) => t.tagIds.contains(id)) ||
+          _attachmentPaths.length != t.attachmentPaths.length ||
+          !_attachmentPaths.every((p) => t.attachmentPaths.contains(p));
+    }
+    // 新建模式：标题或详情非空即视为有改动
+    return _titleController.text.trim().isNotEmpty ||
+        _contentController.text.trim().isNotEmpty;
+  }
+
+  /// 退出前确认放弃未保存改动。
+  Future<void> _confirmDiscardChanges() async {
+    final l = context.l;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(l.isZh ? '放弃修改？' : 'Discard changes?'),
+        content: Text(l.isZh
+            ? '当前有未保存的修改，确定要离开吗？'
+            : 'You have unsaved changes. Leave anyway?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.isZh ? '继续编辑' : 'Keep editing'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l.isZh ? '放弃' : 'Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _saveTask() async {
     final l = context.l;
     if (_titleController.text.trim().isEmpty) {
@@ -1767,6 +2035,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         recurringRule: _recurringRule,
         reminderDismissed: reminderChanged ? false : null,
         assigneeUserId: _assigneeUserId,
+        attachmentPaths: _attachmentPaths,
       );
 
       await provider.updateTask(updatedTask);
@@ -1799,6 +2068,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         sourceType: 'local',
         parentId: widget.parentId,
         assigneeUserId: _assigneeUserId,
+        attachmentPaths: _attachmentPaths,
       );
 
       await provider.addTask(task);

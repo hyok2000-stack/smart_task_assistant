@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../theme/app_theme.dart';
@@ -30,6 +31,10 @@ class TaskCard extends StatelessWidget {
   final String? distributionStatus;
   final bool isPinned;
   final VoidCallback? onPinToggle;
+  /// 是否启用左滑/右滑操作（完成、删除）。批量选择模式下应置为 false。
+  final bool enableSwipeActions;
+  /// 「保存为模板」回调（在更多菜单中触发）
+  final VoidCallback? onSaveAsTemplate;
 
   const TaskCard({
     super.key,
@@ -53,14 +58,78 @@ class TaskCard extends StatelessWidget {
     this.distributionStatus,
     this.isPinned = false,
     this.onPinToggle,
+    this.enableSwipeActions = true,
+    this.onSaveAsTemplate,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (compact) {
-      return _buildCompactCard(context);
-    }
-    return _buildFullCard(context);
+    final card = compact
+        ? _buildCompactCard(context)
+        : _buildFullCard(context);
+
+    // 仅当提供了完成/删除回调、非紧凑卡（紧凑卡用于横向滚动，手势会冲突）、
+    // 且未处于批量选择态时启用滑动
+    final canSwipe = enableSwipeActions &&
+        !compact &&
+        !selectable &&
+        (onComplete != null || onDelete != null);
+    if (!canSwipe) return card;
+
+    return _wrapWithSlidable(context, card);
+  }
+
+  /// 用 Slidable 包裹卡片，提供滑动完成 / 滑动删除手势。
+  Widget _wrapWithSlidable(BuildContext context, Widget child) {
+    final l = context.l;
+    return Slidable(
+      key: ValueKey('task_${task.id}'),
+      // 右滑（startToEnd）：完成 / 恢复待办
+      startActionPane: onComplete != null
+          ? ActionPane(
+              motion: const BehindMotion(),
+              extentRatio: 0.28,
+              children: [
+                SlidableAction(
+                  onPressed: (_) => onComplete?.call(),
+                  backgroundColor: AppTheme.successColor,
+                  foregroundColor: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  icon: task.isCompleted
+                      ? Icons.undo_rounded
+                      : Icons.check_rounded,
+                  label: task.isCompleted
+                      ? l.swipeUndoComplete
+                      : l.swipeComplete,
+                ),
+              ],
+            )
+          : null,
+      // 左滑（endToStart）：开始 / 删除
+      endActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: onDelete != null ? 0.56 : 0.28,
+        children: [
+          if (onStart != null && !task.isCompleted)
+            SlidableAction(
+              onPressed: (_) => onStart?.call(),
+              backgroundColor: AppTheme.infoColor,
+              foregroundColor: Colors.white,
+              icon: Icons.play_arrow_rounded,
+              label: l.swipeStart,
+            ),
+          if (onDelete != null)
+            SlidableAction(
+              onPressed: (_) => onDelete?.call(),
+              backgroundColor: AppTheme.errorColor,
+              foregroundColor: Colors.white,
+              icon: Icons.delete_outline,
+              label: l.swipeDelete,
+            ),
+        ],
+      ),
+      child: child,
+    );
   }
 
   /// 紧凑型卡片 - 用于横向滚动列表
@@ -478,6 +547,8 @@ class TaskCard extends StatelessWidget {
                                 onDelete?.call();
                               } else if (value == 'edit') {
                                 onTap?.call();
+                              } else if (value == 'template') {
+                                onSaveAsTemplate?.call();
                               }
                             },
                             itemBuilder: (context) => [
@@ -495,6 +566,21 @@ class TaskCard extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              if (onSaveAsTemplate != null)
+                                PopupMenuItem(
+                                  value: 'template',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.bookmark_add_outlined,
+                                        color: AppTheme.infoColor,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(l.saveAsTemplate),
+                                    ],
+                                  ),
+                                ),
                               PopupMenuItem(
                                 value: 'delete',
                                 child: Row(

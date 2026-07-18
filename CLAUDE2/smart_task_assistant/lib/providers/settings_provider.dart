@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/platform_stub.dart'
     if (dart.library.html) '../utils/platform_web.dart';
 import '../services/ai_service.dart';
+import '../services/secure_storage_service.dart';
 
 /// AI服务模式枚举
 enum AIMode { local, localLLM, remoteAPI }
@@ -18,7 +19,7 @@ enum ChatAIMode { localLLM, remoteAPI }
 class SettingsProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('zh', 'CN');
-  bool _clipboardMonitorEnabled = true; // 默认开启
+  bool _clipboardMonitorEnabled = false; // 默认关闭：涉及隐私，需用户主动开启
   bool _notificationsEnabled = true;
   bool _reminderEnabled = true;
   int _reminderMinutes = 30;
@@ -224,9 +225,9 @@ class SettingsProvider extends ChangeNotifier {
         _locale = Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US');
       }
 
-      // 加载剪贴板监视
+      // 加载剪贴板监视（默认关闭：涉及隐私，需用户主动开启）
       _clipboardMonitorEnabled =
-          prefs.getBool('clipboardMonitorEnabled') ?? true;
+          prefs.getBool('clipboardMonitorEnabled') ?? false;
 
       // 加载通知设置
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
@@ -248,7 +249,9 @@ class SettingsProvider extends ChangeNotifier {
           prefs.getString('localLLMAddress') ?? 'http://localhost:11434';
       _localLLMModel = prefs.getString('localLLMModel') ?? 'qwen2.5:7b';
       _apiServiceName = prefs.getString('apiServiceName') ?? 'OpenAI';
-      _apiKey = prefs.getString('apiKey') ?? '';
+      // 安全改进：API Key 从 SecureStorage 读取（旧版本会先迁移）
+      await SecureStorageService.instance.migrateApiKeysIfNeeded();
+      _apiKey = await SecureStorageService.instance.readAiApiKey() ?? '';
       _apiBase = prefs.getString('apiBase') ?? 'https://api.openai.com/v1';
       _apiModel = prefs.getString('apiModel') ?? 'gpt-3.5-turbo';
 
@@ -265,7 +268,9 @@ class SettingsProvider extends ChangeNotifier {
           prefs.getString('chatLocalLLMAddress') ?? 'http://localhost:11434';
       _chatLocalLLMModel = prefs.getString('chatLocalLLMModel') ?? 'qwen2.5:7b';
       _chatAPIServiceName = prefs.getString('chatAPIServiceName') ?? 'OpenAI';
-      _chatAPIKey = prefs.getString('chatAPIKey') ?? '';
+      // 安全改进：Chat API Key 从 SecureStorage 读取（旧版本会先迁移）
+      _chatAPIKey =
+          await SecureStorageService.instance.readAiChatApiKey() ?? '';
       _chatAPIBase =
           prefs.getString('chatAPIBase') ?? 'https://api.openai.com/v1';
       _chatAPIModel = prefs.getString('chatAPIModel') ?? 'gpt-3.5-turbo';
@@ -341,7 +346,8 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setString('localLLMAddress', _localLLMAddress);
       await prefs.setString('localLLMModel', _localLLMModel);
       await prefs.setString('apiServiceName', _apiServiceName);
-      await prefs.setString('apiKey', _apiKey);
+      // 安全改进：API Key 不再明文存入 SharedPreferences，改走 SecureStorage
+      await SecureStorageService.instance.writeAiApiKey(_apiKey);
       await prefs.setString('apiBase', _apiBase);
       await prefs.setString('apiModel', _apiModel);
 
@@ -349,7 +355,7 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setString('chatLocalLLMAddress', _chatLocalLLMAddress);
       await prefs.setString('chatLocalLLMModel', _chatLocalLLMModel);
       await prefs.setString('chatAPIServiceName', _chatAPIServiceName);
-      await prefs.setString('chatAPIKey', _chatAPIKey);
+      await SecureStorageService.instance.writeAiChatApiKey(_chatAPIKey);
       await prefs.setString('chatAPIBase', _chatAPIBase);
       await prefs.setString('chatAPIModel', _chatAPIModel);
     } catch (e) {

@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../providers/settings_provider.dart';
 import '../providers/task_provider.dart';
+import '../providers/habit_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_localizations.dart';
 import '../widgets/error_state_widget.dart';
@@ -1113,12 +1114,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onPressed: isLoading
                       ? null
                       : () async {
+                          // 登出前询问是否清除本地任务数据（防止下一个账号串库）
+                          final clearLocal = await _confirmLogoutClearData(context);
                           await backend.logout();
+                          if (clearLocal) {
+                            // 清除前先备份，给用户留后悔药
+                            final taskProvider = context.read<TaskProvider>();
+                            await taskProvider.clearAllData();
+                          }
                           if (!mounted) return;
                           Navigator.pop(context);
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已退出后台登录')),
+                            SnackBar(
+                              content: Text(clearLocal ? '已退出登录并清除本地数据' : '已退出后台登录（本地数据已保留）'),
+                            ),
                           );
                         },
                   child: const Text('退出登录'),
@@ -1173,6 +1183,37 @@ class _SettingsScreenState extends State<SettingsScreen>
         },
       ),
     );
+  }
+
+  /// 登出时确认是否清除本地任务数据（防跨账号数据串库）。
+  /// 返回 true 表示用户选择清除本地数据。
+  Future<bool> _confirmLogoutClearData(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('退出登录'),
+        content: const Text(
+          '是否同时清除本地的任务和标签数据？\n\n'
+          '• 清除：避免下一个账号登录时数据混淆（推荐在共享设备上）\n'
+          '• 保留：本地离线任务不受影响（清除前会自动备份）',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('保留数据'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清除并退出'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   void _showRegisterDialog(BuildContext context) {
@@ -1823,7 +1864,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildAPIKeyField(SettingsProvider settings) {
-    bool _obscureText = true;
+    bool _obscureText = false;
 
     return StatefulBuilder(
       builder: (context, setState) {
@@ -1832,8 +1873,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             labelText: 'API Key',
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
+              tooltip: _obscureText ? '显示' : '隐藏',
               icon: Icon(
-                _obscureText ? Icons.visibility : Icons.visibility_off,
+                _obscureText ? Icons.visibility_off : Icons.visibility,
               ),
               onPressed: () {
                 setState(() {
@@ -2003,19 +2045,33 @@ class _SettingsScreenState extends State<SettingsScreen>
       // 获取存储服务
       final storageService = getStorageService();
 
-      // 生成导出数据
+      // 生成导出数据（含任务全字段 + 标签 + 习惯 + 习惯日志，确保迁移无损）
       String exportData;
       if (kIsWeb && storageService is WebStorageService) {
         exportData = storageService.getExportData();
       } else {
-        // 移动端或其他平台，从数据库获取数据
+        // 移动端或其他平台，从数据库获取完整数据
         final taskProvider = context.read<TaskProvider>();
         final tasks = taskProvider.tasks;
         final tags = taskProvider.tags;
+        final habitProvider = context.read<HabitProvider>();
+
+        // 扁平化习惯日志
+        final allLogsByDate = await habitProvider.getAllLogsByDate();
+        final flatHabitLogs = <Map<String, dynamic>>[];
+        for (final logs in allLogsByDate.values) {
+          for (final log in logs) {
+            flatHabitLogs.add(log.toJson());
+          }
+        }
 
         final data = {
+          'format': 'smart_task_full_backup',
+          'version': '2.0',
           'tasks': tasks.map((t) => t.toJson()).toList(),
           'tags': tags.map((t) => t.toJson()).toList(),
+          'habits': habitProvider.habits.map((h) => h.toJson()).toList(),
+          'habitLogs': flatHabitLogs,
           'exportTime': DateTime.now().toIso8601String(),
         };
         exportData = jsonEncode(data);
@@ -2260,34 +2316,33 @@ class _SettingsScreenState extends State<SettingsScreen>
           return;
         }
       } else {
-        // 移动端：直接从应用内部目录导入
-        final filesList = await getExportFilesList();
+        // 移动端：用系统文件选择器从任意位置导入备份文件
+        // 支持 JSON 和 CSV 两种格式
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['json', 'csv'],
+        );
 
-        if (filesList.isEmpty) {
-          // 如果没有文件，显示提示
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('应用目录中没有备份文件，请先导出数据'),
-                backgroundColor: AppTheme.warningColor,
-              ),
-            );
-          }
-          return;
-        }
-
-        // 显示文件选择对话框
-        final selectedFile = await _showImportFilesDialog(context, filesList);
-        if (selectedFile == null) {
+        if (result == null || result.files.single.path == null) {
           // 用户取消选择
           return;
         }
 
-        // 从选择的文件导入数据
-        final result = await importDataFromPath(selectedFile['filePath']);
-        if (result != null) {
-          content = result['content'];
-          fileName = result['fileName'];
+        final filePath = result.files.single.path!;
+        fileName = result.files.single.name;
+        try {
+          final file = File(filePath);
+          content = await file.readAsString();
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('读取文件失败: $e'),
+                backgroundColor: AppTheme.errorColor,
+              ),
+            );
+          }
+          return;
         }
       }
 
@@ -2297,11 +2352,21 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
 
       try {
-        final data = jsonDecode(content!) as Map<String, dynamic>;
+        Map<String, dynamic> data;
 
-        // 验证数据格式
-        if (!data.containsKey('tasks') || !data.containsKey('tags')) {
-          throw Exception('无效的数据格式');
+        // 根据扩展名或内容判断格式：CSV 还是 JSON
+        if (fileName?.toLowerCase().endsWith('.csv') == true ||
+            content!.trimLeft().startsWith('\ufeffID,') ||
+            content!.trimLeft().startsWith('ID,')) {
+          // CSV 格式：用 ExportService 解析
+          data = ExportService.instance.parseCSV(content!);
+        } else {
+          // JSON 格式
+          data = jsonDecode(content!) as Map<String, dynamic>;
+          // 验证数据格式
+          if (!data.containsKey('tasks') || !data.containsKey('tags')) {
+            throw Exception('无效的数据格式');
+          }
         }
 
         // 导入数据

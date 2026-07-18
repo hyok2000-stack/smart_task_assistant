@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/habit.dart';
 import '../providers/habit_provider.dart';
 import '../services/habit_service.dart';
+import 'habit_streak_widget.dart';
 
 /// 习惯卡片
 class HabitCard extends StatelessWidget {
@@ -24,20 +25,30 @@ class HabitCard extends StatelessWidget {
     // 用 select 精确订阅本习惯的进度，避免任一习惯变化都重建本卡片
     final progress = context.select<HabitProvider, int>((p) => p.getTodayProgressPercentage(habit.id));
     final completed = context.select<HabitProvider, int>((p) => p.todayProgress[habit.id] ?? 0);
+    // 获取本习惯今日打卡时间明细（completedAt 格式化）
+    final todayCheckInTimes = context.select<HabitProvider, List<String>>(
+      (p) => p.logs
+          .where((log) => log.habitId == habit.id && log.isCompleted)
+          .map((log) =>
+              '${log.completedAt.hour.toString().padLeft(2, '0')}:${log.completedAt.minute.toString().padLeft(2, '0')}')
+          .toList(),
+    );
 
     // 计算下次提醒时间（启用的习惯）
     final nextReminderTime = habit.isEnabled
         ? _habitService.calculateNextTriggerTime(habit)
         : null;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.02 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -116,11 +127,9 @@ class HabitCard extends StatelessWidget {
                         Icon(Icons.volume_up, size: 16, color: Colors.grey[400]),
                     ],
                   ),
-                  // 设置按钮
-                  InkWell(
-                    onTap: onSettings,
-                    child: Icon(Icons.settings, size: 20, color: Colors.grey[400]),
-                  ),
+                  // 进入提示：整行已可点击进入设置/详情，这里仅作视觉引导，
+                  // 不再单独包 InkWell（避免与整行点击形成两个重复入口）
+                  Icon(Icons.chevron_right, size: 22, color: Colors.grey[400]),
                 ],
               ),
               const SizedBox(height: 12),
@@ -149,31 +158,68 @@ class HabitCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                // 今日打卡时间明细
+                if (todayCheckInTimes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 2,
+                      children: [
+                        Icon(Icons.schedule, size: 12, color: Colors.grey[400]),
+                        ...todayCheckInTimes.map((time) => Text(
+                              '$time',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[500],
+                              ),
+                            )).expand((w) => [w, const Text(' · ', style: TextStyle(fontSize: 11, color: Colors.grey))]).toList()
+                              ..removeLast(),
+                      ],
+                    ),
+                  ),
+                // 连续打卡天数 + 近 7 天热力
+                HabitStreakWidget(
+                  habit: habit,
+                  color: _getHabitColor(habit.id),
+                ),
                 const SizedBox(height: 12),
-                // 操作按钮
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: onRecord,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _getHabitColor(habit.id),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                // 操作按钮——达标时变为「✓ 今日已完成」并改色
+                Builder(builder: (context) {
+                  final isCompleted = habit.hasTarget && completed >= habit.targetCount;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          child: ElevatedButton.icon(
+                            onPressed: onRecord,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isCompleted
+                                  ? Colors.green
+                                  : _getHabitColor(habit.id),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            icon: Icon(
+                              isCompleted ? Icons.check_circle : Icons.add_circle_outline,
+                              size: 18,
+                            ),
+                            label: Text(
+                              isCompleted
+                                  ? '今日已完成'
+                                  : (habit.hasTarget ? '+ 记录' : '知道了'),
+                              style: const TextStyle(fontSize: 14),
+                            ),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                        child: Text(
-                          habit.hasTarget
-                              ? '+ 记录'
-                              : '知道了',
-                          style: const TextStyle(fontSize: 14),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
               ],
             ],
           ),

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/services.dart' show MethodChannel;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
@@ -56,6 +58,14 @@ class ReminderService {
   // 稍后提醒的任务（用户选择"稍后提醒"，在指定时间后再次提醒）
   final Map<String, DateTime> _snoozedTasks = {};
 
+  // 稍后提醒的习惯（对称于 _snoozedTasks，避免习惯提醒在 snooze 期内重复触发）
+  final Map<String, DateTime> _snoozedHabits = {};
+
+  // snooze 状态持久化的 prefs key（{id: 毫秒时间戳} 的 JSON）
+  // 避免 App 重启后 snooze 状态丢失导致重复提醒
+  static const String _snoozedTasksPrefsKey = 'snoozed_tasks_v1';
+  static const String _snoozedHabitsPrefsKey = 'snoozed_habits_v1';
+
   // 持续提醒间隔（秒）- 提醒后隔多少秒再次提醒
   static const int _continualReminderIntervalSeconds = 30;
 
@@ -68,11 +78,11 @@ class ReminderService {
   static const bool _verboseReminderLogs = false;
 
   /// 初始化提醒服务
-  void init(
+  Future<void> init(
     TaskProvider taskProvider,
     HabitProvider habitProvider,
     GlobalKey<NavigatorState> navigatorKey,
-  ) {
+  ) async {
     // 先停止现有的检查，避免重复初始化导致内存泄漏
     stopChecking();
 
@@ -96,10 +106,52 @@ class ReminderService {
     // 更新 HabitService 的习惯列表缓存
     _habitService.updateHabits(habitProvider.habits);
 
+    // 恢复持久化的 snooze 状态（清理已过期条目）
+    await _loadSnoozedFromPrefs();
+
     // 启动定时检查
     startChecking();
 
     debugPrint('提醒服务已初始化');
+  }
+
+  /// 从 SharedPreferences 恢复 snooze 状态，清理已过期条目。
+  Future<void> _loadSnoozedFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+
+      void restore(String key, Map<String, DateTime> target) {
+        final raw = prefs.getString(key);
+        if (raw == null || raw.isEmpty) return;
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) return;
+        target.clear();
+        decoded.forEach((id, ms) {
+          final t = DateTime.fromMillisecondsSinceEpoch(ms as int);
+          if (t.isAfter(now)) target[id as String] = t;
+        });
+      }
+
+      restore(_snoozedTasksPrefsKey, _snoozedTasks);
+      restore(_snoozedHabitsPrefsKey, _snoozedHabits);
+      debugPrint('已恢复 snooze 状态: tasks=${_snoozedTasks.length}, habits=${_snoozedHabits.length}');
+    } catch (e) {
+      debugPrint('加载 snooze 状态失败: $e');
+    }
+  }
+
+  /// 持久化 snooze 状态到 SharedPreferences。
+  Future<void> _saveSnoozedToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String encode(Map<String, DateTime> m) =>
+          jsonEncode({for (final e in m.entries) e.key: e.value.millisecondsSinceEpoch});
+      await prefs.setString(_snoozedTasksPrefsKey, encode(_snoozedTasks));
+      await prefs.setString(_snoozedHabitsPrefsKey, encode(_snoozedHabits));
+    } catch (e) {
+      debugPrint('保存 snooze 状态失败: $e');
+    }
   }
 
   /// 播放提醒声音和振动
@@ -144,7 +196,7 @@ class ReminderService {
   void startChecking() {
     _checkTimer?.cancel();
     _checkTimer = Timer.periodic(
-      const Duration(seconds: 10), // 每10秒检查一次
+      const Duration(seconds: 30), // 每30秒检查一次（从10秒改为30秒，减少 CPU 唤醒频率降低发热）
       (_) => _checkReminders(),
     );
     debugPrint('提醒检查已启动');
@@ -159,6 +211,17 @@ class ReminderService {
 
   /// 检查需要提醒的任务和习惯
   void _checkReminders() {
+    // Timer.periodic 的回调若抛异常会成为未捕获的异步错误，导致 App 崩溃。
+    // 整个检查逻辑用 try-catch 包裹，确保任何异常（提醒服务、UI 访问等）都不会
+    // 导致崩溃，最多跳过本次检查。
+    try {
+      _checkRemindersInner();
+    } catch (e, stack) {
+      debugPrint('===== _checkReminders 异常（已捕获，不崩溃）=====\n$e\n$stack');
+    }
+  }
+
+  void _checkRemindersInner() {
     // APP 在后台时，Flutter 层跳过提醒检查，由原生服务全权处理
     // 原因：flutter_tts 在 Activity 暂停时无法发声，
     // 且 Flutter 层更新状态会导致提醒被"吞掉"而原生层不再触发
@@ -189,6 +252,18 @@ class ReminderService {
     }
 
     final now = DateTime.now();
+
+    // 性能优化：如果没有需要提醒的任务和习惯，直接跳过本次检查（减少 CPU 唤醒）
+    final hasRemindableTasks = _taskProvider!.tasks.any((t) =>
+        !t.isCompleted &&
+        t.status != TaskStatus.cancelled &&
+        t.dueTime != null &&
+        t.reminderMinutes != null &&
+        !t.reminderDismissed);
+    final hasRemindableHabits =
+        _habitProvider!.habits.any((h) => h.isEnabled);
+    if (!hasRemindableTasks && !hasRemindableHabits) return;
+
     if (_verboseReminderLogs) {
       debugPrint('');
       debugPrint('===== _checkReminders started (${now.toIso8601String()}) =====');
@@ -265,6 +340,17 @@ class ReminderService {
       // 跳过未启用的习惯
       if (!habit.isEnabled) continue;
 
+      // snooze 期内的习惯不触发提醒；snooze 到期后恢复正常触发
+      if (_snoozedHabits.containsKey(habit.id)) {
+        final snoozeUntil = _snoozedHabits[habit.id]!;
+        if (now.isBefore(snoozeUntil)) {
+          continue;
+        }
+        // snooze 已到期，清除标记，恢复正常提醒
+        _snoozedHabits.remove(habit.id);
+        debugPrint('[习惯提醒] "${habit.title}" snooze 已到期，恢复提醒');
+      }
+
       // 检查是否应该触发提醒
       final shouldRemind = _habitService.shouldTriggerReminder(habit, now);
 
@@ -286,7 +372,11 @@ class ReminderService {
     if (_snoozedTasks.containsKey(task.id)) {
       final snoozeTime = _snoozedTasks[task.id]!;
       if (now.isAfter(snoozeTime)) {
-        debugPrint('[提醒判断] "${task.title}" 稍后提醒时间已到');
+        // snooze 已到期，清除标记，恢复正常提醒流程
+        debugPrint('[提醒判断] "${task.title}" 稍后提醒时间已到，恢复提醒');
+        _snoozedTasks.remove(task.id);
+        _firstReminderSent.add(task.id); // 标记首次提醒已发，进入持续提醒模式
+        _lastReminderTime[task.id] = now;
         return true;
       }
       return false;
@@ -565,6 +655,8 @@ class ReminderService {
       // 对话框关闭时也要清除标记（防止用户按返回键关闭）
       _currentShowingReminderId = null;
       _currentShowingReminderType = null;
+      // 对话框操作可能修改了 snooze 状态，持久化以便重启后保留
+      _saveSnoozedToPrefs();
     });
   }
 
@@ -635,9 +727,19 @@ class ReminderService {
   void clearHabitReminderState(String habitId) {
     debugPrint('===== clearHabitReminderState: $habitId =====');
     debugPrint('  - 移除 _lastHabitReminderTime: ${_lastHabitReminderTime.remove(habitId)}');
+    debugPrint('  - 移除 _snoozedHabits: ${_snoozedHabits.remove(habitId)}');
 
     // 打印当前所有习惯提醒状态
     debugPrint('  当前习惯提醒状态数量: ${_lastHabitReminderTime.length}');
+  }
+
+  /// 稍后提醒习惯（对称于任务 snooze）
+  /// 在 [minutes] 分钟后再次允许触发该习惯的提醒。
+  void snoozeHabit(String habitId, int minutes) {
+    final snoozeUntil = DateTime.now().add(Duration(minutes: minutes));
+    _snoozedHabits[habitId] = snoozeUntil;
+    _saveSnoozedToPrefs(); // 持久化，重启后保留
+    debugPrint('习惯 "$habitId" 将在 $minutes 分钟后再次提醒（至 $snoozeUntil）');
   }
 
   /// 释放资源
@@ -669,6 +771,7 @@ class ReminderService {
   /// 设置稍后提醒（由原生层 FullScreenActivity 触发）
   void setSnooze(String id, int minutes) {
     _snoozedTasks[id] = DateTime.now().add(Duration(minutes: minutes));
+    _saveSnoozedToPrefs();
     debugPrint('Reminder snoozed from native layer: $id for $minutes minutes');
   }
 
