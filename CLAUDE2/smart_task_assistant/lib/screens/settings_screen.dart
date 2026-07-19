@@ -427,24 +427,71 @@ class _SettingsScreenState extends State<SettingsScreen>
           builder: (context, settings, _) => Column(
             children: [
               _buildListTile(
-                icon: Icons.volume_up_outlined,
-                title: '提醒声音',
-                subtitle: '控制任务和习惯提醒的声音播放',
+                icon: Icons.bedtime_outlined,
+                title: '免打扰时间',
+                subtitle: settings.quietHoursEnabled
+                    ? '${settings.quietHoursStart.toString().padLeft(2, '0')}:00 - ${settings.quietHoursEnd.toString().padLeft(2, '0')}:00'
+                    : '关闭',
                 trailing: Switch(
-                  value: settings.reminderSoundEnabled,
-                  onChanged: settings.setReminderSoundEnabled,
+                  value: settings.quietHoursEnabled,
+                  onChanged: settings.setQuietHoursEnabled,
                   activeColor: AppTheme.primaryColor,
+                ),
+                onTap: () => _selectQuietHours(settings),
+              ),
+              _buildDivider(),
+              _buildListTile(
+                icon: Icons.task_alt_outlined,
+                title: '任务提醒',
+                subtitle: '声音与震动分别控制',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: '声音',
+                      onPressed: () => settings.setTaskReminderSoundEnabled(
+                          !settings.taskReminderSoundEnabled),
+                      icon: Icon(settings.taskReminderSoundEnabled
+                          ? Icons.volume_up
+                          : Icons.volume_off),
+                    ),
+                    IconButton(
+                      tooltip: '震动',
+                      onPressed: () => settings.setTaskReminderVibrationEnabled(
+                          !settings.taskReminderVibrationEnabled),
+                      icon: Icon(settings.taskReminderVibrationEnabled
+                          ? Icons.vibration
+                          : Icons.phone_android),
+                    ),
+                  ],
                 ),
               ),
               _buildDivider(),
               _buildListTile(
-                icon: Icons.vibration_outlined,
-                title: '提醒震动',
-                subtitle: '控制任务和习惯提醒的震动反馈',
-                trailing: Switch(
-                  value: settings.reminderVibrationEnabled,
-                  onChanged: settings.setReminderVibrationEnabled,
-                  activeColor: AppTheme.primaryColor,
+                icon: Icons.self_improvement_outlined,
+                title: '习惯提醒',
+                subtitle: '声音与震动分别控制',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: '声音',
+                      onPressed: () => settings.setHabitReminderSoundEnabled(
+                          !settings.habitReminderSoundEnabled),
+                      icon: Icon(settings.habitReminderSoundEnabled
+                          ? Icons.volume_up
+                          : Icons.volume_off),
+                    ),
+                    IconButton(
+                      tooltip: '震动',
+                      onPressed: () =>
+                          settings.setHabitReminderVibrationEnabled(
+                              !settings.habitReminderVibrationEnabled),
+                      icon: Icon(settings.habitReminderVibrationEnabled
+                          ? Icons.vibration
+                          : Icons.phone_android),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -466,6 +513,23 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ],
     );
+  }
+
+  Future<void> _selectQuietHours(SettingsProvider settings) async {
+    final start = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: settings.quietHoursStart, minute: 0),
+      helpText: '选择免打扰开始时间',
+    );
+    if (start == null || !mounted) return;
+    final end = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: settings.quietHoursEnd, minute: 0),
+      helpText: '选择免打扰结束时间',
+    );
+    if (end == null) return;
+    settings.setQuietHours(startHour: start.hour, endHour: end.hour);
+    settings.setQuietHoursEnabled(true);
   }
 
   bool _isReminderServiceRunning = false;

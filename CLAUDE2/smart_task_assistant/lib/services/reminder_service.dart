@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
+import '../providers/settings_provider.dart';
 import '../models/habit.dart';
 import '../widgets/reminder_action_dialog.dart';
 import '../widgets/habit_reminder_dialog.dart';
@@ -29,6 +30,7 @@ class ReminderService {
   Timer? _checkTimer;
   TaskProvider? _taskProvider;
   HabitProvider? _habitProvider;
+  SettingsProvider? _settingsProvider;
   GlobalKey<NavigatorState>? _navigatorKey;
 
   // 音频播放器
@@ -81,6 +83,7 @@ class ReminderService {
   Future<void> init(
     TaskProvider taskProvider,
     HabitProvider habitProvider,
+    SettingsProvider settingsProvider,
     GlobalKey<NavigatorState> navigatorKey,
   ) async {
     // 先停止现有的检查，避免重复初始化导致内存泄漏
@@ -88,6 +91,7 @@ class ReminderService {
 
     _taskProvider = taskProvider;
     _habitProvider = habitProvider;
+    _settingsProvider = settingsProvider;
     _navigatorKey = navigatorKey;
 
     debugPrint('===== ReminderService.init =====');
@@ -96,11 +100,13 @@ class ReminderService {
 
     if (_verboseReminderLogs) {
       for (final task in taskProvider.tasks) {
-        debugPrint('任务: ${task.title}, 提醒分钟: ${task.reminderMinutes}, 截止时间: ${task.dueTime}, 已完成: ${task.isCompleted}');
+        debugPrint(
+            '任务: ${task.title}, 提醒分钟: ${task.reminderMinutes}, 截止时间: ${task.dueTime}, 已完成: ${task.isCompleted}');
       }
 
       for (final habit in habitProvider.habits) {
-        debugPrint('习惯: ${habit.title}, 启用: ${habit.isEnabled}, 间隔: ${habit.intervalMinutes}, 固定时间: ${habit.fixedTime}');
+        debugPrint(
+            '习惯: ${habit.title}, 启用: ${habit.isEnabled}, 间隔: ${habit.intervalMinutes}, 固定时间: ${habit.fixedTime}');
       }
     }
     // 更新 HabitService 的习惯列表缓存
@@ -135,7 +141,8 @@ class ReminderService {
 
       restore(_snoozedTasksPrefsKey, _snoozedTasks);
       restore(_snoozedHabitsPrefsKey, _snoozedHabits);
-      debugPrint('已恢复 snooze 状态: tasks=${_snoozedTasks.length}, habits=${_snoozedHabits.length}');
+      debugPrint(
+          '已恢复 snooze 状态: tasks=${_snoozedTasks.length}, habits=${_snoozedHabits.length}');
     } catch (e) {
       debugPrint('加载 snooze 状态失败: $e');
     }
@@ -145,8 +152,8 @@ class ReminderService {
   Future<void> _saveSnoozedToPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String encode(Map<String, DateTime> m) =>
-          jsonEncode({for (final e in m.entries) e.key: e.value.millisecondsSinceEpoch});
+      String encode(Map<String, DateTime> m) => jsonEncode(
+          {for (final e in m.entries) e.key: e.value.millisecondsSinceEpoch});
       await prefs.setString(_snoozedTasksPrefsKey, encode(_snoozedTasks));
       await prefs.setString(_snoozedHabitsPrefsKey, encode(_snoozedHabits));
     } catch (e) {
@@ -222,6 +229,7 @@ class ReminderService {
   }
 
   void _checkRemindersInner() {
+    if (_settingsProvider?.isQuietTime(DateTime.now()) ?? false) return;
     // APP 在后台时，Flutter 层跳过提醒检查，由原生服务全权处理
     // 原因：flutter_tts 在 Activity 暂停时无法发声，
     // 且 Flutter 层更新状态会导致提醒被"吞掉"而原生层不再触发
@@ -260,13 +268,13 @@ class ReminderService {
         t.dueTime != null &&
         t.reminderMinutes != null &&
         !t.reminderDismissed);
-    final hasRemindableHabits =
-        _habitProvider!.habits.any((h) => h.isEnabled);
+    final hasRemindableHabits = _habitProvider!.habits.any((h) => h.isEnabled);
     if (!hasRemindableTasks && !hasRemindableHabits) return;
 
     if (_verboseReminderLogs) {
       debugPrint('');
-      debugPrint('===== _checkReminders started (${now.toIso8601String()}) =====');
+      debugPrint(
+          '===== _checkReminders started (${now.toIso8601String()}) =====');
       debugPrint('Task count: ${_taskProvider!.tasks.length}');
       debugPrint('Habit count: ${_habitProvider!.habits.length}');
 
@@ -317,7 +325,8 @@ class ReminderService {
 
       if (shouldRemind) {
         needRemindCount++;
-        debugPrint('[任务提醒] "${task.title}" 需要提醒 (截止: ${task.dueTime?.toIso8601String()}, 提前${task.reminderMinutes}分钟)');
+        debugPrint(
+            '[任务提醒] "${task.title}" 需要提醒 (截止: ${task.dueTime?.toIso8601String()}, 提前${task.reminderMinutes}分钟)');
         _showTaskReminder(task);
       }
     }
@@ -356,7 +365,8 @@ class ReminderService {
 
       if (shouldRemind) {
         needRemindCount++;
-        debugPrint('[习惯提醒] "${habit.title}" 需要提醒 (类型: ${habit.triggerType}, 间隔: ${habit.intervalMinutes}分钟)');
+        debugPrint(
+            '[习惯提醒] "${habit.title}" 需要提醒 (类型: ${habit.triggerType}, 间隔: ${habit.intervalMinutes}分钟)');
         _showHabitReminder(habit);
       }
     }
@@ -426,7 +436,8 @@ class ReminderService {
 
     // 如果已有提醒正在显示/播放，先停止当前的声音和语音
     if (_currentShowingReminderId != null) {
-      debugPrint('⚠️ 已有提醒弹窗显示中（$_currentShowingReminderType），停止当前提醒音乐，切换到任务 "${task.title}"');
+      debugPrint(
+          '⚠️ 已有提醒弹窗显示中（$_currentShowingReminderType），停止当前提醒音乐，切换到任务 "${task.title}"');
       _stopCurrentReminderPlayback();
       _dismissCurrentDialog();
     }
@@ -445,10 +456,16 @@ class ReminderService {
     _currentShowingReminderType = 'task';
 
     debugPrint('记录提醒时间: $_lastReminderTime[task.id]');
-    debugPrint('下次提醒时间将在 ${_lastReminderTime[task.id]!.add(const Duration(seconds: _continualReminderIntervalSeconds))}');
+    debugPrint(
+        '下次提醒时间将在 ${_lastReminderTime[task.id]!.add(const Duration(seconds: _continualReminderIntervalSeconds))}');
 
     // 播放声音和振动
-    playReminderSound();
+    if (_settingsProvider?.taskReminderSoundEnabled ?? true) {
+      playReminderSound();
+    }
+    if (_settingsProvider?.taskReminderVibrationEnabled ?? true) {
+      _playVibration();
+    }
 
     // 播放语音提醒
     _playVoiceReminder(task);
@@ -498,7 +515,8 @@ class ReminderService {
 
     // 如果已有提醒正在显示/播放，先停止当前的声音和语音
     if (_currentShowingReminderId != null) {
-      debugPrint('⚠️ 已有提醒弹窗显示中（$_currentShowingReminderType），停止当前提醒音乐，切换到习惯 "${habit.title}"');
+      debugPrint(
+          '⚠️ 已有提醒弹窗显示中（$_currentShowingReminderType），停止当前提醒音乐，切换到习惯 "${habit.title}"');
       _stopCurrentReminderPlayback();
       _dismissCurrentDialog();
     }
@@ -508,12 +526,14 @@ class ReminderService {
     _currentShowingReminderType = 'habit';
 
     // 播放声音
-    if (habit.soundEnabled) {
+    if (habit.soundEnabled &&
+        (_settingsProvider?.habitReminderSoundEnabled ?? true)) {
       playReminderSound();
     }
 
     // 播放振动
-    if (habit.vibrationEnabled) {
+    if (habit.vibrationEnabled &&
+        (_settingsProvider?.habitReminderVibrationEnabled ?? true)) {
       _playVibration();
     }
 
@@ -523,7 +543,8 @@ class ReminderService {
       String? effectiveVoiceType = habit.voiceType;
       String? effectiveCustomVoicePath = habit.customVoicePath;
       if (effectiveVoiceType == 'custom') {
-        if (effectiveCustomVoicePath == null || effectiveCustomVoicePath.isEmpty) {
+        if (effectiveCustomVoicePath == null ||
+            effectiveCustomVoicePath.isEmpty) {
           debugPrint('⚠️ 习惯语音类型为自定义，但路径为空，回退到 TTS 播放');
           effectiveVoiceType = 'neutral';
           effectiveCustomVoicePath = null;
@@ -612,7 +633,8 @@ class ReminderService {
                 snoozeMinutes,
                 snoozeUntil: snoozeUntil,
               );
-              debugPrint('任务 "${task.title}" 提醒时间已修改为 $reminderMinutes 分钟前，$snoozeMinutes 分钟后再次提醒');
+              debugPrint(
+                  '任务 "${task.title}" 提醒时间已修改为 $reminderMinutes 分钟前，$snoozeMinutes 分钟后再次提醒');
             } else {
               debugPrint('任务 "${task.title}" 的提醒时间已修改为 $reminderMinutes 分钟前');
             }
@@ -686,7 +708,8 @@ class ReminderService {
     }
 
     // 调试日志：输出任务的语音设置，便于排查自定义语音误播放问题
-    debugPrint('任务 "${task.title}" 语音设置: voiceType=${task.reminderVoiceType}, customPath=${task.reminderCustomVoicePath}');
+    debugPrint(
+        '任务 "${task.title}" 语音设置: voiceType=${task.reminderVoiceType}, customPath=${task.reminderCustomVoicePath}');
 
     // 检查是否在重复提醒间隔内（避免过于频繁）
     if (_lastVoiceReminderTime.containsKey(task.id)) {
@@ -714,8 +737,10 @@ class ReminderService {
     debugPrint('===== clearReminderState: $taskId =====');
     debugPrint('  - 移除 _lastReminderTime: ${_lastReminderTime.remove(taskId)}');
     debugPrint('  - 移除 _snoozedTasks: ${_snoozedTasks.remove(taskId)}');
-    debugPrint('  - 移除 _lastVoiceReminderTime: ${_lastVoiceReminderTime.remove(taskId)}');
-    debugPrint('  - 移除 _firstReminderSent: ${_firstReminderSent.remove(taskId)}');
+    debugPrint(
+        '  - 移除 _lastVoiceReminderTime: ${_lastVoiceReminderTime.remove(taskId)}');
+    debugPrint(
+        '  - 移除 _firstReminderSent: ${_firstReminderSent.remove(taskId)}');
 
     // 打印当前所有提醒状态
     debugPrint('  当前提醒状态数量:');
@@ -726,7 +751,8 @@ class ReminderService {
   /// 清除习惯的提醒状态（用于习惯被修改时）
   void clearHabitReminderState(String habitId) {
     debugPrint('===== clearHabitReminderState: $habitId =====');
-    debugPrint('  - 移除 _lastHabitReminderTime: ${_lastHabitReminderTime.remove(habitId)}');
+    debugPrint(
+        '  - 移除 _lastHabitReminderTime: ${_lastHabitReminderTime.remove(habitId)}');
     debugPrint('  - 移除 _snoozedHabits: ${_snoozedHabits.remove(habitId)}');
 
     // 打印当前所有习惯提醒状态

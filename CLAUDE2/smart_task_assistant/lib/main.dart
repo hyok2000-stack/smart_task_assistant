@@ -463,6 +463,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           .init(
         widget.taskProvider,
         widget.habitProvider,
+        widget.settingsProvider,
         navigatorKey,
       )
           .catchError((e) {

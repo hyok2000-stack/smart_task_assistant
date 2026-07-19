@@ -25,6 +25,13 @@ class SettingsProvider extends ChangeNotifier {
   int _reminderMinutes = 30;
   bool _reminderSoundEnabled = true;
   bool _reminderVibrationEnabled = true;
+  bool _quietHoursEnabled = false;
+  int _quietHoursStart = 22;
+  int _quietHoursEnd = 7;
+  bool _taskReminderSoundEnabled = true;
+  bool _taskReminderVibrationEnabled = true;
+  bool _habitReminderSoundEnabled = true;
+  bool _habitReminderVibrationEnabled = true;
   double _ttsVolume = 0.9; // 默认音量较高 (0.0-1.0)
 
   // AI服务配置
@@ -57,6 +64,23 @@ class SettingsProvider extends ChangeNotifier {
   int get reminderMinutes => _reminderMinutes;
   bool get reminderSoundEnabled => _reminderSoundEnabled;
   bool get reminderVibrationEnabled => _reminderVibrationEnabled;
+  bool get quietHoursEnabled => _quietHoursEnabled;
+  int get quietHoursStart => _quietHoursStart;
+  int get quietHoursEnd => _quietHoursEnd;
+  bool get taskReminderSoundEnabled => _taskReminderSoundEnabled;
+  bool get taskReminderVibrationEnabled => _taskReminderVibrationEnabled;
+  bool get habitReminderSoundEnabled => _habitReminderSoundEnabled;
+  bool get habitReminderVibrationEnabled => _habitReminderVibrationEnabled;
+
+  bool isQuietTime(DateTime time) {
+    if (!_quietHoursEnabled) return false;
+    if (_quietHoursStart == _quietHoursEnd) return true;
+    if (_quietHoursStart < _quietHoursEnd) {
+      return time.hour >= _quietHoursStart && time.hour < _quietHoursEnd;
+    }
+    return time.hour >= _quietHoursStart || time.hour < _quietHoursEnd;
+  }
+
   double get ttsVolume => _ttsVolume;
 
   // AI服务getter
@@ -233,7 +257,19 @@ class SettingsProvider extends ChangeNotifier {
       _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
 
       _reminderSoundEnabled = prefs.getBool('reminderSoundEnabled') ?? true;
-      _reminderVibrationEnabled = prefs.getBool('reminderVibrationEnabled') ?? true;
+      _reminderVibrationEnabled =
+          prefs.getBool('reminderVibrationEnabled') ?? true;
+      _quietHoursEnabled = prefs.getBool('quietHoursEnabled') ?? false;
+      _quietHoursStart = prefs.getInt('quietHoursStart') ?? 22;
+      _quietHoursEnd = prefs.getInt('quietHoursEnd') ?? 7;
+      _taskReminderSoundEnabled =
+          prefs.getBool('taskReminderSoundEnabled') ?? true;
+      _taskReminderVibrationEnabled =
+          prefs.getBool('taskReminderVibrationEnabled') ?? true;
+      _habitReminderSoundEnabled =
+          prefs.getBool('habitReminderSoundEnabled') ?? true;
+      _habitReminderVibrationEnabled =
+          prefs.getBool('habitReminderVibrationEnabled') ?? true;
       _ttsVolume = prefs.getDouble('ttsVolume') ?? 0.9;
 
       // 加载AI配置
@@ -339,7 +375,19 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setBool('notificationsEnabled', _notificationsEnabled);
 
       await prefs.setBool('reminderSoundEnabled', _reminderSoundEnabled);
-      await prefs.setBool('reminderVibrationEnabled', _reminderVibrationEnabled);
+      await prefs.setBool(
+          'reminderVibrationEnabled', _reminderVibrationEnabled);
+      await prefs.setBool('quietHoursEnabled', _quietHoursEnabled);
+      await prefs.setInt('quietHoursStart', _quietHoursStart);
+      await prefs.setInt('quietHoursEnd', _quietHoursEnd);
+      await prefs.setBool(
+          'taskReminderSoundEnabled', _taskReminderSoundEnabled);
+      await prefs.setBool(
+          'taskReminderVibrationEnabled', _taskReminderVibrationEnabled);
+      await prefs.setBool(
+          'habitReminderSoundEnabled', _habitReminderSoundEnabled);
+      await prefs.setBool(
+          'habitReminderVibrationEnabled', _habitReminderVibrationEnabled);
       await prefs.setDouble('ttsVolume', _ttsVolume);
 
       await prefs.setString('aiMode', _aiMode.toString());
@@ -422,6 +470,43 @@ class SettingsProvider extends ChangeNotifier {
   /// 设置提醒振动
   void setReminderVibrationEnabled(bool value) {
     _reminderVibrationEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setQuietHoursEnabled(bool value) {
+    _quietHoursEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setQuietHours({required int startHour, required int endHour}) {
+    _quietHoursStart = startHour.clamp(0, 23);
+    _quietHoursEnd = endHour.clamp(0, 23);
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setTaskReminderSoundEnabled(bool value) {
+    _taskReminderSoundEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setTaskReminderVibrationEnabled(bool value) {
+    _taskReminderVibrationEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setHabitReminderSoundEnabled(bool value) {
+    _habitReminderSoundEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setHabitReminderVibrationEnabled(bool value) {
+    _habitReminderVibrationEnabled = value;
     _saveSettings();
     notifyListeners();
   }

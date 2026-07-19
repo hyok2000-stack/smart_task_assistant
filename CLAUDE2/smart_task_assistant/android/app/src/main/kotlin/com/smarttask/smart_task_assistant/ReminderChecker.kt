@@ -126,8 +126,8 @@ class ReminderChecker(private val context: Context) {
     fun queryActiveTasks(db: SQLiteDatabase): List<TaskRow> {
         val tasks = mutableListOf<TaskRow>()
         // Read global sound/vibration settings from Flutter SharedPreferences
-        val soundEnabled = flutterPrefs?.getBoolean("flutter.reminderSoundEnabled", true) ?: true
-        val vibrationEnabled = flutterPrefs?.getBoolean("flutter.reminderVibrationEnabled", true) ?: true
+        val soundEnabled = flutterPrefs?.getBoolean("flutter.taskReminderSoundEnabled", true) ?: true
+        val vibrationEnabled = flutterPrefs?.getBoolean("flutter.taskReminderVibrationEnabled", true) ?: true
         Log.d(TAG, "Global reminder settings: sound=$soundEnabled, vibration=$vibrationEnabled")
         val cursor = db.rawQuery(
             """SELECT id, title, content, status, priority, due_time, reminder_minutes,
@@ -652,6 +652,10 @@ class ReminderChecker(private val context: Context) {
      */
     fun checkAll(isForeground: Boolean = false): List<ReminderItem> {
         val items = mutableListOf<ReminderItem>()
+        if (isQuietTime()) {
+            Log.d(TAG, "Quiet hours active, skip reminder check")
+            return items
+        }
         val db = openDb() ?: return items
 
         try {
@@ -725,8 +729,10 @@ class ReminderChecker(private val context: Context) {
                             voiceStyle = habit.voiceStyle,
                             voiceSpeed = habit.voiceSpeed,
                             customVoicePath = habit.customVoicePath,
-                            soundEnabled = habit.soundEnabled == 1,
-                            vibrationEnabled = habit.vibrationEnabled == 1
+                    soundEnabled = habit.soundEnabled == 1 &&
+                        (flutterPrefs?.getBoolean("flutter.habitReminderSoundEnabled", true) ?: true),
+                    vibrationEnabled = habit.vibrationEnabled == 1 &&
+                        (flutterPrefs?.getBoolean("flutter.habitReminderVibrationEnabled", true) ?: true)
                         )
                     )
                 }
@@ -738,5 +744,15 @@ class ReminderChecker(private val context: Context) {
         }
 
         return items
+    }
+
+    private fun isQuietTime(): Boolean {
+        val enabled = flutterPrefs?.getBoolean("flutter.quietHoursEnabled", false) ?: false
+        if (!enabled) return false
+        val start = flutterPrefs?.getLong("flutter.quietHoursStart", 22L)?.toInt() ?: 22
+        val end = flutterPrefs?.getLong("flutter.quietHoursEnd", 7L)?.toInt() ?: 7
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        if (start == end) return true
+        return if (start < end) hour in start until end else hour >= start || hour < end
     }
 }
