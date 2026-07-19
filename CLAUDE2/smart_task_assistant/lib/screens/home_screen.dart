@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uuid/uuid.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +30,7 @@ import '../widgets/empty_state_widget.dart';
 import '../widgets/error_state_widget.dart';
 import '../widgets/subtask_list.dart';
 import '../widgets/activity_feed_dialog.dart';
+import '../widgets/attachment_picker.dart';
 import '../widgets/conflict_resolution_dialog.dart';
 
 /// 主页面 - 互联网风格设计
@@ -1718,6 +1720,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         const SizedBox(height: 24),
                         _buildTaskCommentsSection(task),
                         const SizedBox(height: 24),
+                        Consumer<TaskProvider>(
+                          builder: (_, provider, __) {
+                            final current = provider.tasks.firstWhere(
+                              (item) => item.id == task.id,
+                              orElse: () => task,
+                            );
+                            final subtasks = provider.tasks
+                                .where((item) => item.parentId == current.id)
+                                .toList();
+                            return _buildUnifiedTaskResources(
+                              context,
+                              current,
+                              subtasks,
+                              provider,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
                         _buildDistributionStatusSection(task),
                         const SizedBox(height: 24),
                         SizedBox(
@@ -1738,6 +1758,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _duplicateTask(task),
+                                icon: const Icon(Icons.copy_rounded, size: 18),
+                                label: const Text('复制任务'),
+                              ),
+                            ),
+                          ],
                         ),
                         if (BackendApiService.instance.isLoggedIn)
                           FutureBuilder<Map<String, dynamic>?>(
@@ -1789,6 +1821,91 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         },
       ),
     );
+  }
+
+  Widget _buildUnifiedTaskResources(
+    BuildContext sheetContext,
+    Task task,
+    List<Task> subtasks,
+    TaskProvider provider,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.account_tree_outlined,
+                size: 18, color: AppTheme.primaryColor),
+            const SizedBox(width: 8),
+            const Text('子任务与附件',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            IconButton(
+              tooltip: '操作历史',
+              onPressed: () => showModalBottomSheet(
+                context: sheetContext,
+                isScrollControlled: true,
+                builder: (_) => const ActivityFeedDialog(),
+              ),
+              icon: const Icon(Icons.history_rounded, size: 20),
+            ),
+          ],
+        ),
+        SubtaskList(
+          parentTask: task,
+          subtasks: subtasks,
+          onAddSubtask: () async {
+            await Navigator.push(
+              sheetContext,
+              MaterialPageRoute(
+                  builder: (_) => AddTaskScreen(parentId: task.id)),
+            );
+            if (mounted) setState(() {});
+          },
+          onSubtaskTap: (subtask) => _showTaskDetail(subtask),
+        ),
+        const SizedBox(height: 8),
+        AttachmentPicker(
+          attachmentPaths: task.attachmentPaths,
+          onChanged: (paths) {
+            provider.updateTask(task.copyWith(attachmentPaths: paths));
+          },
+        ),
+        const SizedBox(height: 8),
+        _buildDetailRow(
+          Icons.update_rounded,
+          '最后修改',
+          _formatDateTime(task.updatedAt),
+        ),
+        if (task.ownerUserId != null && task.ownerUserId!.isNotEmpty)
+          _buildDetailRow(
+            Icons.person_outline_rounded,
+            '最后修改人',
+            BackendApiService.instance.userId == task.ownerUserId
+                ? '我'
+                : (task.assignee ?? task.ownerUserId!),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _duplicateTask(Task task) async {
+    final copy = task.copyWith(
+      id: const Uuid().v4(),
+      title: '${task.title}（副本）',
+      status: TaskStatus.pending,
+      completedAt: null,
+      reminderDismissed: false,
+      parentId: null,
+      createdAt: DateTime.now(),
+    );
+    await context.read<TaskProvider>().addTask(copy);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('任务副本已创建')),
+      );
+    }
   }
 
   Widget _buildStatusSelector(Task task) {

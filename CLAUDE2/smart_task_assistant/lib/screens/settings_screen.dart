@@ -327,10 +327,12 @@ class _SettingsScreenState extends State<SettingsScreen>
               _buildDivider(),
               // 语音音量滑块
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.volume_up_outlined, color: AppTheme.textSecondaryColor),
+                    Icon(Icons.volume_up_outlined,
+                        color: AppTheme.textSecondaryColor),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -391,7 +393,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             value: _isReminderServiceRunning,
             onChanged: (value) async {
               try {
-                const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+                const channel = MethodChannel(
+                    'com.smarttask.smart_task_assistant/reminder');
                 if (value) {
                   await channel.invokeMethod('startService');
                 } else {
@@ -408,9 +411,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         _buildListTile(
           icon: Icons.screen_lock_portrait_outlined,
           title: '锁屏弹出权限',
-          subtitle: _hasFullScreenPermission
-              ? '已允许，锁屏时可以显示全屏提醒'
-              : '未允许，点击前往系统设置开启',
+          subtitle:
+              _hasFullScreenPermission ? '已允许，锁屏时可以显示全屏提醒' : '未允许，点击前往系统设置开启',
           trailing: _buildPermissionStatusTrailing(_hasFullScreenPermission),
           onTap: () => _requestFullScreenPermission(),
         ),
@@ -420,6 +422,48 @@ class _SettingsScreenState extends State<SettingsScreen>
         _buildExactAlarmPermissionTile(),
         _buildDivider(),
         _buildBatteryOptimizationTile(),
+        _buildDivider(),
+        Consumer<SettingsProvider>(
+          builder: (context, settings, _) => Column(
+            children: [
+              _buildListTile(
+                icon: Icons.volume_up_outlined,
+                title: '提醒声音',
+                subtitle: '控制任务和习惯提醒的声音播放',
+                trailing: Switch(
+                  value: settings.reminderSoundEnabled,
+                  onChanged: settings.setReminderSoundEnabled,
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ),
+              _buildDivider(),
+              _buildListTile(
+                icon: Icons.vibration_outlined,
+                title: '提醒震动',
+                subtitle: '控制任务和习惯提醒的震动反馈',
+                trailing: Switch(
+                  value: settings.reminderVibrationEnabled,
+                  onChanged: settings.setReminderVibrationEnabled,
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildDivider(),
+        _buildListTile(
+          icon: Icons.play_circle_outline_rounded,
+          title: '提醒自测',
+          subtitle: '立即播放一次测试提醒，确认声音正常',
+          onTap: () async {
+            await TTSService().speak(text: '这是提醒测试，任务提醒功能正常');
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('测试提醒已播放')),
+              );
+            }
+          },
+        ),
       ],
     );
   }
@@ -432,8 +476,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkBatteryOptimization() async {
     if (!Platform.isAndroid) return;
     try {
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-      _isBatteryOptimized = await channel.invokeMethod('isBatteryOptimized') ?? true;
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _isBatteryOptimized =
+          await channel.invokeMethod('isBatteryOptimized') ?? true;
     } catch (_) {
       _isBatteryOptimized = true;
     }
@@ -443,9 +489,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return _buildListTile(
       icon: Icons.battery_alert_outlined,
       title: '电池优化',
-      subtitle: _isBatteryOptimized
-          ? '未豁免，点击申请忽略电池优化'
-          : '已豁免，后台服务可正常运行',
+      subtitle: _isBatteryOptimized ? '未豁免，点击申请忽略电池优化' : '已豁免，后台服务可正常运行',
       trailing: _buildPermissionStatusTrailing(!_isBatteryOptimized),
       onTap: () async {
         if (!_isBatteryOptimized) {
@@ -464,7 +508,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('_restore_tab_index', 5);
 
-          const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+          const channel =
+              MethodChannel('com.smarttask.smart_task_assistant/reminder');
           await channel.invokeMethod('requestIgnoreBatteryOptimization');
         } catch (_) {}
         // didChangeAppLifecycleState will refresh when user returns
@@ -476,9 +521,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     return _buildListTile(
       icon: Icons.notifications_active_outlined,
       title: '通知权限',
-      subtitle: _notificationsEnabled
-          ? '已允许，任务提醒可以正常显示通知'
-          : '未允许，锁屏或休眠时可能收不到提醒',
+      subtitle:
+          _notificationsEnabled ? '已允许，任务提醒可以正常显示通知' : '未允许，锁屏或休眠时可能收不到提醒',
       trailing: _buildPermissionStatusTrailing(_notificationsEnabled),
       onTap: () async {
         await _openNotificationSettings();
@@ -492,9 +536,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     return _buildListTile(
       icon: Icons.alarm_on_outlined,
       title: '精确闹钟权限',
-      subtitle: _canScheduleExactAlarms
-          ? '已允许，休眠时可按计划唤醒检查提醒'
-          : '未允许，手机休眠后提醒可能明显延迟',
+      subtitle:
+          _canScheduleExactAlarms ? '已允许，休眠时可按计划唤醒检查提醒' : '未允许，手机休眠后提醒可能明显延迟',
       trailing: _buildPermissionStatusTrailing(_canScheduleExactAlarms),
       onTap: () async {
         await _openExactAlarmSettings();
@@ -524,8 +567,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkReminderServiceRunning() async {
     if (!Platform.isAndroid) return;
     try {
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-      _isReminderServiceRunning = await channel.invokeMethod('isServiceRunning') ?? false;
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _isReminderServiceRunning =
+          await channel.invokeMethod('isServiceRunning') ?? false;
     } catch (_) {
       _isReminderServiceRunning = false;
     }
@@ -534,8 +579,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkFullScreenPermission() async {
     if (!Platform.isAndroid) return;
     try {
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
-      _hasFullScreenPermission = await channel.invokeMethod('hasFullScreenPermission') ?? true;
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      _hasFullScreenPermission =
+          await channel.invokeMethod('hasFullScreenPermission') ?? true;
     } catch (_) {
       _hasFullScreenPermission = true;
     }
@@ -548,7 +595,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('_restore_tab_index', 5);
 
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
       final granted = await channel.invokeMethod('requestFullScreenPermission');
       _hasFullScreenPermission = granted == true;
       if (mounted) {
@@ -574,7 +622,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkNotificationPermission() async {
     if (!Platform.isAndroid) return;
     try {
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
       _notificationsEnabled =
           await channel.invokeMethod('areNotificationsEnabled') ?? true;
     } catch (_) {
@@ -589,7 +638,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('_restore_tab_index', 5);
 
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
       await channel.invokeMethod('openNotificationSettings');
     } catch (_) {}
   }
@@ -597,7 +647,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkExactAlarmPermission() async {
     if (!Platform.isAndroid) return;
     try {
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
       _canScheduleExactAlarms =
           await channel.invokeMethod('canScheduleExactAlarms') ?? true;
     } catch (_) {
@@ -612,7 +663,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('_restore_tab_index', 5);
 
-      const channel = MethodChannel('com.smarttask.smart_task_assistant/reminder');
+      const channel =
+          MethodChannel('com.smarttask.smart_task_assistant/reminder');
       await channel.invokeMethod('openExactAlarmSettings');
     } catch (_) {}
   }
@@ -823,9 +875,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           _buildListTile(
             icon: Icons.cloud_outlined,
             title: backend.isLoggedIn ? '已登录：${backend.nickname}' : '登录后台同步',
-            subtitle: backend.isLoggedIn
-                ? '地址：${backend.baseUrl}'
-                : '配置后台地址、账号和密码',
+            subtitle:
+                backend.isLoggedIn ? '地址：${backend.baseUrl}' : '配置后台地址、账号和密码',
             trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _showBackendLoginDialog(context),
           ),
@@ -841,7 +892,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Icon(Icons.chevron_right, color: AppTheme.textHintColor),
-            onTap: taskProvider.isBackendSyncing ? null : () => _syncBackendTasks(context),
+            onTap: taskProvider.isBackendSyncing
+                ? null
+                : () => _syncBackendTasks(context),
           ),
           _buildDivider(),
           _buildListTile(
@@ -926,7 +979,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
             const SizedBox(height: 10),
-            _buildSyncInfoRow('登录状态', loggedIn ? '已登录：${backend.nickname ?? '-'}' : '未登录'),
+            _buildSyncInfoRow(
+                '登录状态', loggedIn ? '已登录：${backend.nickname ?? '-'}' : '未登录'),
             _buildSyncInfoRow('后台地址', backend.baseUrl),
             _buildSyncInfoRow(
               '最后同步',
@@ -1098,10 +1152,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: isLoading ? null : () {
-                        Navigator.pop(context);
-                        _showRegisterDialog(context);
-                      },
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                              Navigator.pop(context);
+                              _showRegisterDialog(context);
+                            },
                       child: const Text('没有账号？注册新账号'),
                     ),
                   ),
@@ -1115,7 +1171,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ? null
                       : () async {
                           // 登出前询问是否清除本地任务数据（防止下一个账号串库）
-                          final clearLocal = await _confirmLogoutClearData(context);
+                          final clearLocal =
+                              await _confirmLogoutClearData(context);
                           await backend.logout();
                           if (clearLocal) {
                             // 清除前先备份，给用户留后悔药
@@ -1127,7 +1184,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(clearLocal ? '已退出登录并清除本地数据' : '已退出后台登录（本地数据已保留）'),
+                              content: Text(clearLocal
+                                  ? '已退出登录并清除本地数据'
+                                  : '已退出后台登录（本地数据已保留）'),
                             ),
                           );
                         },
@@ -1150,11 +1209,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                             rememberPassword: true,
                           );
                           await backend.bindDevice(
-                            deviceName: kIsWeb ? 'Web APP' : Platform.localHostname,
+                            deviceName:
+                                kIsWeb ? 'Web APP' : Platform.localHostname,
                             platform: kIsWeb ? 'web' : Platform.operatingSystem,
                           );
-                          final syncedCount =
-                              await context.read<TaskProvider>().syncAllWithBackend();
+                          final syncedCount = await context
+                              .read<TaskProvider>()
+                              .syncAllWithBackend();
                           if (!mounted) return;
                           Navigator.pop(context);
                           setState(() {});
@@ -1297,10 +1358,12 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             actions: [
               TextButton(
-                onPressed: isLoading ? null : () {
-                  Navigator.pop(context);
-                  _showBackendLoginDialog(context);
-                },
+                onPressed: isLoading
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        _showBackendLoginDialog(context);
+                      },
                 child: const Text('返回登录'),
               ),
               TextButton(
@@ -1311,9 +1374,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onPressed: isLoading
                     ? null
                     : () async {
-                        final nickname = _registerNicknameController.text.trim();
+                        final nickname =
+                            _registerNicknameController.text.trim();
                         final password = _registerPasswordController.text;
-                        final inviteCode = _registerInviteCodeController.text.trim();
+                        final inviteCode =
+                            _registerInviteCodeController.text.trim();
 
                         if (nickname.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1348,20 +1413,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                             nickname: nickname,
                             password: password,
                             inviteCode: inviteCode,
-                            phone: _registerPhoneController.text.trim().isNotEmpty
-                                ? _registerPhoneController.text.trim()
-                                : null,
-                            email: _registerEmailController.text.trim().isNotEmpty
-                                ? _registerEmailController.text.trim()
-                                : null,
+                            phone:
+                                _registerPhoneController.text.trim().isNotEmpty
+                                    ? _registerPhoneController.text.trim()
+                                    : null,
+                            email:
+                                _registerEmailController.text.trim().isNotEmpty
+                                    ? _registerEmailController.text.trim()
+                                    : null,
                             baseUrl: _backendBaseUrlController.text.trim(),
                           );
                           await backend.bindDevice(
-                            deviceName: kIsWeb ? 'Web APP' : Platform.localHostname,
+                            deviceName:
+                                kIsWeb ? 'Web APP' : Platform.localHostname,
                             platform: kIsWeb ? 'web' : Platform.operatingSystem,
                           );
-                          final syncedCount =
-                              await context.read<TaskProvider>().syncAllWithBackend();
+                          final syncedCount = await context
+                              .read<TaskProvider>()
+                              .syncAllWithBackend();
                           if (!mounted) return;
                           Navigator.pop(context);
                           setState(() {});
@@ -1418,7 +1487,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('团队管理', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text('团队管理',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   // 已加入的团队
                   StatefulBuilder(
@@ -1426,8 +1497,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                       return FutureBuilder<List<Map<String, dynamic>>>(
                         future: backend.getMyTeams(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
                           }
                           if (snapshot.hasError) {
                             return ErrorStateWidget(
@@ -1439,29 +1512,42 @@ class _SettingsScreenState extends State<SettingsScreen>
                           if (teams.isEmpty) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Text('暂未加入任何团队', style: TextStyle(color: Colors.grey)),
+                              child: Text('暂未加入任何团队',
+                                  style: TextStyle(color: Colors.grey)),
                             );
                           }
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('已加入的团队', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
-                          const SizedBox(height: 8),
-                          ...teams.map((team) => ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.group, color: AppTheme.primaryColor),
-                            title: Text(team['name'] as String, style: const TextStyle(fontWeight: FontWeight.w500)),
-                            subtitle: Text('ID: ${(team['id'] as String).substring(0, 8)}...'),
-                          )),
-                        ],
-                      );
-                    },
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('已加入的团队',
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey)),
+                              const SizedBox(height: 8),
+                              ...teams.map((team) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: const Icon(Icons.group,
+                                        color: AppTheme.primaryColor),
+                                    title: Text(team['name'] as String,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w500)),
+                                    subtitle: Text(
+                                        'ID: ${(team['id'] as String).substring(0, 8)}...'),
+                                  )),
+                            ],
+                          );
+                        },
                       );
                     },
                   ),
                   const Divider(height: 24),
                   // 创建新团队
-                  const Text('创建新团队', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+                  const Text('创建新团队',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1471,7 +1557,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                           decoration: const InputDecoration(
                             hintText: '输入团队名称',
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
                           ),
                         ),
                       ),
@@ -1500,7 +1587,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                         ),
                         child: const Text('创建'),
                       ),
@@ -3319,120 +3407,120 @@ class _SettingsScreenState extends State<SettingsScreen>
               Flexible(
                 child: SingleChildScrollView(
                   child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    // AI标识
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5F3FF),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.auto_awesome,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        // AI标识
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F3FF),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'AI 完全编写',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF6366F1),
-                                  ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6366F1),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '由 CLI+GLM5 大模型独立完成所有代码开发',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600,
-                                    height: 1.4,
-                                  ),
+                                child: const Icon(
+                                  Icons.auto_awesome,
+                                  color: Colors.white,
+                                  size: 20,
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'AI 完全编写',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF6366F1),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '由 CLI+GLM5 大模型独立完成所有代码开发',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade600,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                    // 功能列表
-                    _buildAboutListItem(
-                      Icons.psychology_outlined,
-                      'AI智能识别',
-                      '智能解析任务内容和时间',
-                    ),
-                    _buildAboutListItem(
-                      Icons.notifications_active_outlined,
-                      '智能提醒',
-                      '多级通知系统，不错过任何任务',
-                    ),
-                    _buildAboutListItem(
-                      Icons.content_copy_outlined,
-                      '剪贴板监视',
-                      '自动识别粘贴内容',
-                    ),
-                    _buildAboutListItem(
-                      Icons.sync_alt_outlined,
-                      '周期任务',
-                      '支持日/周/月循环提醒',
-                    ),
-                    _buildAboutListItem(
-                      Icons.repeat_rounded,
-                      '习惯追踪',
-                      '间隔/固定提醒，打卡与进度管理',
-                    ),
-                    _buildAboutListItem(
-                      Icons.record_voice_over_outlined,
-                      '语音提醒',
-                      'TTS语音播报与自定义音频文件',
-                    ),
-                    _buildAboutListItem(
-                      Icons.insights_outlined,
-                      '任务统计',
-                      '多维度数据分析与可视化图表',
-                    ),
+                        // 功能列表
+                        _buildAboutListItem(
+                          Icons.psychology_outlined,
+                          'AI智能识别',
+                          '智能解析任务内容和时间',
+                        ),
+                        _buildAboutListItem(
+                          Icons.notifications_active_outlined,
+                          '智能提醒',
+                          '多级通知系统，不错过任何任务',
+                        ),
+                        _buildAboutListItem(
+                          Icons.content_copy_outlined,
+                          '剪贴板监视',
+                          '自动识别粘贴内容',
+                        ),
+                        _buildAboutListItem(
+                          Icons.sync_alt_outlined,
+                          '周期任务',
+                          '支持日/周/月循环提醒',
+                        ),
+                        _buildAboutListItem(
+                          Icons.repeat_rounded,
+                          '习惯追踪',
+                          '间隔/固定提醒，打卡与进度管理',
+                        ),
+                        _buildAboutListItem(
+                          Icons.record_voice_over_outlined,
+                          '语音提醒',
+                          'TTS语音播报与自定义音频文件',
+                        ),
+                        _buildAboutListItem(
+                          Icons.insights_outlined,
+                          '任务统计',
+                          '多维度数据分析与可视化图表',
+                        ),
 
-                    const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                    // 技术信息
-                    _buildAboutListItem(
-                      Icons.code_outlined,
-                      '技术栈',
-                      'Flutter + Dart 跨平台开发',
+                        // 技术信息
+                        _buildAboutListItem(
+                          Icons.code_outlined,
+                          '技术栈',
+                          'Flutter + Dart 跨平台开发',
+                        ),
+                        _buildAboutListItem(
+                          Icons.person_outline,
+                          '开发者',
+                          '黄勇',
+                        ),
+                        _buildAboutListItem(
+                          Icons.email_outlined,
+                          '联系邮箱',
+                          '222582@qq.com',
+                        ),
+                      ],
                     ),
-                    _buildAboutListItem(
-                      Icons.person_outline,
-                      '开发者',
-                      '黄勇',
-                    ),
-                    _buildAboutListItem(
-                      Icons.email_outlined,
-                      '联系邮箱',
-                      '222582@qq.com',
-                    ),
-                  ],
-                ),
-              ),
-              ), // SingleChildScrollView
+                  ),
+                ), // SingleChildScrollView
               ), // Flexible
 
               // 底部按钮
