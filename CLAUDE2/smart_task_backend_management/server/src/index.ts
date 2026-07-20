@@ -1169,6 +1169,7 @@ app.post("/api/tasks/sync/push", auth, (req: AuthedRequest, res) => {
           startTime: z.string().optional(),
           dueTime: z.string().optional(),
           completedAt: z.string().optional(),
+          archivedAt: z.string().nullable().optional(),
           reminderTime: z.string().optional(),
           assignee: z.string().optional(),
           parentId: z.string().optional(),

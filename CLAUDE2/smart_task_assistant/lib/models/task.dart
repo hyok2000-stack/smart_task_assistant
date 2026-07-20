@@ -34,6 +34,7 @@ class Task {
   String? recurringRule;
   DateTime createdAt;
   DateTime updatedAt;
+  DateTime? archivedAt;
   List<String> tagIds;
   List<String> attachmentPaths;
   int? reminderMinutes; // 提前提醒分钟数，如 15 表示提前15分钟提醒
@@ -68,6 +69,7 @@ class Task {
     this.recurringRule,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.archivedAt,
     List<String>? tagIds,
     List<String>? attachmentPaths,
     this.reminderMinutes,
@@ -145,12 +147,13 @@ class Task {
     final createdAtStr = json['created_at'];
     final updatedAtStr = json['updated_at'];
 
-    if (id == null || title == null || createdAtStr == null || updatedAtStr == null) {
-      throw FormatException(
-        'Invalid task JSON: missing required fields. '
-        'Required: id, title, created_at, updated_at. '
-        'Got: ${json.keys.join(", ")}'
-      );
+    if (id == null ||
+        title == null ||
+        createdAtStr == null ||
+        updatedAtStr == null) {
+      throw FormatException('Invalid task JSON: missing required fields. '
+          'Required: id, title, created_at, updated_at. '
+          'Got: ${json.keys.join(", ")}');
     }
 
     try {
@@ -177,6 +180,9 @@ class Task {
         recurringRule: json['recurring_rule'] as String?,
         createdAt: DateTime.parse(createdAtStr as String),
         updatedAt: DateTime.parse(updatedAtStr as String),
+        archivedAt: json['archived_at'] != null
+            ? DateTime.parse(json['archived_at'] as String)
+            : null,
         tagIds: json['tag_ids'] != null
             ? List<String>.from(jsonDecode(json['tag_ids'] as String))
             : [],
@@ -230,6 +236,7 @@ class Task {
       'recurring_rule': recurringRule,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'archived_at': archivedAt?.toIso8601String(),
       'tag_ids': jsonEncode(tagIds),
       'attachment_paths': jsonEncode(attachmentPaths),
       'reminder_minutes': reminderMinutes,
@@ -270,6 +277,7 @@ class Task {
     Object? recurringRule = _sentinel,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Object? archivedAt = _sentinel,
     List<String>? tagIds,
     List<String>? attachmentPaths,
     Object? reminderMinutes = _sentinel,
@@ -292,21 +300,36 @@ class Task {
     return Task(
       id: id ?? this.id,
       title: title ?? this.title,
-      content: identical(content, _sentinel) ? this.content : content as String?,
+      content:
+          identical(content, _sentinel) ? this.content : content as String?,
       status: status ?? this.status,
       priority: priority ?? this.priority,
-      startTime: identical(startTime, _sentinel) ? this.startTime : startTime as DateTime?,
-      dueTime: identical(dueTime, _sentinel) ? this.dueTime : dueTime as DateTime?,
-      completedAt: identical(completedAt, _sentinel) ? this.completedAt : completedAt as DateTime?,
-      assignee: identical(assignee, _sentinel) ? this.assignee : assignee as String?,
-      parentId: identical(parentId, _sentinel) ? this.parentId : parentId as String?,
+      startTime: identical(startTime, _sentinel)
+          ? this.startTime
+          : startTime as DateTime?,
+      dueTime:
+          identical(dueTime, _sentinel) ? this.dueTime : dueTime as DateTime?,
+      completedAt: identical(completedAt, _sentinel)
+          ? this.completedAt
+          : completedAt as DateTime?,
+      assignee:
+          identical(assignee, _sentinel) ? this.assignee : assignee as String?,
+      parentId:
+          identical(parentId, _sentinel) ? this.parentId : parentId as String?,
       isRecurring: isRecurring ?? this.isRecurring,
-      recurringRule: identical(recurringRule, _sentinel) ? this.recurringRule : recurringRule as String?,
+      recurringRule: identical(recurringRule, _sentinel)
+          ? this.recurringRule
+          : recurringRule as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      archivedAt: identical(archivedAt, _sentinel)
+          ? this.archivedAt
+          : archivedAt as DateTime?,
       tagIds: tagIds ?? List.from(this.tagIds),
       attachmentPaths: attachmentPaths ?? List.from(this.attachmentPaths),
-      reminderMinutes: identical(reminderMinutes, _sentinel) ? this.reminderMinutes : reminderMinutes as int?,
+      reminderMinutes: identical(reminderMinutes, _sentinel)
+          ? this.reminderMinutes
+          : reminderMinutes as int?,
       reminderDismissed: reminderDismissed ?? this.reminderDismissed,
       reminderVoiceEnabled: reminderVoiceEnabled ?? this.reminderVoiceEnabled,
       reminderVoiceType: reminderVoiceType ?? this.reminderVoiceType,
@@ -315,14 +338,24 @@ class Task {
       reminderCustomVoicePath: identical(reminderCustomVoicePath, _sentinel)
           ? this.reminderCustomVoicePath
           : reminderCustomVoicePath as String?,
-      sourceType: identical(sourceType, _sentinel) ? this.sourceType : sourceType as String?,
-      sourceTaskId: identical(sourceTaskId, _sentinel) ? this.sourceTaskId : sourceTaskId as String?,
-      sourceDistributionId: identical(sourceDistributionId, _sentinel) ? this.sourceDistributionId : sourceDistributionId as String?,
+      sourceType: identical(sourceType, _sentinel)
+          ? this.sourceType
+          : sourceType as String?,
+      sourceTaskId: identical(sourceTaskId, _sentinel)
+          ? this.sourceTaskId
+          : sourceTaskId as String?,
+      sourceDistributionId: identical(sourceDistributionId, _sentinel)
+          ? this.sourceDistributionId
+          : sourceDistributionId as String?,
       teamId: identical(teamId, _sentinel) ? this.teamId : teamId as String?,
-      ownerUserId: identical(ownerUserId, _sentinel) ? this.ownerUserId : ownerUserId as String?,
+      ownerUserId: identical(ownerUserId, _sentinel)
+          ? this.ownerUserId
+          : ownerUserId as String?,
       version: version ?? this.version,
       sortOrder: sortOrder ?? this.sortOrder,
-      assigneeUserId: identical(assigneeUserId, _sentinel) ? this.assigneeUserId : assigneeUserId as String?,
+      assigneeUserId: identical(assigneeUserId, _sentinel)
+          ? this.assigneeUserId
+          : assigneeUserId as String?,
       lastSyncedServerData: lastSyncedServerData ?? this.lastSyncedServerData,
     );
   }

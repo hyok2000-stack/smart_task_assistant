@@ -1769,6 +1769,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 label: const Text('复制任务'),
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  await context
+                                      .read<TaskProvider>()
+                                      .archiveTask(task.id);
+                                  if (context.mounted) Navigator.pop(context);
+                                },
+                                icon: const Icon(Icons.archive_outlined,
+                                    size: 18),
+                                label: const Text('归档'),
+                              ),
+                            ),
                           ],
                         ),
                         if (BackendApiService.instance.isLoggedIn)
@@ -3889,6 +3903,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   const Spacer(),
+                  if (provider.archivedTasks.isNotEmpty)
+                    IconButton(
+                      tooltip: '归档箱',
+                      onPressed: () => _showArchivedTasks(provider),
+                      icon: Badge(
+                        label: Text('${provider.archivedTasks.length}'),
+                        child: const Icon(Icons.inventory_2_outlined),
+                      ),
+                    ),
                   // 展开/收起图标
                   AnimatedRotation(
                     turns: _isCompletedExpanded ? 0.5 : 0,
@@ -3952,6 +3975,52 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  void _showArchivedTasks(TaskProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * 0.7,
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.inventory_2_outlined),
+                title: Text('任务归档箱',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('归档任务保留全部内容，可随时恢复'),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Consumer<TaskProvider>(
+                  builder: (_, currentProvider, __) => ListView.separated(
+                    itemCount: currentProvider.archivedTasks.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final task = currentProvider.archivedTasks[index];
+                      return ListTile(
+                        leading: const Icon(Icons.archive_outlined),
+                        title: Text(task.title),
+                        subtitle: Text(
+                            '归档于 ${_formatDateTime(task.archivedAt ?? task.updatedAt)}'),
+                        trailing: TextButton.icon(
+                          onPressed: () =>
+                              currentProvider.restoreArchivedTask(task.id),
+                          icon: const Icon(Icons.restore_rounded),
+                          label: const Text('恢复'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -4587,6 +4656,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 : () async {
                     await provider.batchUpdateTasks(_selectedTaskIds.toList(),
                         status: TaskStatus.inProgress);
+                    setState(() {
+                      _selectedTaskIds.clear();
+                    });
+                  },
+          ),
+          IconButton(
+            icon: const Icon(Icons.archive_outlined, size: 20),
+            tooltip: '批量归档',
+            onPressed: _selectedTaskIds.isEmpty
+                ? null
+                : () async {
+                    await provider.batchArchiveTasks(_selectedTaskIds.toList());
                     setState(() {
                       _selectedTaskIds.clear();
                     });

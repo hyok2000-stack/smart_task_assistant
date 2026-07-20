@@ -134,8 +134,9 @@ class ReminderChecker(private val context: Context) {
                reminder_dismissed, reminder_voice_enabled, reminder_voice_type,
                reminder_voice_style, reminder_voice_speed, reminder_custom_voice_path, assignee
                FROM tasks
-               WHERE status IN (0, 1)
-                 AND reminder_dismissed = 0
+                WHERE status IN (0, 1)
+                  AND archived_at IS NULL
+                  AND reminder_dismissed = 0
                  AND reminder_minutes IS NOT NULL
                  AND due_time IS NOT NULL""",
             null

@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 14, // 添加 last_synced_server 字段（三路合并的服务端快照）
+      version: 15, // 添加 archived_at 字段（任务归档/恢复）
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -101,7 +101,8 @@ class DatabaseHelper {
         version INTEGER,
         sort_order INTEGER DEFAULT 0,
         assignee_user_id TEXT,
-        last_synced_server TEXT
+        last_synced_server TEXT,
+        archived_at TEXT
       )
     ''');
 
@@ -252,6 +253,13 @@ class DatabaseHelper {
 
   /// 升级数据库
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 15) {
+      try {
+        await db.execute('ALTER TABLE tasks ADD COLUMN archived_at TEXT');
+      } catch (e) {
+        debugPrint('列 archived_at 已存在: $e');
+      }
+    }
     // 版本1 -> 版本2: 添加提醒相关字段
     if (oldVersion < 2) {
       try {
@@ -454,8 +462,8 @@ class DatabaseHelper {
 
       // 习惯表添加自定义语音路径
       try {
-        await db.execute(
-            'ALTER TABLE habits ADD COLUMN custom_voice_path TEXT');
+        await db
+            .execute('ALTER TABLE habits ADD COLUMN custom_voice_path TEXT');
       } catch (e) {
         debugPrint('列 custom_voice_path 已存在: $e');
       }
@@ -483,20 +491,17 @@ class DatabaseHelper {
     // 版本9 -> 版本10: 添加任务来源字段
     if (oldVersion < 10) {
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN source_type TEXT');
+        await db.execute('ALTER TABLE tasks ADD COLUMN source_type TEXT');
       } catch (e) {
         debugPrint('列 source_type 已存在: $e');
       }
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN source_task_id TEXT');
+        await db.execute('ALTER TABLE tasks ADD COLUMN source_task_id TEXT');
       } catch (e) {
         debugPrint('列 source_task_id 已存在: $e');
       }
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN team_id TEXT');
+        await db.execute('ALTER TABLE tasks ADD COLUMN team_id TEXT');
       } catch (e) {
         debugPrint('列 team_id 已存在: $e');
       }
@@ -520,8 +525,7 @@ class DatabaseHelper {
         debugPrint('列 source_distribution_id 已存在: $e');
       }
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN owner_user_id TEXT');
+        await db.execute('ALTER TABLE tasks ADD COLUMN owner_user_id TEXT');
       } catch (e) {
         debugPrint('列 owner_user_id 已存在: $e');
       }
@@ -531,8 +535,7 @@ class DatabaseHelper {
     // 版本11 -> 版本12: 添加 version 字段
     if (oldVersion < 12) {
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN version INTEGER');
+        await db.execute('ALTER TABLE tasks ADD COLUMN version INTEGER');
       } catch (e) {
         debugPrint('列 version 已存在: $e');
       }
@@ -548,8 +551,7 @@ class DatabaseHelper {
         debugPrint('列 sort_order 已存在: $e');
       }
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN assignee_user_id TEXT');
+        await db.execute('ALTER TABLE tasks ADD COLUMN assignee_user_id TEXT');
       } catch (e) {
         debugPrint('列 assignee_user_id 已存在: $e');
       }
@@ -559,8 +561,8 @@ class DatabaseHelper {
     // 版本13 -> 版本14: 添加 last_synced_server（三路合并的服务端快照）
     if (oldVersion < 14) {
       try {
-        await db.execute(
-            'ALTER TABLE tasks ADD COLUMN last_synced_server TEXT');
+        await db
+            .execute('ALTER TABLE tasks ADD COLUMN last_synced_server TEXT');
       } catch (e) {
         debugPrint('列 last_synced_server 已存在: $e');
       }
@@ -585,11 +587,14 @@ class DatabaseHelper {
   Future<void> insertTask(Task task) async {
     final db = await database;
 
-    final existing = await db.query('tasks', where: 'id = ?', whereArgs: [task.id]);
+    final existing =
+        await db.query('tasks', where: 'id = ?', whereArgs: [task.id]);
     if (existing.isNotEmpty) {
-      await db.update('tasks', task.toJson(), where: 'id = ?', whereArgs: [task.id]);
+      await db.update('tasks', task.toJson(),
+          where: 'id = ?', whereArgs: [task.id]);
     } else {
-      await db.insert('tasks', task.toJson(), conflictAlgorithm: ConflictAlgorithm.fail);
+      await db.insert('tasks', task.toJson(),
+          conflictAlgorithm: ConflictAlgorithm.fail);
     }
   }
 
@@ -689,7 +694,10 @@ class DatabaseHelper {
   /// 搜索任务
   Future<List<Task>> searchTasks(String keyword) async {
     final db = await database;
-    final escaped = keyword.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+    final escaped = keyword
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
     final List<Map<String, dynamic>> maps = await db.query(
       'tasks',
       where: 'title LIKE ? OR content LIKE ?',
@@ -786,7 +794,11 @@ class DatabaseHelper {
     final overdue = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM tasks WHERE due_time < ? AND status != ? AND status != ?',
-            [now.toIso8601String(), TaskStatus.completed.index, TaskStatus.cancelled.index],
+            [
+              now.toIso8601String(),
+              TaskStatus.completed.index,
+              TaskStatus.cancelled.index
+            ],
           ),
         ) ??
         0;
@@ -959,7 +971,8 @@ class DatabaseHelper {
     final Map<String, List<HabitLog>> logsByDate = {};
     for (var map in maps) {
       final log = HabitLog.fromJson(map);
-      final date = DateTime(log.completedAt.year, log.completedAt.month, log.completedAt.day);
+      final date = DateTime(
+          log.completedAt.year, log.completedAt.month, log.completedAt.day);
       final dateKey = date.toIso8601String();
       logsByDate.putIfAbsent(dateKey, () => []).add(log);
     }
@@ -999,7 +1012,8 @@ class DatabaseHelper {
   }
 
   /// 批量获取习惯今日完成数量（单次 SQL 查询）
-  Future<Map<String, int>> getHabitTodayCountsBatch(List<String> habitIds) async {
+  Future<Map<String, int>> getHabitTodayCountsBatch(
+      List<String> habitIds) async {
     if (habitIds.isEmpty) return {};
     final db = await database;
     final now = DateTime.now();
@@ -1029,8 +1043,8 @@ class DatabaseHelper {
   ///
   /// 返回按日期升序的列表，每项为 (日期, 完成总量)。
   /// 用于计算连续打卡天数（streak）和近 7 天热力图展示。
-  Future<List<({DateTime date, int count})>> getHabitDailyCounts(
-      String habitId, {int days = 30}) async {
+  Future<List<({DateTime date, int count})>> getHabitDailyCounts(String habitId,
+      {int days = 30}) async {
     final db = await database;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1073,7 +1087,11 @@ class DatabaseHelper {
     await db.delete(
       'habit_logs',
       where: 'habit_id = ? AND completed_at >= ? AND completed_at < ?',
-      whereArgs: [habitId, todayStart.toIso8601String(), todayEnd.toIso8601String()],
+      whereArgs: [
+        habitId,
+        todayStart.toIso8601String(),
+        todayEnd.toIso8601String()
+      ],
     );
   }
 

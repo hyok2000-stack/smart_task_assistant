@@ -35,12 +35,12 @@ class TaskProvider extends ChangeNotifier {
     // invokeMethod 返回 Future，真正的 PlatformException 是异步到达的，
     // 同步 try/catch 无法捕获——必须用 catchError，否则在 release 模式下
     // 会触发原生崩溃。
-    _reminderChannel
-        .invokeMethod('notifyDataChanged', {'type': type, 'id': id})
-        .catchError((_) {});
+    _reminderChannel.invokeMethod(
+        'notifyDataChanged', {'type': type, 'id': id}).catchError((_) {});
   }
 
   List<Task> _tasks = [];
+  List<Task> _archivedTasks = [];
   List<Task> _todayTasks = [];
   List<Task> _overdueTasks = [];
   List<Tag> _tags = [];
@@ -81,6 +81,7 @@ class TaskProvider extends ChangeNotifier {
 
   // Getters
   List<Task> get tasks => _tasks;
+  List<Task> get archivedTasks => List.unmodifiable(_archivedTasks);
   List<Task> get todayTasks => _todayTasks;
   List<Task> get overdueTasks => _overdueTasks;
   List<Task> get completedTasks => _cachedCompletedTasks;
@@ -143,8 +144,11 @@ class TaskProvider extends ChangeNotifier {
       result = result.where((t) {
         final dt = t.dueTime ?? t.startTime;
         if (dt == null) return false;
-        if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!)) return false;
-        if (_filterDateTo != null && dt.isAfter(_filterDateTo!.add(const Duration(days: 1)))) return false;
+        if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!))
+          return false;
+        if (_filterDateTo != null &&
+            dt.isAfter(_filterDateTo!.add(const Duration(days: 1))))
+          return false;
         return true;
       }).toList();
     }
@@ -155,15 +159,16 @@ class TaskProvider extends ChangeNotifier {
 
   /// 排序后的任务列表（置顶在前，然后按 sortOrder，再按 createdAt）
   List<Task> get sortedTasks {
-    return List.of(_tasks)..sort((a, b) {
-      final aOrder = a.sortOrder ?? 0;
-      final bOrder = b.sortOrder ?? 0;
-      if (aOrder < 0 && bOrder >= 0) return -1;
-      if (bOrder < 0 && aOrder >= 0) return 1;
-      final orderCmp = aOrder.compareTo(bOrder);
-      if (orderCmp != 0) return orderCmp;
-      return b.createdAt.compareTo(a.createdAt);
-    });
+    return List.of(_tasks)
+      ..sort((a, b) {
+        final aOrder = a.sortOrder ?? 0;
+        final bOrder = b.sortOrder ?? 0;
+        if (aOrder < 0 && bOrder >= 0) return -1;
+        if (bOrder < 0 && aOrder >= 0) return 1;
+        final orderCmp = aOrder.compareTo(bOrder);
+        if (orderCmp != 0) return orderCmp;
+        return b.createdAt.compareTo(a.createdAt);
+      });
   }
 
   bool isPinned(String taskId) {
@@ -191,7 +196,8 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> reorderTasks(int oldIndex, int newIndex, {List<Task>? displayTasks}) async {
+  Future<void> reorderTasks(int oldIndex, int newIndex,
+      {List<Task>? displayTasks}) async {
     if (oldIndex == newIndex) return;
     final source = displayTasks ?? _tasks;
     final list = List.of(source);
@@ -209,6 +215,7 @@ class TaskProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
   Map<String, int> get stats {
     final total = _tasks.length;
     final completed = _tasks.where((t) => t.isCompleted).length;
@@ -260,7 +267,8 @@ class TaskProvider extends ChangeNotifier {
       debugPrint('任务数量: ${tasks.length}');
       debugPrint('标签数量: ${tags.length}');
 
-      _tasks = tasks;
+      _archivedTasks = tasks.where((t) => t.archivedAt != null).toList();
+      _tasks = tasks.where((t) => t.archivedAt == null).toList();
       // 全量重载后，filteredTasks 缓存失效
       _filteredTasksCache = null;
 
@@ -498,8 +506,7 @@ class TaskProvider extends ChangeNotifier {
       final anchor = completedTask.dueTime ?? now;
       final rule = completedTask.recurringRule;
 
-      int daysInMonth(int year, int month) =>
-          DateTime(year, month + 1, 0).day;
+      int daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
 
       // 单次推进一个周期：月/年基于 t 递增，"日"基于 anchor 固定语义
       DateTime advance(DateTime t) {
@@ -689,15 +696,48 @@ class TaskProvider extends ChangeNotifier {
 
       notifyListeners();
       _notifyNativeDataChanged('task', id);
-      final deletedTask = realTask ?? Task(
-        id: id,
-        title: 'deleted',
-        updatedAt: DateTime.now(),
-      );
+      final deletedTask = realTask ??
+          Task(
+            id: id,
+            title: 'deleted',
+            updatedAt: DateTime.now(),
+          );
       _syncTaskSilently(deletedTask, deleted: true);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+    }
+  }
+
+  Future<void> archiveTask(String id) async {
+    final index = _tasks.indexWhere((task) => task.id == id);
+    if (index < 0) return;
+    final archived = _tasks[index].copyWith(archivedAt: DateTime.now());
+    await _storage.updateTask(archived);
+    _tasks.removeAt(index);
+    _archivedTasks.insert(0, archived);
+    _refreshTaskLists();
+    notifyListeners();
+    _notifyNativeDataChanged('task', id);
+    _syncTaskSilently(archived);
+  }
+
+  Future<void> restoreArchivedTask(String id) async {
+    final index = _archivedTasks.indexWhere((task) => task.id == id);
+    if (index < 0) return;
+    final restored = _archivedTasks[index].copyWith(archivedAt: null);
+    await _storage.updateTask(restored);
+    _archivedTasks.removeAt(index);
+    _tasks.insert(0, restored);
+    _refreshTaskLists();
+    notifyListeners();
+    _notifyNativeDataChanged('task', id);
+    _syncTaskSilently(restored);
+  }
+
+  Future<void> batchArchiveTasks(List<String> ids) async {
+    for (final id in ids) {
+      await archiveTask(id);
     }
   }
 
@@ -824,7 +864,8 @@ class TaskProvider extends ChangeNotifier {
   List<String> get recentSearches => _recentSearches;
 
   void _addRecentSearch(String query) {
-    _recentSearches = [query, ..._recentSearches.where((s) => s != query)].take(10).toList();
+    _recentSearches =
+        [query, ..._recentSearches.where((s) => s != query)].take(10).toList();
     _saveRecentSearches();
   }
 
@@ -931,7 +972,8 @@ class TaskProvider extends ChangeNotifier {
         final task = _tasks[i];
         if (task.tagIds != null && task.tagIds!.contains(id)) {
           final updatedTagIds = task.tagIds!.where((tid) => tid != id).toList();
-          final updated = task.copyWith(tagIds: updatedTagIds.isEmpty ? [] : updatedTagIds);
+          final updated =
+              task.copyWith(tagIds: updatedTagIds.isEmpty ? [] : updatedTagIds);
           await _storage.updateTask(updated);
           _tasks[i] = updated;
         }
@@ -1065,7 +1107,8 @@ class TaskProvider extends ChangeNotifier {
       if (habitsData != null) {
         debugPrint('准备导入 ${habitsData.length} 个习惯');
         final dbHelper = DatabaseHelper();
-        final existingHabitIds = (await dbHelper.getAllHabits()).map((h) => h.id).toSet();
+        final existingHabitIds =
+            (await dbHelper.getAllHabits()).map((h) => h.id).toSet();
         for (final habitData in habitsData) {
           try {
             final habit = Habit.fromJson(habitData as Map<String, dynamic>);
@@ -1120,17 +1163,21 @@ class TaskProvider extends ChangeNotifier {
     _setBackendSyncing(true);
     try {
       await _backend.init();
-      if (!_backend.isLoggedIn) { _isSyncRunning = false; return 0; }
+      if (!_backend.isLoggedIn) {
+        _isSyncRunning = false;
+        return 0;
+      }
 
       final lastSyncAt = await _backend.getLastSyncAt();
-      final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
+      final pullResult = await _backend.pullTasks(
+          since: lastSyncAt, localTasks: List.of(_tasks));
       var changed = 0;
 
       for (final remoteTask in pullResult.tasks) {
         final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
         if (index == -1) {
-          final withBase = remoteTask.copyWith(
-              lastSyncedServerData: remoteTask.toJson());
+          final withBase =
+              remoteTask.copyWith(lastSyncedServerData: remoteTask.toJson());
           await _storage.insertTask(withBase);
           _tasks.insert(0, withBase);
           changed++;
@@ -1139,8 +1186,8 @@ class TaskProvider extends ChangeNotifier {
 
         final localTask = _tasks[index];
         if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
-          final withBase = remoteTask.copyWith(
-              lastSyncedServerData: remoteTask.toJson());
+          final withBase =
+              remoteTask.copyWith(lastSyncedServerData: remoteTask.toJson());
           await _storage.updateTask(withBase);
           _tasks[index] = withBase;
           changed++;
@@ -1161,7 +1208,8 @@ class TaskProvider extends ChangeNotifier {
       // push 待同步评论，再保存 pull 返回的远端评论
       await _syncPendingComments();
       if (pullResult.comments.isNotEmpty) {
-        await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
+        await TaskCommentService.instance
+            .saveRemoteComments(pullResult.comments);
       }
 
       // 更新分发缓存
@@ -1202,20 +1250,25 @@ class TaskProvider extends ChangeNotifier {
 
     try {
       await _backend.init();
-      if (!_backend.isLoggedIn) { _isSyncRunning = false; return 0; }
+      if (!_backend.isLoggedIn) {
+        _isSyncRunning = false;
+        return 0;
+      }
       // 先处理重试队列
       final retrySucceeded = await SyncQueueService.instance.retryAll();
-      _pendingBackendSyncCount = (_pendingBackendSyncCount - retrySucceeded).clamp(0, 999999);
+      _pendingBackendSyncCount =
+          (_pendingBackendSyncCount - retrySucceeded).clamp(0, 999999);
 
       // 先 pull：获取远端最新数据（包括 admin 修改的），更新本地
       final lastSyncAt = await _backend.getLastSyncAt();
-      final pullResult = await _backend.pullTasks(since: lastSyncAt, localTasks: List.of(_tasks));
+      final pullResult = await _backend.pullTasks(
+          since: lastSyncAt, localTasks: List.of(_tasks));
       var changed = 0;
       for (final remoteTask in pullResult.tasks) {
         final index = _tasks.indexWhere((task) => task.id == remoteTask.id);
         if (index == -1) {
-          final withBase = remoteTask.copyWith(
-              lastSyncedServerData: remoteTask.toJson());
+          final withBase =
+              remoteTask.copyWith(lastSyncedServerData: remoteTask.toJson());
           await _storage.insertTask(withBase);
           _tasks.insert(0, withBase);
           changed++;
@@ -1223,8 +1276,8 @@ class TaskProvider extends ChangeNotifier {
         }
         final localTask = _tasks[index];
         if (remoteTask.updatedAt.isAfter(localTask.updatedAt)) {
-          final withBase = remoteTask.copyWith(
-              lastSyncedServerData: remoteTask.toJson());
+          final withBase =
+              remoteTask.copyWith(lastSyncedServerData: remoteTask.toJson());
           await _storage.updateTask(withBase);
           _tasks[index] = withBase;
           changed++;
@@ -1240,7 +1293,8 @@ class TaskProvider extends ChangeNotifier {
         await SyncQueueService.instance.removeByTaskId(deletedId);
       }
       if (pullResult.comments.isNotEmpty) {
-        await TaskCommentService.instance.saveRemoteComments(pullResult.comments);
+        await TaskCommentService.instance
+            .saveRemoteComments(pullResult.comments);
       }
 
       // 后 push：只推送自上次同步后变化的任务（本地改动），未变化的不重复全量推送，
@@ -1251,7 +1305,9 @@ class TaskProvider extends ChangeNotifier {
       final changedTasks = pushCutoff == null
           ? List.of(_tasks)
           : _tasks
-              .where((t) => t.updatedAt.isAfter(pushCutoff) || conflictTaskIds.contains(t.id))
+              .where((t) =>
+                  t.updatedAt.isAfter(pushCutoff) ||
+                  conflictTaskIds.contains(t.id))
               .toList();
       final pushConflicts = changedTasks.isEmpty
           ? <ConflictInfo>[]
@@ -1332,7 +1388,8 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 解决冲突：keepLocal 强制推送本地版本，keepServer 接受服务器版本
-  Future<void> resolveConflict(String taskId, {bool keepLocal = true, bool merge = false}) async {
+  Future<void> resolveConflict(String taskId,
+      {bool keepLocal = true, bool merge = false}) async {
     final conflictIndex = _conflicts.indexWhere((c) => c.taskId == taskId);
     if (conflictIndex == -1) return;
     final conflict = _conflicts[conflictIndex];
@@ -1352,11 +1409,13 @@ class TaskProvider extends ChangeNotifier {
         // forcePush 后服务器 version = serverVersion + 1；合并结果设为 serverVersion + 2，
         // 使下次 push 的 version 严格大于服务器，走后端“接受”分支（version > existing），
         // 避免落入 isIdentical 严格字段比较而误报冲突（死循环）。
-        mergedJson['version'] =
-            (localVersion > serverVersion + 1 ? localVersion : serverVersion + 1) + 1;
+        mergedJson['version'] = (localVersion > serverVersion + 1
+                ? localVersion
+                : serverVersion + 1) +
+            1;
         mergedJson['updated_at'] = DateTime.now().toIso8601String();
-        final mergedTask =
-            Task.fromJson(mergedJson).copyWith(lastSyncedServerData: serverJson);
+        final mergedTask = Task.fromJson(mergedJson)
+            .copyWith(lastSyncedServerData: serverJson);
         await _storage.updateTask(mergedTask);
         _tasks[localIndex] = mergedTask;
         _refreshTaskLists();
@@ -1375,9 +1434,12 @@ class TaskProvider extends ChangeNotifier {
         // forcePush 后服务器 version = serverVersion + 1。本地设为 serverVersion + 2，
         // 使下次 push 走后端“接受”分支（version > existing），避免落入 isIdentical
         // 严格字段比较而误报冲突（“全部本地”后再次同步又冲突的死循环）。
-        final newVersion =
-            (localVersion > serverVersion + 1 ? localVersion : serverVersion + 1) + 1;
-        final newBase = Map<String, dynamic>.from(payload)..['version'] = newVersion;
+        final newVersion = (localVersion > serverVersion + 1
+                ? localVersion
+                : serverVersion + 1) +
+            1;
+        final newBase = Map<String, dynamic>.from(payload)
+          ..['version'] = newVersion;
         _tasks[localIndex] = _tasks[localIndex].copyWith(
           updatedAt: DateTime.now(),
           version: newVersion,
@@ -1391,7 +1453,8 @@ class TaskProvider extends ChangeNotifier {
       final index = _tasks.indexWhere((t) => t.id == taskId);
       if (index != -1) {
         final localTask = _tasks[index];
-        final remoteTask = _taskFromBackendJson(serverData, localTask: localTask);
+        final remoteTask =
+            _taskFromBackendJson(serverData, localTask: localTask);
         await _storage.updateTask(remoteTask);
         _tasks[index] = remoteTask;
         _refreshTaskLists();
@@ -1404,15 +1467,26 @@ class TaskProvider extends ChangeNotifier {
 
   /// 三路合并：基于 base（上次同步的服务端快照），逐字段合并 local 与 server。
   /// local 改的字段保留本地，server 改的保留服务器，双方都改的取服务器（权威）。
-  Map<String, dynamic> _threeWayMerge(
-      Map<String, dynamic> base,
-      Map<String, dynamic> local,
-      Map<String, dynamic> server) {
+  Map<String, dynamic> _threeWayMerge(Map<String, dynamic> base,
+      Map<String, dynamic> local, Map<String, dynamic> server) {
     const fields = [
-      'title', 'content', 'status', 'priority', 'start_time', 'due_time',
-      'completed_at', 'assignee', 'parent_id', 'is_recurring', 'recurring_rule',
-      'tag_ids', 'reminder_minutes', 'reminder_dismissed',
-      'reminder_voice_enabled', 'sort_order', 'assignee_user_id',
+      'title',
+      'content',
+      'status',
+      'priority',
+      'start_time',
+      'due_time',
+      'completed_at',
+      'assignee',
+      'parent_id',
+      'is_recurring',
+      'recurring_rule',
+      'tag_ids',
+      'reminder_minutes',
+      'reminder_dismissed',
+      'reminder_voice_enabled',
+      'sort_order',
+      'assignee_user_id',
     ];
     final result = Map<String, dynamic>.from(local);
     for (final f in fields) {
@@ -1433,47 +1507,50 @@ class TaskProvider extends ChangeNotifier {
   }
 
   // Batch operations
-  Future<void> batchUpdateTasks(List<String> ids, {TaskStatus? status, String? tagId, bool addTag = true}) async {
+  Future<void> batchUpdateTasks(List<String> ids,
+      {TaskStatus? status, String? tagId, bool addTag = true}) async {
     _suppressNotify = true;
     try {
-    for (final id in ids) {
-      try {
-      final index = _tasks.indexWhere((t) => t.id == id);
-      if (index == -1) continue;
-      var task = _tasks[index];
-      final wasCompleted = task.status == TaskStatus.completed;
-      if (status != null) {
-        task = task.copyWith(status: status);
-        if (status == TaskStatus.completed) {
-          task = task.copyWith(completedAt: DateTime.now());
+      for (final id in ids) {
+        try {
+          final index = _tasks.indexWhere((t) => t.id == id);
+          if (index == -1) continue;
+          var task = _tasks[index];
+          final wasCompleted = task.status == TaskStatus.completed;
+          if (status != null) {
+            task = task.copyWith(status: status);
+            if (status == TaskStatus.completed) {
+              task = task.copyWith(completedAt: DateTime.now());
+            }
+          }
+          if (tagId != null) {
+            final tags = List<String>.from(task.tagIds);
+            if (addTag && !tags.contains(tagId)) {
+              tags.add(tagId);
+            } else if (!addTag) {
+              tags.remove(tagId);
+            }
+            task = task.copyWith(tagIds: tags);
+          }
+          task = task.copyWith(
+            version: (task.version ?? 1) + 1,
+            updatedAt: DateTime.now(),
+          );
+          _tasks[index] = task;
+          await _storage.updateTask(task);
+          _syncTaskSilently(task);
+          // 周期任务批量完成时创建下一期
+          if (!wasCompleted &&
+              task.status == TaskStatus.completed &&
+              task.isRecurring) {
+            await _createRecurringTask(task);
+          }
+        } catch (e) {
+          debugPrint('批量更新任务 $id 失败: $e');
         }
       }
-      if (tagId != null) {
-        final tags = List<String>.from(task.tagIds);
-        if (addTag && !tags.contains(tagId)) {
-          tags.add(tagId);
-        } else if (!addTag) {
-          tags.remove(tagId);
-        }
-        task = task.copyWith(tagIds: tags);
-      }
-      task = task.copyWith(
-        version: (task.version ?? 1) + 1,
-        updatedAt: DateTime.now(),
-      );
-      _tasks[index] = task;
-      await _storage.updateTask(task);
-      _syncTaskSilently(task);
-      // 周期任务批量完成时创建下一期
-      if (!wasCompleted && task.status == TaskStatus.completed && task.isRecurring) {
-        await _createRecurringTask(task);
-      }
-      } catch (e) {
-        debugPrint('批量更新任务 $id 失败: $e');
-      }
-    }
-    _refreshTaskLists();
-    notifyListeners();
+      _refreshTaskLists();
+      notifyListeners();
     } finally {
       _suppressNotify = false;
     }
@@ -1483,7 +1560,9 @@ class TaskProvider extends ChangeNotifier {
     final toDelete = ids.where((id) => _tasks.any((t) => t.id == id)).toList();
     final deleteSet = toDelete.toSet();
     // Preserve task data before removal for sync
-    final tasksToDelete = {for (final id in toDelete) id: _tasks.firstWhere((t) => t.id == id)};
+    final tasksToDelete = {
+      for (final id in toDelete) id: _tasks.firstWhere((t) => t.id == id)
+    };
     // Persist deletions first
     for (final id in toDelete) {
       await _storage.deleteTask(id);
@@ -1519,7 +1598,8 @@ class TaskProvider extends ChangeNotifier {
   }
 
   Task _taskFromBackendJson(Map<String, dynamic> json, {Task? localTask}) {
-    return BackendApiService.instance.taskFromBackendJson(json, localTask: localTask);
+    return BackendApiService.instance
+        .taskFromBackendJson(json, localTask: localTask);
   }
 
   Future<int> _syncPendingComments() async {
@@ -1630,9 +1710,7 @@ class TaskProvider extends ChangeNotifier {
       final raw = prefs.getString(_templatesPrefsKey);
       if (raw == null || raw.isEmpty) return [];
       final list = jsonDecode(raw) as List;
-      return list
-          .map((e) => Task.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return list.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
     } catch (e) {
       debugPrint('加载任务模板失败: $e');
       return [];
@@ -1655,8 +1733,8 @@ class TaskProvider extends ChangeNotifier {
         version: 1,
       );
       templates.insert(0, template);
-      await prefs.setString(
-          _templatesPrefsKey, jsonEncode(templates.map((t) => t.toJson()).toList()));
+      await prefs.setString(_templatesPrefsKey,
+          jsonEncode(templates.map((t) => t.toJson()).toList()));
       debugPrint('已保存任务模板: ${template.title}');
     } catch (e) {
       debugPrint('保存任务模板失败: $e');
@@ -1687,8 +1765,8 @@ class TaskProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final templates = await getTaskTemplates();
       templates.removeWhere((t) => t.id == templateId);
-      await prefs.setString(
-          _templatesPrefsKey, jsonEncode(templates.map((t) => t.toJson()).toList()));
+      await prefs.setString(_templatesPrefsKey,
+          jsonEncode(templates.map((t) => t.toJson()).toList()));
     } catch (e) {
       debugPrint('删除任务模板失败: $e');
     }

@@ -80,6 +80,7 @@ export interface Task {
   startTime?: string;
   dueTime?: string;
   completedAt?: string;
+  archivedAt?: string | null;
   reminderTime?: string;
   assignee?: string;
   parentId?: string;

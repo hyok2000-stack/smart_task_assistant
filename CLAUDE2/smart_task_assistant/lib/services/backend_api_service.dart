@@ -1058,7 +1058,7 @@ class BackendApiService {
         'updatedAt': task.updatedAt.toIso8601String(),
       });
     }
-    return _withoutNulls({
+    final payload = _withoutNulls({
       'id': task.id,
       'title': task.title,
       'content': task.content,
@@ -1097,6 +1097,9 @@ class BackendApiService {
       'updatedAt': task.updatedAt.toIso8601String(),
       'deletedAt': deletedAt,
     });
+    // archivedAt 必须保留显式 null，恢复归档时服务端才能清除此字段。
+    payload['archivedAt'] = task.archivedAt?.toIso8601String();
+    return payload;
   }
 
   Map<String, dynamic> _withoutNulls(Map<String, dynamic> value) {
@@ -1222,6 +1225,9 @@ class BackendApiService {
       completedAt: json.containsKey('completedAt')
           ? _parseDateField(json['completedAt'])
           : localTask?.completedAt,
+      archivedAt: json.containsKey('archivedAt')
+          ? _parseDateField(json['archivedAt'])
+          : localTask?.archivedAt,
       assignee: _jsonOrLocal(json, 'assignee', () => localTask?.assignee),
       parentId: _jsonOrLocal(json, 'parentId', () => localTask?.parentId),
       isRecurring: json.containsKey('isRecurring')
