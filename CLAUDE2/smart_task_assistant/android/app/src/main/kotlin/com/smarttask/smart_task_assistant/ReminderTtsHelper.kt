@@ -177,6 +177,8 @@ class ReminderTtsHelper(private val context: Context) {
     // Map utteranceId → speak text for logging
     private val utteranceTextMap = mutableMapOf<String, String>()
     private val utteranceStartLatchMap = mutableMapOf<String, CountDownLatch>()
+    // 文件合成播报：utteranceId → 合成完成闩锁（onDone/onError 触发）
+    private val utteranceDoneLatchMap = mutableMapOf<String, CountDownLatch>()
     private var nextSpeakShouldFlush = true
 
     private fun setupUtteranceListener() {
@@ -189,8 +191,9 @@ class ReminderTtsHelper(private val context: Context) {
             override fun onDone(utteranceId: String?) {
                 val text = utteranceTextMap.remove(utteranceId) ?: "?"
                 utteranceStartLatchMap.remove(utteranceId)
+                utteranceDoneLatchMap.remove(utteranceId)?.countDown()
                 Log.d(TAG, "TTS onDone: $text, pending=${utteranceTextMap.size}")
-                if (utteranceTextMap.isEmpty()) {
+                if (utteranceTextMap.isEmpty() && utteranceDoneLatchMap.isEmpty()) {
                     nextSpeakShouldFlush = true
                     abandonAudioFocus()
                     releaseTtsWakeLock()
@@ -199,8 +202,9 @@ class ReminderTtsHelper(private val context: Context) {
             override fun onError(utteranceId: String?) {
                 val text = utteranceTextMap.remove(utteranceId) ?: "?"
                 utteranceStartLatchMap.remove(utteranceId)
+                utteranceDoneLatchMap.remove(utteranceId)?.countDown()
                 Log.e(TAG, "TTS onError: $text, pending=${utteranceTextMap.size}")
-                if (utteranceTextMap.isEmpty()) {
+                if (utteranceTextMap.isEmpty() && utteranceDoneLatchMap.isEmpty()) {
                     nextSpeakShouldFlush = true
                     abandonAudioFocus()
                     releaseTtsWakeLock()
@@ -239,6 +243,150 @@ class ReminderTtsHelper(private val context: Context) {
      */
     fun waitForReady() {
         waitForInit()
+    }
+
+    /**
+     * 文件合成播报：先让 TTS 引擎把文本合成为音频文件，再用 MediaPlayer 播放。
+     *
+     * 为什么不用直接 speak()：部分 ROM（华为/荣耀等）在后台会限制 TTS 引擎的
+     * 实时音频输出——onStart 照常回调、speak 返回成功，但物理上无声。
+     * 文件合成不依赖引擎的实时输出通路，合成出的 WAV 由我们自己的 MediaPlayer
+     * 在闹钟音量流上播放（与已验证可用的提示音同一路径），可靠性显著更高。
+     *
+     * @return true 表示音频文件已开始播放（音频确实存在的诚实信号）
+     */
+    fun speakViaFile(
+        text: String,
+        voiceType: String? = "neutral",
+        voiceStyle: String? = "standard",
+        speed: String? = "normal",
+        customVoicePath: String? = null
+    ): Boolean {
+        val accepted = AtomicBoolean(false)
+        val acceptedLatch = CountDownLatch(1)
+        handler.post {
+            try {
+                acquireTtsWakeLock()
+
+                // 自定义语音文件优先，直接播放（不经 TTS）
+                if (!customVoicePath.isNullOrBlank()) {
+                    val file = File(customVoicePath)
+                    if (file.exists()) {
+                        accepted.set(playCustomVoiceFile(file))
+                        return@post
+                    }
+                    Log.w(TAG, "Custom voice file not found: $customVoicePath, falling back to TTS")
+                }
+
+                if (!waitForInit() || tts == null) {
+                    Log.e(TAG, "speakViaFile: TTS not ready (ttsReady=$ttsReady)")
+                    return@post
+                }
+
+                // 音调/语速与 speak() 保持一致
+                val basePitch = when (voiceType) {
+                    "male" -> 0.7f
+                    "female" -> 1.3f
+                    else -> 1.0f
+                }
+                val styleAdjustment = when (voiceStyle) {
+                    "gentle" -> -0.1f
+                    "lively" -> 0.1f
+                    else -> 0.0f
+                }
+                val pitch = (basePitch + styleAdjustment).coerceIn(0.5f, 2.0f)
+                val rate = when (speed) {
+                    "slow" -> 0.8f
+                    "fast" -> 1.4f
+                    else -> 1.0f
+                }
+                tts?.setPitch(pitch)
+                tts?.setSpeechRate(rate)
+
+                // 合成为 WAV 文件（覆盖同一文件，避免缓存堆积）
+                val wavFile = File(context.cacheDir, "reminder_tts.wav")
+                try { if (wavFile.exists()) wavFile.delete() } catch (_: Exception) {}
+                val utteranceId = "ttsfile_${System.currentTimeMillis()}"
+                val doneLatch = CountDownLatch(1)
+                utteranceDoneLatchMap[utteranceId] = doneLatch
+                val result = tts?.synthesizeToFile(text, Bundle(), wavFile, utteranceId)
+                val synthesized = result != TextToSpeech.ERROR &&
+                    doneLatch.await(15, TimeUnit.SECONDS) &&
+                    wavFile.exists() && wavFile.length() > 100
+                utteranceDoneLatchMap.remove(utteranceId)
+                if (!synthesized) {
+                    Log.e(TAG, "speakViaFile: synthesis failed (result=$result, file=${wavFile.length()} bytes)")
+                    return@post
+                }
+                Log.d(TAG, "speakViaFile: synthesized ${wavFile.length()} bytes, playing via MediaPlayer")
+
+                lastSuccessfulSpeakTime = System.currentTimeMillis()
+                accepted.set(playSynthesizedFile(wavFile))
+            } catch (e: Exception) {
+                Log.e(TAG, "speakViaFile failed", e)
+                accepted.set(false)
+            } finally {
+                if (utteranceTextMap.isEmpty() && utteranceDoneLatchMap.isEmpty()) {
+                    abandonAudioFocus()
+                    releaseTtsWakeLock()
+                }
+                acceptedLatch.countDown()
+            }
+        }
+        return try {
+            // 上限：init 重试(~35s) + 合成(15s) + 富余
+            acceptedLatch.await(60, TimeUnit.SECONDS)
+            accepted.get()
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "speakViaFile wait interrupted", e)
+            false
+        }
+    }
+
+    /**
+     * 播放合成出的音频文件。音量流自适应：闹钟流静音时改走媒体音量。
+     */
+    private fun playSynthesizedFile(file: File): Boolean {
+        return try {
+            requestAudioFocus()
+            val alarmVol = try {
+                audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+            } catch (_: Exception) { 1 }
+            val attrs = if (alarmVol > 0) {
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            } else {
+                Log.w(TAG, "STREAM_ALARM muted, playing synthesized voice on media stream")
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            }
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(attrs)
+            mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+            mp.setDataSource(file.absolutePath)
+            mp.setOnCompletionListener {
+                abandonAudioFocus()
+                it.release()
+            }
+            mp.setOnErrorListener { player, what, extra ->
+                Log.e(TAG, "Synthesized voice playback error: what=$what extra=$extra")
+                abandonAudioFocus()
+                player.release()
+                true
+            }
+            mp.prepare()
+            mp.start()
+            Log.d(TAG, "Synthesized voice playing (alarmStream=${alarmVol > 0})")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to play synthesized voice file", e)
+            abandonAudioFocus()
+            false
+        }
     }
 
     /**

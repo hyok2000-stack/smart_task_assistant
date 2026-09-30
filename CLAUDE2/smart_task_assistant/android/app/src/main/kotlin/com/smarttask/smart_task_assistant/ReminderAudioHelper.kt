@@ -29,6 +29,11 @@ class ReminderAudioHelper(private val context: Context) {
         .setUsage(AudioAttributes.USAGE_ALARM)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
+    // STREAM_ALARM 被静音时的兜底：走媒体音量（用户听音乐/视频的音量）
+    private val mediaAudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
     private val speechAudioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ALARM)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -95,26 +100,45 @@ class ReminderAudioHelper(private val context: Context) {
     }
 
     /**
-     * 播放提醒通知音
-     * 使用 USAGE_ALARM + TYPE_ALARM 铃声，Doze 模式下最可靠
+     * 播放提醒通知音。
+     * 声音来源多级兜底：assets 自定义铃声 → 系统闹钟铃声 → 系统通知铃声 → 系统来电铃声。
+     * 音量流自适应：STREAM_ALARM 音量为 0 时（用户把闹钟音量调零/部分 ROM 默认静音），
+     * 改用 USAGE_MEDIA 走媒体音量——否则 MediaPlayer "播放成功"但无声，
+     * 表现为"有震动没声音"。
      */
     fun playReminderSound(): MediaPlayer? {
         return try {
             val soundFile = ensureSoundFile()
-            // 优先使用闹钟铃声（比通知铃声更响，Doze 下更可靠）
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            val defaultUri = alarmUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            val mp = MediaPlayer()
-            mp.setAudioAttributes(alarmAudioAttributes)
-            mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
 
-            if (soundFile != null) {
-                mp.setDataSource(soundFile.absolutePath)
-            } else if (defaultUri != null) {
-                mp.setDataSource(context, defaultUri)
+            // 选择音频属性：闹钟流被静音时改走媒体流，保证可闻
+            val attrs = if (try {
+                    audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+                } catch (_: Exception) { 1 } > 0
+            ) {
+                alarmAudioAttributes
             } else {
+                Log.w(TAG, "STREAM_ALARM volume is 0, falling back to USAGE_MEDIA (media volume)")
+                mediaAudioAttributes
+            }
+
+            // 铃声来源逐级兜底，任何一级可用即可发声
+            val sourceUri: android.net.Uri? = soundFile?.let { android.net.Uri.fromFile(it) }
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            if (sourceUri == null) {
                 Log.w(TAG, "No notification sound available")
                 return null
+            }
+
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(attrs)
+            mp.setWakeMode(context.applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+
+            if (soundFile != null && sourceUri == android.net.Uri.fromFile(soundFile)) {
+                mp.setDataSource(soundFile.absolutePath)
+            } else {
+                mp.setDataSource(context, sourceUri)
             }
 
             mp.setOnCompletionListener {
@@ -127,7 +151,7 @@ class ReminderAudioHelper(private val context: Context) {
             }
             mp.prepare()
             mp.start()
-            Log.d(TAG, "Reminder sound started from ${if (soundFile != null) "asset" else "system notification"}")
+            Log.d(TAG, "Reminder sound started (source=$sourceUri, alarmStream=${attrs === alarmAudioAttributes})")
             mp
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play reminder sound", e)

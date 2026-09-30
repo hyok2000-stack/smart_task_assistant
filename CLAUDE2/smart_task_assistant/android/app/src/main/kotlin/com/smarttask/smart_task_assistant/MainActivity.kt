@@ -33,15 +33,9 @@ class MainActivity : FlutterActivity() {
 
     private fun dispatchReminderService(intent: Intent) {
         try {
-            // Android 13+ 需要通知权限才能启动前台服务显示通知，
-            // 未授权时启动前台服务会导致崩溃。检查权限后再启动。
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val nm = NotificationManagerCompat.from(this)
-                if (!nm.areNotificationsEnabled()) {
-                    Log.w("MainActivity", "Notifications not enabled, skipping foreground service start")
-                    return
-                }
-            }
+            // 注意：startForegroundService 不要求 POST_NOTIFICATIONS 权限——
+            // 未授权时前台服务照常运行，仅通知不显示。此前的"未授权则跳过启动"
+            // 门禁会让整条原生提醒链在 Android 13+ 上静默瘫痪（后台提醒完全失效）。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
             } else {
@@ -108,6 +102,25 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.smarttask.smart_task_assistant/file")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "persistUri" -> {
+                        // 持久化 content URI 读取权限，确保 App 重启后仍能访问附件
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr == null) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val uri = Uri.parse(uriStr)
+                            contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            Log.w("MainActivity", "Failed to persist URI: $uriStr", e)
+                            result.success(false) // 非 content URI 则忽略
+                        }
+                    }
                     "openFile" -> {
                         val uri = call.argument<String>("uri")
                         if (uri == null) {
@@ -115,8 +128,9 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         try {
+                            val parsedUri = Uri.parse(uri)
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = Uri.parse(uri)
+                                data = parsedUri
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }

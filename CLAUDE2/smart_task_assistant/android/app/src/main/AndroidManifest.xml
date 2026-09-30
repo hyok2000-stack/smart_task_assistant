@@ -61,7 +61,11 @@
             android:exported="false">
         </receiver>
 
-        <!-- 开机/解锁/升级自启 BroadcastReceiver -->
+        <!-- 开机/解锁/升级/时钟变化自启 BroadcastReceiver -->
+        <!-- TIME_SET/DATE_CHANGED/TIMEZONE_CHANGED 在隐式广播豁免名单中，
+             清单注册有效——用于时钟校准/变化后恢复提醒闹钟链；
+             注意 USER_PRESENT 自 API 26 起清单注册不再触发（非豁免广播），
+             仅对低版本 Android 有效，保留兼容 -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -72,6 +76,9 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.USER_PRESENT" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

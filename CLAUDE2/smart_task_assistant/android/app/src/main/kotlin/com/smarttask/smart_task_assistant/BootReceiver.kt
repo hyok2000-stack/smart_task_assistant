@@ -23,7 +23,10 @@ class BootReceiver : BroadcastReceiver() {
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON",
             Intent.ACTION_USER_PRESENT,
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            "android.intent.action.TIME_SET",
+            "android.intent.action.DATE_CHANGED",
+            "android.intent.action.TIMEZONE_CHANGED" -> {
                 startServiceIfNeeded(context)
             }
         }

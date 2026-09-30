@@ -556,26 +556,18 @@ class ReminderForegroundService : Service() {
             soundMp = audioHelper?.playReminderSound()
         }
 
-        // 发静默通知（仅视觉展示，声音由 MediaPlayer 处理）
+        // 发通知做视觉展示。若 MediaPlayer 播放失败（Doze 下音频硬件未恢复时
+        // 可能静默失败），改用带铃声的通知渠道（reminder_alarm_v3）作为系统级兜底，
+        // 通知系统有更高优先级，渠道自带铃声+振动。
         if (!uiAlreadyShowing) {
-            postSilentNotification(item, playSound = false)
+            postSilentNotification(item, playSound = item.soundEnabled && soundMp == null)
         }
 
         // TTS 语音播报
         if (hasVoiceContent) {
-            // 有语音时：响 800ms 后停掉铃声，让语音接管
-            if (soundMp != null) {
-                try { Thread.sleep(800L) } catch (_: InterruptedException) {}
-                try {
-                    soundMp.stop()
-                    soundMp.release()
-                    soundMp = null
-                    Log.d(TAG, "Sound stopped after warm-up, starting voice")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to stop sound", e)
-                }
-            }
-
+            // 注意：不再在 800ms 后停掉铃声。后台 TTS 引擎可能已被系统冻结——
+            // onStart 照常回调但实际无声，提前掐断铃声会同时失去两路声音。
+            // 让铃声完整播完、语音短暂叠加，保证至少有一路可闻。
             val speakText = when {
                 !item.voiceText.isNullOrBlank() -> item.voiceText
                 item.type == "task" -> {
@@ -592,13 +584,26 @@ class ReminderForegroundService : Service() {
             Log.d(TAG, "Requesting voice for '${item.title}': text='$speakText'")
             val effectiveCustomVoicePath =
                 if (item.voiceType == "custom") item.customVoicePath else null
-            voiceAccepted = ttsHelper?.speak(
+            // 首选文件合成播报：后台/Doze 下部分 ROM 限制 TTS 引擎实时输出，
+            // 直接 speak 会"成功但无声"；文件合成走 MediaPlayer，可靠性更高
+            voiceAccepted = ttsHelper?.speakViaFile(
                 text = speakText ?: "",
                 voiceType = item.voiceType,
                 voiceStyle = item.voiceStyle,
                 speed = item.voiceSpeed,
                 customVoicePath = effectiveCustomVoicePath
             ) ?: false
+            if (!voiceAccepted) {
+                // 文件合成失败（引擎不支持/被冻结）→ 退回直接 speak
+                Log.w(TAG, "speakViaFile failed, trying direct speak for '${item.title}'")
+                voiceAccepted = ttsHelper?.speak(
+                    text = speakText ?: "",
+                    voiceType = item.voiceType,
+                    voiceStyle = item.voiceStyle,
+                    speed = item.voiceSpeed,
+                    customVoicePath = effectiveCustomVoicePath
+                ) ?: false
+            }
             Log.d(TAG, "Voice accepted for '${item.title}': $voiceAccepted")
 
             // 语音失败时：补响完整铃声兜底（确保用户至少能听到声音提醒）
@@ -662,7 +667,8 @@ class ReminderForegroundService : Service() {
     private fun postSilentNotification(item: ReminderChecker.ReminderItem, playSound: Boolean = true) {
         try {
             val nm = getSystemService(NotificationManager::class.java)
-            val channelId = if (playSound && item.soundEnabled) "reminder_alarm_v2" else "reminder_silent_v2"
+            // playSound=true 时使用 v3 渠道（铃声+振动+绕过勿扰），由通知系统兜底发声
+            val channelId = if (playSound && item.soundEnabled) "reminder_alarm_v3" else "reminder_silent_v2"
 
             val notification = NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.mipmap.ic_launcher)
@@ -826,6 +832,23 @@ class ReminderForegroundService : Service() {
                 setBypassDnd(true)
             }
             nm.createNotificationChannel(alarmChannel)
+
+            // v3 兜底渠道：铃声 + 振动 + 绕过勿扰。
+            // 用途：MediaPlayer 在 Doze 下播放失败时，由通知系统发声。
+            // 旧渠道一旦创建属性即冻结（用户已装的 v2 无法更改），故新建 v3。
+            val fallbackChannel = NotificationChannel(
+                "reminder_alarm_v3",
+                "任务提醒（兜底铃声）",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "声音播放失败时由通知系统播放铃声并振动"
+                if (soundUri != null) setSound(soundUri, alarmAttributes) else setSound(null, null)
+                enableVibration(true)
+                enableLights(true)
+                setShowBadge(false)
+                setBypassDnd(true)
+            }
+            nm.createNotificationChannel(fallbackChannel)
 
             // 静音通道（有语音播报时使用）
             val silentChannel = NotificationChannel(
