@@ -16,7 +16,7 @@ class AttachmentPicker extends StatefulWidget {
   final List<String> attachmentPaths;
 
   /// 附件变化回调
-  final ValueChanged<List<String>> onChanged;
+  final Future<void> Function(List<String>) onChanged;
 
   const AttachmentPicker({
     super.key,
@@ -32,6 +32,13 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
   List<String> get _paths => widget.attachmentPaths;
   bool _picking = false;
 
+  /// 直接调用 onChanged 回调（同步），不做异步包装——
+  /// onChanged 是 ValueChanged<List<String>>（同步），父组件的 setState 会在
+  /// 当前 frame 结束后执行，不会在 build 过程中触发 rebuild。
+  void _update(List<String> paths) {
+    widget.onChanged(paths);
+  }
+
   Future<void> _pickFiles() async {
     if (_picking) return;
     setState(() => _picking = true);
@@ -42,14 +49,20 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
         return;
       }
 
-      // 华为/部分 Android 设备上 FilePicker 的 path 和 bytes 都可能为 null，
-      // 只返回 identifier（content URI）。不再复制文件，直接存可用的引用。
       final newPaths = <String>[];
       for (final file in result.files) {
-        // 优先用 identifier（Android 上是 content URI），其次 path
         final ref = file.identifier ?? file.path;
         if (ref != null && ref.isNotEmpty) {
           newPaths.add(ref);
+          // content URI 需要持久化读取权限，否则 App 重启后无法打开
+          if (ref.startsWith('content://')) {
+            try {
+              const channel = MethodChannel('com.smarttask.smart_task_assistant/file');
+              await channel.invokeMethod('persistUri', {'uri': ref});
+            } catch (e) {
+              debugPrint('持久化附件 URI 权限失败（非致命）: $e');
+            }
+          }
           debugPrint('附件已添加: name=${file.name}, ref=$ref');
         } else {
           debugPrint('附件无可用引用: name=${file.name}, '
@@ -60,7 +73,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
       }
 
       if (newPaths.isNotEmpty) {
-        widget.onChanged([..._paths, ...newPaths]);
+        _update([..._paths, ...newPaths]);
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -124,10 +137,10 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     }
   }
 
-  void _removeAt(int index) {
+  Future<void> _removeAt(int index) async {
     final newList = List<String>.from(_paths);
     newList.removeAt(index);
-    widget.onChanged(newList);
+    _update(newList);
   }
 
   @override
@@ -226,6 +239,8 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
 
   Widget _buildAttachmentItem(String path, int index) {
     final fileName = _extractFileName(path);
+    final ext = fileName.split('.').last.toLowerCase();
+    final isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext);
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -235,22 +250,39 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
       ),
       child: Row(
         children: [
-          Icon(Icons.insert_drive_file_outlined,
-              size: 18, color: Colors.grey[600]),
+          if (isImage && !path.startsWith('content://'))
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: Image.file(File(path),
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _typeIcon(ext)),
+            )
+          else
+            _typeIcon(ext),
           const SizedBox(width: 8),
           // 点击文件名可打开预览
           Expanded(
             child: GestureDetector(
               onTap: () => _openAttachment(path),
-              child: Text(
-                fileName,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.primaryColor,
-                  decoration: TextDecoration.underline,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(fileName,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.primaryColor,
+                          decoration: TextDecoration.underline),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  FutureBuilder<String>(
+                    future: _fileSize(path),
+                    builder: (_, snapshot) => Text(snapshot.data ?? '读取大小中…',
+                        style:
+                            TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  ),
+                ],
               ),
             ),
           ),
@@ -273,5 +305,31 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
         ],
       ),
     );
+  }
+
+  Widget _typeIcon(String ext) {
+    final icon = switch (ext) {
+      'pdf' => Icons.picture_as_pdf_outlined,
+      'doc' || 'docx' => Icons.description_outlined,
+      'xls' || 'xlsx' => Icons.table_chart_outlined,
+      'zip' || 'rar' || '7z' => Icons.folder_zip_outlined,
+      'mp3' || 'wav' || 'm4a' => Icons.audio_file_outlined,
+      'mp4' || 'mov' || 'avi' => Icons.video_file_outlined,
+      'jpg' || 'jpeg' || 'png' || 'webp' || 'gif' => Icons.image_outlined,
+      _ => Icons.insert_drive_file_outlined,
+    };
+    return Icon(icon, size: 28, color: Colors.grey[600]);
+  }
+
+  Future<String> _fileSize(String path) async {
+    if (path.startsWith('content://')) return '系统文件';
+    try {
+      final bytes = await File(path).length();
+      if (bytes < 1024) return '$bytes B';
+      if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    } catch (_) {
+      return '大小未知';
+    }
   }
 }

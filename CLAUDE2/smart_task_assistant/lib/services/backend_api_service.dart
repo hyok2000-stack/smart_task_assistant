@@ -296,7 +296,7 @@ class BackendApiService {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString(_tokenKey);
+    _token = await SecureStorageService.instance.readBackendToken();
     _userId = prefs.getString(_userIdKey);
     _nickname = prefs.getString(_nicknameKey);
     _baseUrl = prefs.getString(_baseUrlKey) ?? defaultBaseUrl;
@@ -358,7 +358,7 @@ class BackendApiService {
     _password = rememberPassword ? password : null;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, session.token);
+    await SecureStorageService.instance.writeBackendToken(session.token);
     await prefs.setString(_userIdKey, session.userId);
     await prefs.setString(_nicknameKey, session.nickname);
     await prefs.setString(_accountKey, account);
@@ -420,7 +420,7 @@ class BackendApiService {
     _nickname = session.nickname;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, session.token);
+    await SecureStorageService.instance.writeBackendToken(session.token);
     await prefs.setString(_userIdKey, session.userId);
     await prefs.setString(_nicknameKey, session.nickname);
     await prefs.setString(_accountKey, nickname);
@@ -440,7 +440,7 @@ class BackendApiService {
     _nickname = null;
     _password = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    await SecureStorageService.instance.deleteBackendToken();
     await prefs.remove(_userIdKey);
     await prefs.remove(_nicknameKey);
     await prefs.remove(_passwordKey);
@@ -1156,7 +1156,7 @@ class BackendApiService {
     _userId = user['id'] as String;
     _nickname = user['nickname'] as String;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    await SecureStorageService.instance.writeBackendToken(token);
     await prefs.setString(_userIdKey, _userId!);
     await prefs.setString(_nicknameKey, _nickname!);
   }
@@ -1182,7 +1182,13 @@ class BackendApiService {
 
   DateTime? _parseDateField(dynamic v) {
     if (v is DateTime) return v;
-    if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
+    if (v is String && v.isNotEmpty) {
+      final parsed = DateTime.tryParse(v);
+      // 后端可能返回 UTC 时间（带 Z 后缀），转换为本地时间，
+      // 否则与本地 DateTime.now() 混用会导致排序/逾期判断偏移时区差。
+      if (parsed != null && parsed.isUtc) return parsed.toLocal();
+      return parsed;
+    }
     if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
     return null;
   }

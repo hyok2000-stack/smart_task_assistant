@@ -774,47 +774,7 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  // C10: Report generation card
-  Widget _buildReportCard(BuildContext context, TaskProvider? provider) {
-    final l = context.l;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.assessment_rounded,
-                    color: AppTheme.primaryColor, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Text(l.isZh ? '数据报告' : 'Data Report',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const _ReportGenerator(),
-        ],
-      ),
-    );
-  }
+  // C10: Report generation — 直接使用独立的 _ReportGenerator widget
 }
 
 /// 报告生成器——完全独立的 StatefulWidget，不依赖外部 Consumer。
@@ -827,22 +787,31 @@ class _ReportGenerator extends StatefulWidget {
 }
 
 class _ReportGeneratorState extends State<_ReportGenerator> {
-  Map<String, dynamic>? _report;
-  bool _loading = false;
-  String _period = 'weekly';
+  // 用 ValueNotifier 管理状态——即使 widget 被 Consumer rebuild 重建，
+  // notifier 是外部对象，状态不会丢失，UI 一定会更新。
+  final _reportNotifier = ValueNotifier<Map<String, dynamic>?>(null);
+  final _loadingNotifier = ValueNotifier<bool>(false);
+  final _periodNotifier = ValueNotifier<String>('weekly');
   int _requestId = 0;
 
+  @override
+  void dispose() {
+    _reportNotifier.dispose();
+    _loadingNotifier.dispose();
+    _periodNotifier.dispose();
+    super.dispose();
+  }
+
   Future<void> _generate() async {
-    final requestedPeriod = _period;
+    final requestedPeriod = _periodNotifier.value;
     final requestedRange = _reportRange(requestedPeriod);
     final requestId = ++_requestId;
     debugPrint('===== 报告生成开始, period=$requestedPeriod =====');
-    setState(() => _loading = true);
+    _loadingNotifier.value = true;
 
     Map<String, dynamic> data;
 
     try {
-      // 尝试从后端获取
       if (BackendApiService.instance.isLoggedIn) {
         final remote = await BackendApiService.instance
             .getReportSummary(
@@ -864,20 +833,18 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
       data = _generateLocalReport(requestedPeriod);
     }
 
-    // 快速切换周期时，忽略已经过期的请求结果。
-    if (mounted && requestId == _requestId) {
-      setState(() {
-        _report = data;
-        _loading = false;
-      });
+    if (requestId == _requestId) {
+      _reportNotifier.value = data;
+      _loadingNotifier.value = false;
       debugPrint('===== 报告生成完成: $data =====');
-      // 给一个明确的视觉反馈，方便用户确认点击生效
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_periodLabel(requestedPeriod)} 已生成'),
-          duration: const Duration(milliseconds: 800),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_periodLabel(requestedPeriod)} 已生成'),
+            duration: const Duration(milliseconds: 800),
+          ),
+        );
+      }
     }
   }
 
@@ -951,103 +918,134 @@ class _ReportGeneratorState extends State<_ReportGenerator> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) => Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _periodChip(context.l.isZh ? '日报' : 'Daily', 'daily'),
-              _periodChip(context.l.isZh ? '周报' : 'Weekly', 'weekly'),
-              _periodChip(context.l.isZh ? '月报' : 'Monthly', 'monthly'),
-              ElevatedButton(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        debugPrint('报告生成按钮被点击');
-                        _generate();
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  minimumSize: const Size(80, 44),
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : Text(context.l.isZh ? '生成' : 'Generate',
-                        style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
+        // 周期切换 + 生成按钮
+        ValueListenableBuilder<String>(
+          valueListenable: _periodNotifier,
+          builder: (context, period, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _loadingNotifier,
+              builder: (context, loading, _) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _periodChip(context.l.isZh ? '日报' : 'Daily', 'daily'),
+                    _periodChip(context.l.isZh ? '周报' : 'Weekly', 'weekly'),
+                    _periodChip(context.l.isZh ? '月报' : 'Monthly', 'monthly'),
+                    ElevatedButton(
+                      onPressed: loading
+                          ? null
+                          : () {
+                              debugPrint('报告生成按钮被点击');
+                              _generate();
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        minimumSize: const Size(80, 44),
+                      ),
+                      child: loading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : Text(context.l.isZh ? '生成' : 'Generate',
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(
-                child: CircularProgressIndicator(color: AppTheme.primaryColor)),
-          ),
-        if (_report != null && !_loading) ...[
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_periodLabel(_report?['period']?.toString() ?? _period)} · $_reportDateRange',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTheme.textSecondaryColor),
-                ),
-                const SizedBox(height: 8),
-                _reportRow(context.l.isZh ? '总任务数' : 'Total Tasks',
-                    '${_report!['totalTasks'] ?? 0}'),
-                _reportRow(context.l.completedTasks,
-                    '${_report!['completedTasks'] ?? 0}'),
-                _reportRow(context.l.statusInProgress,
-                    '${_report!['inProgressTasks'] ?? 0}'),
-                _reportRow(
-                    context.l.overdueTasks, '${_report!['overdueTasks'] ?? 0}'),
-                _reportRow(context.l.completionRate,
-                    '${(_report!['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
-              ],
-            ),
-          ),
-        ],
+        // 报告数据展示
+        ValueListenableBuilder<Map<String, dynamic>?>(
+          valueListenable: _reportNotifier,
+          builder: (context, report, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _loadingNotifier,
+              builder: (context, loading, _) {
+                if (loading) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                        child:
+                            CircularProgressIndicator(color: AppTheme.primaryColor)),
+                  );
+                }
+                if (report == null) {
+                  return const SizedBox.shrink();
+                }
+                final periodStr =
+                    report['period']?.toString() ?? _periodNotifier.value;
+                final start = DateTime.tryParse(
+                        report['periodStart']?.toString() ?? '')?.toLocal();
+                final end = DateTime.tryParse(
+                        report['periodEnd']?.toString() ?? '')?.toLocal();
+                String dateRange = '';
+                if (start != null && end != null) {
+                  String fmt(DateTime v) => '${v.month}/${v.day}';
+                  dateRange =
+                      '${fmt(start)} - ${fmt(end.subtract(const Duration(days: 1)))}';
+                }
+                return Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_periodLabel(periodStr)} · $dateRange',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondaryColor),
+                          ),
+                          const SizedBox(height: 8),
+                          _reportRow(context.l.isZh ? '总任务数' : 'Total Tasks',
+                              '${report['totalTasks'] ?? 0}'),
+                          _reportRow(context.l.completedTasks,
+                              '${report['completedTasks'] ?? 0}'),
+                          _reportRow(context.l.statusInProgress,
+                              '${report['inProgressTasks'] ?? 0}'),
+                          _reportRow(context.l.overdueTasks,
+                              '${report['overdueTasks'] ?? 0}'),
+                          _reportRow(
+                              context.l.completionRate,
+                              '${(report['completionRate'] as num? ?? 0).toStringAsFixed(1)}%'),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
       ],
     );
   }
 
-  String get _reportDateRange {
-    final start =
-        DateTime.tryParse(_report?['periodStart']?.toString() ?? '')?.toLocal();
-    final end =
-        DateTime.tryParse(_report?['periodEnd']?.toString() ?? '')?.toLocal();
-    if (start == null || end == null) return '';
-    String format(DateTime value) => '${value.month}/${value.day}';
-    return '${format(start)} - ${format(end.subtract(const Duration(days: 1)))}';
-  }
-
   Widget _periodChip(String label, String value) {
-    final selected = _period == value;
+    final selected = _periodNotifier.value == value;
     return GestureDetector(
       onTap: () {
-        if (_period == value) return;
-        setState(() => _period = value);
-        // 切换周期后自动重新生成报告（如果已有数据或之前生成过）
+        if (_periodNotifier.value == value) return;
+        _periodNotifier.value = value;
         _generate();
       },
       child: Container(

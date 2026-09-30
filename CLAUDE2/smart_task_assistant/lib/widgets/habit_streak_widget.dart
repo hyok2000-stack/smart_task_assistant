@@ -38,18 +38,14 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
   Future<void> _loadData() async {
     final provider = context.read<HabitProvider>();
     final streak = await provider.calculateStreak(widget.habit.id);
-    final recent = await provider.getRecentDailyCounts(widget.habit.id, days: 7);
+    final recent =
+        await provider.getRecentDailyCounts(widget.habit.id, days: 7);
     if (!mounted) return;
     setState(() {
       _streak = streak;
       _recent = recent;
       _loading = false;
     });
-  }
-
-  /// 重新加载（进度变化时调用）
-  void _refresh() {
-    _loadData();
   }
 
   @override
@@ -74,7 +70,7 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
               _buildStreakBadge(),
               const Spacer(),
               Text(
-                '近 7 天',
+                '近 7 天 · 次数/目标',
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.grey[500],
@@ -107,9 +103,7 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
       );
     }
     // streak 为 0 时显示鼓励文案，而非冰冷的"连续 0 天"
-    final streakText = _streak > 0
-        ? '🔥 连续 $_streak 天'
-        : '🎯 今日开始打卡';
+    final streakText = _streak > 0 ? '🔥 连续 $_streak 天' : '🎯 今日开始打卡';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -127,7 +121,7 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
     );
   }
 
-  /// 近 7 天完成情况（圆点：达标填充色 / 未达标灰色）
+  /// 近 7 天完成情况：星期 + 当日次数/目标，达标后显示勾选。
   ///
   /// [todayCount] 是实时从 Provider 内存读取的今日进度，
   /// 覆盖 _recent 中最后一天（今天）的缓存值，确保点击后立即更新。
@@ -135,14 +129,18 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
     if (_loading || _recent.isEmpty) {
       return const SizedBox(
         height: 24,
-        child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))),
+        child: Center(
+            child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    // 均匀分布 7 个圆点，每个带星期标签
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(_recent.length, (i) {
         final d = _recent[i];
         // 今天用实时 todayCount 覆盖 DB 缓存值
@@ -157,39 +155,53 @@ class _HabitStreakWidgetState extends State<HabitStreakWidget> {
             d.date.year == today.year;
         // 部分进度比例（0~1），让打卡有可见反馈
         final progress = target > 0 ? (count / target).clamp(0.0, 1.0) : 0.0;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Tooltip(
-            message: '${d.date.month}/${d.date.day}: $count/$target',
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                // 达标：实色；有部分进度：半透明实色（随进度加深）；
-                // 无进度：极淡背景色
-                color: reached
-                    ? widget.color
-                    : (count > 0
-                        ? widget.color.withValues(alpha: 0.15 + progress * 0.55)
-                        : widget.color.withValues(alpha: 0.1)),
-                border: isToday
-                    ? Border.all(color: widget.color, width: 1.5)
-                    : null,
-              ),
-              // 有进度但未达标时，中心显示数字（更直观）
-              child: count > 0 && !reached
-                  ? Center(
-                      child: Text(
-                        '$count',
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                          color: widget.color,
+        return Tooltip(
+          message: '${d.date.month}月${d.date.day}日：完成 $count 次，目标 $target 次',
+          child: SizedBox(
+            width: 38,
+            child: Column(
+              children: [
+                Text(
+                  isToday ? '今天' : '周${weekdays[d.date.weekday - 1]}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                    color: isToday ? widget.color : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  width: 32,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: reached
+                        ? widget.color
+                        : (count > 0
+                            ? widget.color
+                                .withValues(alpha: 0.15 + progress * 0.45)
+                            : Colors.grey.withValues(alpha: 0.1)),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isToday
+                          ? widget.color
+                          : Colors.grey.withValues(alpha: 0.2),
+                      width: isToday ? 1.5 : 1,
+                    ),
+                  ),
+                  child: reached
+                      ? const Icon(Icons.check_rounded,
+                          size: 17, color: Colors.white)
+                      : Text(
+                          '$count/$target',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: count > 0 ? widget.color : Colors.grey[500],
+                          ),
                         ),
-                      ),
-                    )
-                  : null,
+                ),
+              ],
             ),
           ),
         );

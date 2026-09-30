@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import '../services/backend_api_service.dart';
+import '../services/task_history_service.dart';
 import '../theme/app_theme.dart';
 
 class ActivityFeedDialog extends StatefulWidget {
-  const ActivityFeedDialog({super.key});
+  final String? taskId;
+  final String? taskTitle;
+  final DateTime? taskCreatedAt;
+
+  const ActivityFeedDialog({
+    super.key,
+    this.taskId,
+    this.taskTitle,
+    this.taskCreatedAt,
+  });
 
   @override
   State<ActivityFeedDialog> createState() => _ActivityFeedDialogState();
@@ -11,6 +21,7 @@ class ActivityFeedDialog extends StatefulWidget {
 
 class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
   List<Map<String, dynamic>> _activities = [];
+  List<TaskHistoryEntry> _taskHistory = [];
   bool _isLoading = true;
 
   @override
@@ -21,6 +32,30 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
 
   Future<void> _loadActivities() async {
     try {
+      if (widget.taskId != null) {
+        final history =
+            await TaskHistoryService.instance.getForTask(widget.taskId!);
+        if (!history.any((entry) => entry.action == '创建') &&
+            widget.taskCreatedAt != null) {
+          history.add(TaskHistoryEntry(
+            id: 'legacy-created-${widget.taskId}',
+            taskId: widget.taskId!,
+            action: '创建',
+            field: '任务',
+            afterValue: widget.taskTitle,
+            actorName: '历史数据',
+            createdAt: widget.taskCreatedAt!,
+          ));
+          history.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        }
+        if (mounted) {
+          setState(() {
+            _taskHistory = history;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
       final activities = await BackendApiService.instance.getActivityFeed();
       if (mounted) {
         setState(() {
@@ -34,20 +69,34 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
   }
 
   IconData _actionIcon(String action) {
-    if (action.contains('create')) return Icons.add_circle_outline;
-    if (action.contains('update')) return Icons.edit_rounded;
-    if (action.contains('complete')) return Icons.check_circle_outline;
-    if (action.contains('delete')) return Icons.delete_outline;
-    if (action.contains('comment')) return Icons.chat_bubble_outline;
+    if (action.contains('create') || action.contains('创建'))
+      return Icons.add_circle_outline;
+    if (action.contains('update') || action.contains('编辑'))
+      return Icons.edit_rounded;
+    if (action.contains('complete') || action.contains('状态'))
+      return Icons.check_circle_outline;
+    if (action.contains('delete') || action.contains('删除'))
+      return Icons.delete_outline;
+    if (action.contains('comment') || action.contains('评论'))
+      return Icons.chat_bubble_outline;
+    if (action.contains('归档')) return Icons.archive_outlined;
+    if (action.contains('恢复')) return Icons.restore_rounded;
+    if (action.contains('指派')) return Icons.person_add_alt_rounded;
+    if (action.contains('附件')) return Icons.attach_file_rounded;
     return Icons.info_outline;
   }
 
   Color _actionColor(String action) {
-    if (action.contains('create')) return AppTheme.successColor;
-    if (action.contains('update')) return AppTheme.infoColor;
-    if (action.contains('complete')) return AppTheme.successColor;
-    if (action.contains('delete')) return AppTheme.errorColor;
-    if (action.contains('comment')) return AppTheme.primaryColor;
+    if (action.contains('create') || action.contains('创建'))
+      return AppTheme.successColor;
+    if (action.contains('update') || action.contains('编辑'))
+      return AppTheme.infoColor;
+    if (action.contains('complete') || action.contains('状态'))
+      return AppTheme.successColor;
+    if (action.contains('delete') || action.contains('删除'))
+      return AppTheme.errorColor;
+    if (action.contains('comment') || action.contains('评论'))
+      return AppTheme.primaryColor;
     return AppTheme.textSecondaryColor;
   }
 
@@ -102,8 +151,8 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Text(
-                  '团队动态',
+                Text(
+                  widget.taskId == null ? '团队动态' : '任务操作历史',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -122,14 +171,17 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
         child: CircularProgressIndicator(color: AppTheme.primaryColor),
       );
     }
+    if (widget.taskId != null) return _buildTaskHistory();
     if (_activities.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.timeline_outlined, size: 48, color: Colors.grey.shade400),
+            Icon(Icons.timeline_outlined,
+                size: 48, color: Colors.grey.shade400),
             const SizedBox(height: 12),
-            Text('暂无动态', style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
+            Text('暂无动态',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
           ],
         ),
       );
@@ -137,7 +189,8 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _activities.length,
-      separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
+      separatorBuilder: (_, __) =>
+          Divider(height: 1, color: Colors.grey.shade100),
       itemBuilder: (context, index) {
         final a = _activities[index];
         final action = a['action'] as String? ?? '';
@@ -151,16 +204,22 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
               color: _actionColor(action).withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(_actionIcon(action), size: 18, color: _actionColor(action)),
+            child: Icon(_actionIcon(action),
+                size: 18, color: _actionColor(action)),
           ),
           title: RichText(
             text: TextSpan(
-              style: const TextStyle(fontSize: 14, color: AppTheme.textPrimaryColor),
+              style: const TextStyle(
+                  fontSize: 14, color: AppTheme.textPrimaryColor),
               children: [
-                TextSpan(text: nickname, style: const TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(
+                    text: nickname,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 TextSpan(text: ' $action'),
                 if (taskTitle.isNotEmpty)
-                  TextSpan(text: ' 「$taskTitle」', style: TextStyle(color: AppTheme.primaryColor)),
+                  TextSpan(
+                      text: ' 「$taskTitle」',
+                      style: TextStyle(color: AppTheme.primaryColor)),
               ],
             ),
           ),
@@ -171,5 +230,63 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
         );
       },
     );
+  }
+
+  Widget _buildTaskHistory() {
+    if (_taskHistory.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history_rounded, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text('暂无该任务的操作记录', style: TextStyle(color: Colors.grey.shade500)),
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _taskHistory.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, index) {
+        final entry = _taskHistory[index];
+        final hasChange = entry.beforeValue != entry.afterValue &&
+            (entry.beforeValue != null || entry.afterValue != null);
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: _actionColor(entry.action).withValues(alpha: 0.12),
+            child: Icon(_actionIcon(entry.action),
+                size: 19, color: _actionColor(entry.action)),
+          ),
+          title: Text(
+              '${entry.actorName} · ${entry.action}${entry.field == '任务' ? '' : ' ${entry.field}'}',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasChange)
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(
+                    '${entry.beforeValue ?? '无'}  →  ${entry.afterValue ?? '无'}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              const SizedBox(height: 3),
+              Text(_formatExactTime(entry.createdAt),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatExactTime(DateTime time) {
+    final t = time.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
   }
 }

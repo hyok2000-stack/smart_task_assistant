@@ -132,6 +132,13 @@ class HabitReminderDialog extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
+                        // 今天不再提醒：snooze 到今天 24:00，明天自动恢复
+                        final now = DateTime.now();
+                        final tomorrow = DateTime(now.year, now.month, now.day + 1);
+                        final minutesUntilTomorrow =
+                            tomorrow.difference(now).inMinutes + 1;
+                        ReminderService()
+                            .snoozeHabit(habit.id, minutesUntilTomorrow);
                         Navigator.of(context).pop();
                       },
                       style: OutlinedButton.styleFrom(

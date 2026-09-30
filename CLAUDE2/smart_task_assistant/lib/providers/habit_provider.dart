@@ -299,7 +299,12 @@ class HabitProvider extends ChangeNotifier {
 
   /// 启用/禁用习惯
   Future<void> toggleHabitEnabled(String id) async {
-    final habit = _habits.firstWhere((h) => h.id == id);
+    final index = _habits.indexWhere((h) => h.id == id);
+    if (index < 0) {
+      debugPrint('toggleHabitEnabled: 习惯不存在 $id');
+      return;
+    }
+    final habit = _habits[index];
     final updatedHabit = habit.copyWith(isEnabled: !habit.isEnabled);
     await updateHabit(updatedHabit);
   }

@@ -32,6 +32,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _taskReminderVibrationEnabled = true;
   bool _habitReminderSoundEnabled = true;
   bool _habitReminderVibrationEnabled = true;
+  bool _autoCompleteParentTask = true;
   double _ttsVolume = 0.9; // 默认音量较高 (0.0-1.0)
 
   // AI服务配置
@@ -71,6 +72,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get taskReminderVibrationEnabled => _taskReminderVibrationEnabled;
   bool get habitReminderSoundEnabled => _habitReminderSoundEnabled;
   bool get habitReminderVibrationEnabled => _habitReminderVibrationEnabled;
+  bool get autoCompleteParentTask => _autoCompleteParentTask;
 
   bool isQuietTime(DateTime time) {
     if (!_quietHoursEnabled) return false;
@@ -147,6 +149,8 @@ class SettingsProvider extends ChangeNotifier {
       if (notificationsEnabled != null) {
         _notificationsEnabled = notificationsEnabled == 'true';
       }
+      _autoCompleteParentTask =
+          _getWebStorage('autoCompleteParentTask') != 'false';
 
       // 加载AI配置
       final aiModeStr = _getWebStorage('aiMode');
@@ -270,6 +274,7 @@ class SettingsProvider extends ChangeNotifier {
           prefs.getBool('habitReminderSoundEnabled') ?? true;
       _habitReminderVibrationEnabled =
           prefs.getBool('habitReminderVibrationEnabled') ?? true;
+      _autoCompleteParentTask = prefs.getBool('autoCompleteParentTask') ?? true;
       _ttsVolume = prefs.getDouble('ttsVolume') ?? 0.9;
 
       // 加载AI配置
@@ -345,6 +350,8 @@ class SettingsProvider extends ChangeNotifier {
       _clipboardMonitorEnabled.toString(),
     );
     _setWebStorage('notificationsEnabled', _notificationsEnabled.toString());
+    _setWebStorage(
+        'autoCompleteParentTask', _autoCompleteParentTask.toString());
 
     // 保存AI配置
     _setWebStorage('aiMode', _aiMode.toString());
@@ -388,6 +395,7 @@ class SettingsProvider extends ChangeNotifier {
           'habitReminderSoundEnabled', _habitReminderSoundEnabled);
       await prefs.setBool(
           'habitReminderVibrationEnabled', _habitReminderVibrationEnabled);
+      await prefs.setBool('autoCompleteParentTask', _autoCompleteParentTask);
       await prefs.setDouble('ttsVolume', _ttsVolume);
 
       await prefs.setString('aiMode', _aiMode.toString());
@@ -507,6 +515,12 @@ class SettingsProvider extends ChangeNotifier {
 
   void setHabitReminderVibrationEnabled(bool value) {
     _habitReminderVibrationEnabled = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setAutoCompleteParentTask(bool value) {
+    _autoCompleteParentTask = value;
     _saveSettings();
     notifyListeners();
   }

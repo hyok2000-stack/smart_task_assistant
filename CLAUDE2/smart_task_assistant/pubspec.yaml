@@ -1,7 +1,7 @@
 name: smart_task_assistant
 description: "智能任务助手 - 基于AI的任务管理工具"
 publish_to: 'none'
-version: 1.9.7+165
+version: 2.2.16+190
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -34,13 +34,7 @@ dependencies:
   path_provider: ^2.1.1
   universal_html: ^2.2.4
   package_info_plus: ^8.0.0
-  
-  # 通知
-  flutter_local_notifications: ^17.0.0
-  
-  # 后台服务
-  flutter_background_service: ^5.0.10
-  
+
   # 时间处理
   intl: ^0.20.2
   
@@ -62,7 +56,10 @@ dependencies:
   # 文件操作（移动端）
   file_picker: ^8.0.0
   share_plus: ^9.0.0
-  open_filex: ^4.4.0
+
+  # 拍照 + OCR 文本识别（离线，ML Kit on-device 不依赖 GMS，华为可用）
+  image_picker: ^1.1.2
+  google_mlkit_text_recognition: ^0.13.0
 
   # 天气服务（使用高德 IP 定位 API，不依赖 Google Play Services）
   http: ^1.2.0

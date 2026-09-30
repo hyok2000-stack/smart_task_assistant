@@ -274,17 +274,18 @@ class AIService {
     }
 
     // 识别优先级关键词
-    if (title.contains('紧急') ||
+    // 注意："不急"包含"急"字，低优先级必须先判断，否则永远命中"急"的高优先级分支
+    if (title.contains('不急') ||
+        title.contains('有空') ||
+        title.contains('闲暇')) {
+      priority = TaskPriority.low;
+      title = title.replaceAll(RegExp(r'(不急|有空|闲暇)'), '').trim();
+    } else if (title.contains('紧急') ||
         title.contains('重要') ||
         title.contains('急') ||
         title.contains('尽快')) {
       priority = TaskPriority.high;
       title = title.replaceAll(RegExp(r'(紧急|重要|急|尽快)'), '').trim();
-    } else if (title.contains('不急') ||
-        title.contains('有空') ||
-        title.contains('闲暇')) {
-      priority = TaskPriority.low;
-      title = title.replaceAll(RegExp(r'(不急|有空|闲暇)'), '').trim();
     }
 
     // 识别时间
@@ -410,36 +411,65 @@ class AIService {
       title = title.replaceAll(RegExp(r'(晚上|晚间)'), '').trim();
     }
 
-    // 识别具体时间 HH:mm 或 X点X分
-    final timeRegex = RegExp(r'(\d{1,2})[:点时](\d{0,2})?分?');
+    // 先识别"X小时后"和"X天后"——这些必须在 timeRegex 之前处理，
+    // 否则 timeRegex 的 [:点] 会错误匹配 "3小时" 中的 "3时"。
+    // 注意：timeRegex 的字符类已移除"时"字，只匹配 : 和 点。
+    bool isRelativeTime = false; // 标记是否已通过相对时间设置 dueTime
+
+    // 识别X天后
+    final daysAfterRegex = RegExp(r'(\d+)天后');
+    final daysAfterMatch = daysAfterRegex.firstMatch(title);
+    if (daysAfterMatch != null) {
+      final days = int.tryParse(daysAfterMatch.group(1)!) ?? 1;
+      dueTime = DateTime(now.year, now.month, now.day + days, 18, 0);
+      title = title.replaceAll(daysAfterRegex, '').trim();
+      isRelativeTime = true;
+    }
+
+    // 识别X小时后
+    final hoursAfterRegex = RegExp(r'(\d+)小时后');
+    final hoursAfterMatch = hoursAfterRegex.firstMatch(title);
+    if (hoursAfterMatch != null) {
+      final hours = int.tryParse(hoursAfterMatch.group(1)!) ?? 1;
+      dueTime = now.add(Duration(hours: hours));
+      title = title.replaceAll(hoursAfterRegex, '').trim();
+      isRelativeTime = true;
+    }
+
+    // 识别具体时间 HH:mm 或 X点X分（字符类只含 : 和 点，不含"时"——避免"3小时"被误匹配）
+    final timeRegex = RegExp(r'(\d{1,2})[:点](\d{0,2})?分?');
     final timeMatch = timeRegex.firstMatch(title);
     if (timeMatch != null) {
       var hour = int.tryParse(timeMatch.group(1)!) ?? 18;
       final minute = int.tryParse(timeMatch.group(2) ?? '0') ?? 0;
 
       // 根据时段调整小时数
-      if (isAfternoon && hour <= 12) {
-        hour += 12; // 下午时间，如5点改为17点
+      if (isAfternoon && hour >= 1 && hour <= 11) {
+        hour += 12; // 下午X点 → X+12（如下午3点→15点）
       } else if (isMorning && hour == 12) {
-        hour = 0; // 上午12点改为0点
+        hour = 0; // 上午12点 → 0点
       } else if (isNoon && hour != 12) {
-        hour = 12; // 中午改为12点
-      } else if (isEvening && hour <= 12 && hour < 6) {
-        hour += 12; // 晚上时间，如5点改为17点
+        hour = 12;
+      } else if (isEvening) {
+        if (hour == 12) {
+          hour = 0; // 晚上12点 → 0点
+        } else if (hour >= 1 && hour <= 11) {
+          hour += 12; // 晚上7点 → 19点
+        }
+        // hour 为 0-5 的时间（凌晨）不调整
       }
 
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
         if (dueTime != null) {
-          dueTime =
-              DateTime(dueTime.year, dueTime.month, dueTime.day, hour, minute);
+          dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, hour, minute);
         } else {
-          // 没有日期，默认今天
           dueTime = DateTime(now.year, now.month, now.day, hour, minute);
         }
       }
       title = title.replaceAll(timeRegex, '').trim();
-    } else {
-      // 没有具体时间，根据时段设置默认时间
+    } else if (!isRelativeTime) {
+      // 没有具体时间且不是相对时间（如"X小时后"），根据时段设置默认时间
+      // 如果 isRelativeTime=true（已通过"X小时后"设置了 dueTime），跳过此分支避免覆盖
       if (dueTime != null) {
         if (isMorning) {
           dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 9, 0);
@@ -451,24 +481,6 @@ class AIService {
           dueTime = DateTime(dueTime.year, dueTime.month, dueTime.day, 20, 0);
         }
       }
-    }
-
-    // 识别X天后
-    final daysAfterRegex = RegExp(r'(\d+)天后');
-    final daysAfterMatch = daysAfterRegex.firstMatch(title);
-    if (daysAfterMatch != null) {
-      final days = int.tryParse(daysAfterMatch.group(1)!) ?? 1;
-      dueTime = DateTime(now.year, now.month, now.day + days, 18, 0);
-      title = title.replaceAll(daysAfterRegex, '').trim();
-    }
-
-    // 识别X小时后
-    final hoursAfterRegex = RegExp(r'(\d+)小时后');
-    final hoursAfterMatch = hoursAfterRegex.firstMatch(title);
-    if (hoursAfterMatch != null) {
-      final hours = int.tryParse(hoursAfterMatch.group(1)!) ?? 1;
-      dueTime = now.add(Duration(hours: hours));
-      title = title.replaceAll(hoursAfterRegex, '').trim();
     }
 
     // 清理多余空格和标点
@@ -501,22 +513,17 @@ class AIService {
 
     int baseReminderMinutes;
 
-    // 根据时间距离计算基础提醒时间
+    // 根据时间距离计算基础提醒时间（收敛策略：远期任务也不提前太多，
+    // 否则"后天3点"的任务在"明天3点"就响铃，用户会觉得莫名其妙）
     if (hoursUntilDue < 12) {
       // 今天内：提前15分钟
       baseReminderMinutes = 15;
     } else if (hoursUntilDue < 24) {
       // 明天：提前1小时
       baseReminderMinutes = 60;
-    } else if (hoursUntilDue < 72) {
-      // 3天内：提前1天
-      baseReminderMinutes = 24 * 60;
-    } else if (hoursUntilDue < 168) {
-      // 本周内：提前2天
-      baseReminderMinutes = 48 * 60;
     } else {
-      // 下周及以后：提前3天
-      baseReminderMinutes = 72 * 60;
+      // 更远（后天及以后）：提前2小时，保持合理的提醒节奏
+      baseReminderMinutes = 120;
     }
 
     // 根据优先级调整
@@ -538,6 +545,13 @@ class AIService {
       return _parseWithRules(input);
     }
 
+    final now = DateTime.now();
+    final weekday = ['一', '二', '三', '四', '五', '六', '日'][now.weekday - 1];
+    final nowStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+
     final prompt = '''
 请从以下文本中提取任务信息，重点识别：
 1. **任务标题**（必需）：简明扼要地总结任务内容
@@ -558,6 +572,8 @@ class AIService {
 
 要求：
 - title、dueTime、priority 三个字段必须有值
+- 当前时间是 $nowStr（星期$weekday）。所有日期必须以当前时间为基准换算，
+  原文没写年份的一律使用当前年份；相对表述（明天/下周X/N天后）按当前时间推算
 - 时间格式必须严格遵循 YYYY-MM-DD HH:mm（如：2026-03-19 15:30）
 - 只返回 JSON，不要其他内容
 ''';
@@ -592,12 +608,15 @@ class AIService {
         final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(content);
         if (jsonMatch != null) {
           final json = jsonDecode(jsonMatch.group(0)!);
+          var dueTime =
+              json['dueTime'] != null ? DateTime.tryParse(json['dueTime']) : null;
+          dueTime = _reanchorStaleYear(dueTime, input, now);
+          debugPrint('AI 解析成功: title=${json['title']}, '
+              'dueTime=${dueTime?.toString()}, priority=${json['priority']}');
           return ParsedTask(
             title: json['title'] ?? input,
             content: json['content'],
-            dueTime: json['dueTime'] != null
-                ? DateTime.tryParse(json['dueTime'])
-                : null,
+            dueTime: dueTime,
             priority: _parsePriority(json['priority']),
             assignee: json['assignee'],
             tags: List<String>.from(json['tags'] ?? []),
@@ -617,6 +636,22 @@ class AIService {
   /// 回退到本地规则引擎（仅本次降级，不修改持久化配置）
   void _fallbackToRules() {
     debugPrint('AI 服务本次调用失败，临时降级到本地规则引擎');
+  }
+
+  /// AI 模型可能猜错年份（如把「9月12日」解析成往年，导致任务一创建就逾期）。
+  /// 若返回的日期已过去、年份与当前不同、且原文没有写明该年份，
+  /// 则把年份校正为当前年份。
+  DateTime? _reanchorStaleYear(DateTime? dueTime, String input, DateTime now) {
+    if (dueTime == null) return null;
+    if (dueTime.isBefore(now) &&
+        dueTime.year != now.year &&
+        !input.contains(dueTime.year.toString())) {
+      final fixed = DateTime(
+          now.year, dueTime.month, dueTime.day, dueTime.hour, dueTime.minute);
+      debugPrint('AI 返回 ${dueTime.year} 年的过期日期，已校正为 $fixed');
+      return fixed;
+    }
+    return dueTime;
   }
 
   TaskPriority _parsePriority(String? value) {
@@ -1351,12 +1386,15 @@ class AIService {
   /// Sanitize user input before embedding into AI prompts to strip common
   /// prompt-injection patterns.
   String _sanitizeForPrompt(String input) {
+    // Dart 的 RegExp 不支持内联 (?i) 标志，必须用 caseSensitive: false
     return input
         .replaceAll(
-            RegExp(r'(?i)ignore\s+(the\s+)?(above|previous|instructions)'),
+            RegExp(r'ignore\s+(the\s+)?(above|previous|instructions)',
+                caseSensitive: false),
             '[filtered]')
-        .replaceAll(RegExp(r'(?i)you\s+are\s+now'), '[filtered]')
-        .replaceAll(RegExp(r'(?i)system\s*:'), '')
-        .replaceAll(RegExp(r'(?i)assistant\s*:'), '');
+        .replaceAll(
+            RegExp(r'you\s+are\s+now', caseSensitive: false), '[filtered]')
+        .replaceAll(RegExp(r'system\s*:', caseSensitive: false), '')
+        .replaceAll(RegExp(r'assistant\s*:', caseSensitive: false), '');
   }
 }

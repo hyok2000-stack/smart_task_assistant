@@ -3,6 +3,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+Future<void> deleteFile(String path) async {
+  final file = File(path);
+  if (await file.exists()) await file.delete();
+}
+
 /// 文件下载（移动端实现 - 不支持，返回空实现）
 void downloadFile(String content, String fileName, String mimeType) {
   // 移动端不支持直接下载，使用 exportDataNative 替代

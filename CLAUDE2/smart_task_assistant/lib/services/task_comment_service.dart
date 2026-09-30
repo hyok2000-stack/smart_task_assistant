@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/task_comment.dart';
 import 'backend_api_service.dart';
+import 'task_history_service.dart';
 
 class TaskCommentService {
   TaskCommentService._();
@@ -78,6 +79,12 @@ class TaskCommentService {
     final all = await _loadAll();
     all.add(comment);
     await _persist(all);
+    await TaskHistoryService.instance.record(
+      taskId: taskId,
+      action: '评论',
+      field: '评论',
+      afterValue: content,
+    );
     return comment;
   }
 
@@ -102,8 +109,8 @@ class TaskCommentService {
       final tombstoned = all.any((c) =>
           c.deleted &&
           (c.serverId == remote.id ||
-           c.id == remote.clientCommentId ||
-           c.operationId == remote.operationId));
+              c.id == remote.clientCommentId ||
+              c.operationId == remote.operationId));
       if (tombstoned) continue;
       final index = all.indexWhere(
         (comment) =>
@@ -111,9 +118,13 @@ class TaskCommentService {
             comment.id == remote.clientCommentId ||
             comment.operationId == remote.operationId ||
             (comment.taskId == remote.taskId &&
-             comment.content == remote.content &&
-             comment.authorUserId == remote.authorUserId &&
-             comment.createdAt.difference(remote.serverCreatedAt).inSeconds.abs() < 60),
+                comment.content == remote.content &&
+                comment.authorUserId == remote.authorUserId &&
+                comment.createdAt
+                        .difference(remote.serverCreatedAt)
+                        .inSeconds
+                        .abs() <
+                    60),
       );
       final remoteComment = TaskComment(
         id: remote.clientCommentId,
@@ -308,7 +319,10 @@ class TaskCommentService {
   /// 编辑本地评论：落库并标记为待同步（synced=false）。
   /// 在线时由调用方立即 PATCH 后端；离线则由 syncPendingComments 重试。
   Future<TaskComment?> editLocalComment(String id, String content) async {
-    return _updateReturning(
+    final all = await _loadAll();
+    final oldIndex = all.indexWhere((comment) => comment.id == id);
+    final old = oldIndex < 0 ? null : all[oldIndex];
+    final updated = await _updateReturning(
       id,
       (c) => c.copyWith(
         content: content,
@@ -317,6 +331,16 @@ class TaskCommentService {
         syncError: null,
       ),
     );
+    if (old != null && updated != null && old.content != content) {
+      await TaskHistoryService.instance.record(
+        taskId: old.taskId,
+        action: '编辑评论',
+        field: '评论',
+        beforeValue: old.content,
+        afterValue: content,
+      );
+    }
+    return updated;
   }
 
   /// 删除本地评论。
@@ -338,6 +362,13 @@ class TaskCommentService {
       );
     }
     await _persist(all);
+    await TaskHistoryService.instance.record(
+      taskId: comment.taskId,
+      action: '删除评论',
+      field: '评论',
+      beforeValue: comment.content,
+      afterValue: '已删除',
+    );
   }
 
   /// 硬删除：从存储中彻底移除（用于后端 DELETE 成功后清除墓碑）。
@@ -375,17 +406,20 @@ class TaskCommentService {
         final idx = serverIdMap[c.serverId!]!;
         if (_score(c) > _score(result[idx])) {
           result[idx] = _merge(result[idx], c);
-          _rebuildKeys(result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
+          _rebuildKeys(
+              result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
         }
         continue;
       }
 
       // Check operationId
-      if (c.operationId.isNotEmpty && operationIdMap.containsKey(c.operationId)) {
+      if (c.operationId.isNotEmpty &&
+          operationIdMap.containsKey(c.operationId)) {
         final idx = operationIdMap[c.operationId]!;
         if (_score(c) > _score(result[idx])) {
           result[idx] = _merge(result[idx], c);
-          _rebuildKeys(result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
+          _rebuildKeys(
+              result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
         }
         continue;
       }
@@ -398,7 +432,8 @@ class TaskCommentService {
         if (c.createdAt.difference(existing.createdAt).inMinutes.abs() < 2) {
           if (_score(c) > _score(existing)) {
             result[idx] = _merge(existing, c);
-            _rebuildKeys(result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
+            _rebuildKeys(
+                result[idx], idx, serverIdMap, operationIdMap, contentKeyMap);
           }
           continue;
         }

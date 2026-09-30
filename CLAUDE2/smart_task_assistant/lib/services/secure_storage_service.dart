@@ -88,6 +88,15 @@ class SecureStorageService {
 
   Future<void> deletePassword() => delete(_passwordKey);
 
+  // ---- 后端 auth token ----
+  static const _backendTokenKey = 'backend.token';
+
+  Future<String?> readBackendToken() => read(_backendTokenKey);
+
+  Future<void> writeBackendToken(String token) => write(_backendTokenKey, token);
+
+  Future<void> deleteBackendToken() => delete(_backendTokenKey);
+
   // ---- AI API Key ----
 
   Future<String?> readAiApiKey() => read(_aiApiKeyKey);

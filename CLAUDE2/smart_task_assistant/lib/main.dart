@@ -428,6 +428,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 先加载设置（包括 AI 配置）
       await widget.settingsProvider.loadSettings();
+      widget.taskProvider.autoCompleteParentTasks =
+          widget.settingsProvider.autoCompleteParentTask;
       debugPrint('===== settingsProvider.loadSettings 完成 =====');
 
       // 同步 AI 配置到 AIService

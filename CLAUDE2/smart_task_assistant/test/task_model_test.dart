@@ -40,8 +40,9 @@ void main() {
         expect(minimalTask.priority, TaskPriority.medium);
         expect(minimalTask.isRecurring, false);
         expect(minimalTask.reminderDismissed, false);
-        expect(minimalTask.reminderVoiceEnabled, false);
-        expect(minimalTask.reminderVoiceType, 'neutral');
+        // 当前产品默认开启语音提醒；未指定声音类型时由运行时选择系统声音。
+        expect(minimalTask.reminderVoiceEnabled, true);
+        expect(minimalTask.reminderVoiceType, isNull);
         expect(minimalTask.reminderVoiceStyle, 'standard');
         expect(minimalTask.reminderVoiceSpeed, 'normal');
         expect(minimalTask.reminderCustomVoicePath, isNull);
@@ -186,7 +187,8 @@ void main() {
         expect(json['status'], TaskStatus.pending.index);
         expect(json['priority'], TaskPriority.medium.index);
         expect(json['reminder_minutes'], 30);
-        expect(json['reminder_voice_enabled'], true);
+        // SQLite 持久化层使用 0/1 表示布尔值。
+        expect(json['reminder_voice_enabled'], 1);
         expect(json['reminder_voice_type'], 'female');
         expect(json['reminder_voice_style'], 'lively');
         expect(json['reminder_voice_speed'], 'normal');

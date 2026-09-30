@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import '../services/ocr_service.dart';
 import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
@@ -26,6 +27,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   final _aiService = AIService();
   bool _isLoading = false;
   bool _isAILoading = false;
+  bool _isOcrProcessing = false;
   ParsedTask? _parsedTask;
   // 解析出的标题（用户可在预览中修正），为空时回退到 parsed.title
   String? _editableTitle;
@@ -219,6 +221,36 @@ class _QuickAddModalState extends State<QuickAddModal> {
   Future<void> _createTask() async {
     if (_controller.text.trim().isEmpty || _isCreating) return;
 
+    if (_selectedDueTime == null) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('未设置截止日期'),
+          content: const Text('设置截止日期后，应用可以更准确地安排提醒和任务进度。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('返回编辑'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('仍然创建'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.event_outlined),
+              label: const Text('设置截止日期'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || choice == null) return;
+      if (choice) {
+        await _selectDueTime();
+        if (!mounted || _selectedDueTime == null) return;
+      }
+    }
+
     setState(() => _isCreating = true);
 
     try {
@@ -402,33 +434,60 @@ class _QuickAddModalState extends State<QuickAddModal> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 输入框
+                        // 输入框（带拍照识别按钮）
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: Colors.grey.shade200),
                           ),
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focusNode,
-                            onChanged: _parseInputLocal,
-                            maxLines: 3,
-                            minLines: 1,
-                            decoration: InputDecoration(
-                              hintText: '例如：明天下午3点开会，比较紧急 #工作',
-                              hintStyle: TextStyle(
-                                color: AppTheme.textHintColor,
-                                fontSize: 15,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _controller,
+                                  focusNode: _focusNode,
+                                  onChanged: _parseInputLocal,
+                                  maxLines: 3,
+                                  minLines: 1,
+                                  decoration: InputDecoration(
+                                    hintText: '例如：明天下午3点开会，比较紧急 #工作',
+                                    hintStyle: TextStyle(
+                                      color: AppTheme.textHintColor,
+                                      fontSize: 15,
+                                    ),
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.all(16),
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    height: 1.5,
+                                    color: AppTheme.textPrimaryColor,
+                                  ),
+                                ),
                               ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.all(16),
-                            ),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              height: 1.5,
-                              color: AppTheme.textPrimaryColor,
-                            ),
+                              // 拍照识别文本（OCR）
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                    right: 8, bottom: 8),
+                                child: _isOcrProcessing
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : IconButton(
+                                        tooltip: '拍照识别文本',
+                                        icon: const Icon(
+                                            Icons.camera_alt_outlined,
+                                            size: 22),
+                                        color: AppTheme.primaryColor,
+                                        onPressed: _showOcrSourcePicker,
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -816,7 +875,9 @@ class _QuickAddModalState extends State<QuickAddModal> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              _reminderVoiceEnabled ? Icons.record_voice_over : Icons.voice_over_off,
+              _reminderVoiceEnabled
+                  ? Icons.record_voice_over
+                  : Icons.voice_over_off,
               size: 18,
               color: _reminderVoiceEnabled
                   ? AppTheme.primaryColor
@@ -1105,6 +1166,87 @@ class _QuickAddModalState extends State<QuickAddModal> {
   }
 
   /// 编辑解析出的标题（AI 解析出错时用户可修正）。
+  /// 选择 OCR 图片来源（拍照 / 相册）
+  void _showOcrSourcePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined,
+                  color: AppTheme.primaryColor),
+              title: const Text('拍照识别'),
+              subtitle: const Text('拍摄含有任务信息的图片'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _performOcr(fromCamera: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: AppTheme.primaryColor),
+              title: const Text('从相册选择'),
+              subtitle: const Text('选择已有图片识别文字'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _performOcr(fromCamera: false);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 执行 OCR 识别：结果填入输入框并触发本地解析（自动提取时间/优先级/标签）
+  Future<void> _performOcr({required bool fromCamera}) async {
+    setState(() => _isOcrProcessing = true);
+    try {
+      final text = fromCamera
+          ? await OcrService.instance.captureAndRecognize()
+          : await OcrService.instance.pickAndRecognize();
+
+      if (!mounted) return;
+
+      if (text == null || text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('未识别到文字，请重试'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _controller.text = text;
+        _editableTitle = null; // 清除旧的手动修正
+      });
+      // AI 优先解析（未配置/失败自动回退本地规则），提取标题/时间/优先级/标签
+      // _parseInputWithAI 读取 _controller.text（已在上面填入 OCR 文字）
+      await _parseInputWithAI();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_aiService.config.enabled
+              ? 'AI 解析完成，请检查并编辑'
+              : '识别完成（规则解析），请检查并编辑'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isOcrProcessing = false);
+    }
+  }
+
   Future<void> _editParsedTitle(String original) async {
     final controller = TextEditingController(text: _editableTitle ?? original);
     final result = await showDialog<String>(

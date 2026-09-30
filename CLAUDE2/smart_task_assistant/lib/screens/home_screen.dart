@@ -49,6 +49,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final Set<String> _selectedTaskIds = {};
   late AnimationController _fabAnimationController;
   bool _isCompletedExpanded = false; // 已完成任务栏目展开状态
+  bool _isUndoExpanded = true;
+  bool _isRecycleBinExpanded = false; // 回收站栏目展开状态
+  final Map<String, TaskStatus> _undoableCompletedTasks = {};
+  final List<Task> _recentlyDeleted = []; // 最近删除的任务（回收站）
   int _unreadNotificationCount = 0;
   bool _isAICardDismissed = false; // AI 建议卡片是否已关闭
 
@@ -443,11 +447,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                     );
                   }),
+            if (_undoableCompletedTasks.isNotEmpty)
+              SliverToBoxAdapter(child: _buildUndoSection(provider)),
             // 已完成任务分组（从全部任务中获取已完成任务，不受 todayTasks 过滤限制）
-            if (provider.completedTasks.isNotEmpty)
+            if (provider.completedTasks
+                .any((task) => !_undoableCompletedTasks.containsKey(task.id)))
               SliverToBoxAdapter(
                 child: _buildCompletedSection(provider),
               ),
+            // 回收站（最近删除的任务，可恢复）
+            if (_recentlyDeleted.isNotEmpty)
+              SliverToBoxAdapter(child: _buildRecycleBinSection(provider)),
             const SliverToBoxAdapter(
               child: SizedBox(height: 100),
             ),
@@ -511,7 +521,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Expanded(
                               child: TextField(
                                 onChanged: provider.setSearchQuery,
-                                onSubmitted: provider.setSearchQuery,
+                                onSubmitted: (_) => provider.commitSearch(),
                                 decoration: InputDecoration(
                                   hintText: l.searchHint,
                                   prefixIcon: const Icon(Icons.search_rounded),
@@ -1773,9 +1783,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () async {
-                                  await context
-                                      .read<TaskProvider>()
-                                      .archiveTask(task.id);
+                                  final provider = context.read<TaskProvider>();
+                                  final hasChildren = provider.tasks
+                                      .any((item) => item.parentId == task.id);
+                                  var includeChildren = false;
+                                  if (hasChildren) {
+                                    final choice = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: const Text('归档子任务'),
+                                        content: const Text('是否同时归档该任务的全部子任务？'),
+                                        actions: [
+                                          TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(dialogContext),
+                                              child: const Text('取消')),
+                                          TextButton(
+                                              onPressed: () => Navigator.pop(
+                                                  dialogContext, false),
+                                              child: const Text('仅归档父任务')),
+                                          FilledButton(
+                                              onPressed: () => Navigator.pop(
+                                                  dialogContext, true),
+                                              child: const Text('同时归档')),
+                                        ],
+                                      ),
+                                    );
+                                    if (choice == null) return;
+                                    includeChildren = choice;
+                                  }
+                                  await provider.archiveTaskWithSubtasks(
+                                    task.id,
+                                    includeSubtasks: includeChildren,
+                                  );
                                   if (context.mounted) Navigator.pop(context);
                                 },
                                 icon: const Icon(Icons.archive_outlined,
@@ -1859,7 +1899,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onPressed: () => showModalBottomSheet(
                 context: sheetContext,
                 isScrollControlled: true,
-                builder: (_) => const ActivityFeedDialog(),
+                builder: (_) => ActivityFeedDialog(
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  taskCreatedAt: task.createdAt,
+                ),
               ),
               icon: const Icon(Icons.history_rounded, size: 20),
             ),
@@ -1881,8 +1925,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 8),
         AttachmentPicker(
           attachmentPaths: task.attachmentPaths,
-          onChanged: (paths) {
-            provider.updateTask(task.copyWith(attachmentPaths: paths));
+          onChanged: (paths) async {
+            final removed =
+                task.attachmentPaths.where((p) => !paths.contains(p));
+            await provider.updateTask(task.copyWith(attachmentPaths: paths));
+            await provider.cleanupUnreferencedAttachments(removed);
           },
         ),
         const SizedBox(height: 8),
@@ -3698,14 +3745,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return a.dueTime!.compareTo(b.dueTime!);
   }
 
-  void _completeTask(String id, TaskProvider provider) {
+  Future<void> _completeTask(String id, TaskProvider provider) async {
     final l = context.l;
     final taskIndex = provider.tasks.indexWhere((t) => t.id == id);
-    if (taskIndex == -1) return;
+    if (taskIndex == -1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('任务状态已变化，请刷新后重试')),
+        );
+      }
+      return;
+    }
     final task = provider.tasks[taskIndex];
     // 保存原状态，供"撤销"恢复
     final previousStatus = task.status;
-    provider.updateTaskStatus(id, TaskStatus.completed);
+    final incompleteChildren = provider.tasks
+        .where((item) => item.parentId == id && !item.isCompleted)
+        .toList();
+    var includeChildren = false;
+    if (incompleteChildren.isNotEmpty) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('完成父任务'),
+          content: Text('还有 ${incompleteChildren.length} 个子任务未完成，是否一起完成？'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('仅完成父任务')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('同时完成子任务')),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      includeChildren = choice;
+    }
+    try {
+      await provider.completeTaskWithSubtasks(
+        id,
+        includeSubtasks: includeChildren,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('完成任务失败：$e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    if (!task.isRecurring) {
+      setState(() => _undoableCompletedTasks[id] = previousStatus);
+    }
 
     if (task.isRecurring) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3731,7 +3828,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.check_circle, color: Colors.white),
               const SizedBox(width: 12),
-              Expanded(child: Text(l.taskCompletedUndo(task.title))),
+              Expanded(child: Text('${task.title} 已移至“可撤销”栏目')),
             ],
           ),
           behavior: SnackBarBehavior.floating,
@@ -3740,17 +3837,101 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           margin: const EdgeInsets.all(16),
           backgroundColor: AppTheme.successColor,
           duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: l.undo,
-            textColor: Colors.white,
-            onPressed: () {
-              // 恢复完成前的状态
-              provider.updateTaskStatus(id, previousStatus);
-            },
-          ),
         ),
       );
     }
+  }
+
+  Widget _buildUndoSection(TaskProvider provider) {
+    final tasks = provider.completedTasks
+        .where((task) => _undoableCompletedTasks.containsKey(task.id))
+        .toList();
+    if (tasks.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _isUndoExpanded = !_isUndoExpanded),
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warningColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.undo_rounded,
+                        color: AppTheme.warningColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('可撤销',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 8),
+                  Text('${tasks.length}',
+                      style: const TextStyle(
+                          color: AppTheme.warningColor,
+                          fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: _isUndoExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isUndoExpanded)
+            ...tasks.map((task) => ListTile(
+                  leading: const Icon(Icons.check_circle,
+                      color: AppTheme.successColor),
+                  title: Text(task.title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: const Text('任务已完成'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () async {
+                          final previous = _undoableCompletedTasks[task.id] ??
+                              TaskStatus.pending;
+                          await provider.updateTaskStatus(task.id, previous);
+                          if (mounted) {
+                            setState(
+                                () => _undoableCompletedTasks.remove(task.id));
+                          }
+                        },
+                        icon: const Icon(Icons.undo_rounded),
+                        label: const Text('撤销'),
+                      ),
+                      IconButton(
+                        tooltip: '保留为已完成',
+                        onPressed: () => setState(
+                            () => _undoableCompletedTasks.remove(task.id)),
+                        icon: const Icon(Icons.done_all_rounded),
+                      ),
+                    ],
+                  ),
+                )),
+        ],
+      ),
+    );
   }
 
   void _deleteTask(String id, TaskProvider provider) {
@@ -3769,40 +3950,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              provider.deleteTask(id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.delete_outline, color: Colors.white),
-                      const SizedBox(width: 12),
-                      Text(l.taskDeletedUndo),
-                    ],
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  margin: const EdgeInsets.all(16),
-                  backgroundColor: AppTheme.errorColor,
-                  duration: const Duration(seconds: 5),
-                  action: SnackBarAction(
-                    label: l.undo,
-                    textColor: Colors.white,
-                    onPressed: () async {
-                      final ok = await provider.undoDeleteTask();
-                      if (context.mounted && ok) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(l.isZh ? '已恢复' : 'Restored'),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-              );
+              // 先缓存任务到回收站，再删除
+              final task = provider.tasks.where((t) => t.id == id).firstOrNull;
+              if (task != null) {
+                setState(() {
+                  _recentlyDeleted.insert(0, task);
+                  // 限制回收站最多 20 条，防止内存泄漏
+                  if (_recentlyDeleted.length > 20) {
+                    _recentlyDeleted.removeRange(20, _recentlyDeleted.length);
+                  }
+                  _isRecycleBinExpanded = true;
+                });
+              }
+              provider.deleteTask(id).catchError((e) {
+                debugPrint('删除任务失败: $e');
+                // 删除失败时从回收站回滚（避免任务双份）
+                if (mounted) {
+                  setState(() => _recentlyDeleted.removeWhere((t) => t.id == id));
+                }
+              });
+              // 不再用 SnackBar 提示——回收站折叠区已提供恢复入口，避免 SnackBar 不消失的问题
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.errorColor,
@@ -3811,6 +3978,145 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             child: Text(l.delete),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 从回收站恢复任务
+  Future<void> _restoreFromRecycleBin(String id, TaskProvider provider) async {
+    final ok = await provider.undoDeleteTask(id);
+    if (ok) {
+      setState(() => _recentlyDeleted.removeWhere((t) => t.id == id));
+    }
+  }
+
+  /// 回收站折叠区（类似已完成任务栏目）
+  Widget _buildRecycleBinSection(TaskProvider provider) {
+    final l = context.l;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () =>
+                setState(() => _isRecycleBinExpanded = !_isRecycleBinExpanded),
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: Colors.grey, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(l.isZh ? '回收站' : 'Recycle Bin',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_recentlyDeleted.length}',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey),
+                    ),
+                  ),
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: _isRecycleBinExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AppTheme.textHintColor, size: 24),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isRecycleBinExpanded)
+            Column(
+              children: [
+                ..._recentlyDeleted.take(20).map((task) => Padding(
+                      padding: const EdgeInsets.only(
+                          left: 16, right: 16, bottom: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline,
+                              size: 16, color: Colors.grey[400]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[500],
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                _restoreFromRecycleBin(task.id, provider),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.primaryColor,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              minimumSize: const Size(0, 28),
+                            ),
+                            child: Text(l.isZh ? '恢复' : 'Restore',
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() =>
+                                _recentlyDeleted.removeWhere(
+                                    (t) => t.id == task.id)),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.grey,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              minimumSize: const Size(0, 28),
+                            ),
+                            child: Text(l.isZh ? '移除' : 'Dismiss',
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    )),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    l.isZh ? '已删除的任务可通过「恢复」撤回' : 'Deleted tasks can be restored',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -3839,7 +4145,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildCompletedSection(TaskProvider provider) {
     final l = context.l;
     // 从全部任务中获取已完成任务，确保数量与实际一致
-    final completedTasks = provider.completedTasks;
+    final completedTasks = provider.completedTasks
+        .where((task) => !_undoableCompletedTasks.containsKey(task.id))
+        .toList();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -4007,11 +4315,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         title: Text(task.title),
                         subtitle: Text(
                             '归档于 ${_formatDateTime(task.archivedAt ?? task.updatedAt)}'),
-                        trailing: TextButton.icon(
-                          onPressed: () =>
-                              currentProvider.restoreArchivedTask(task.id),
-                          icon: const Icon(Icons.restore_rounded),
-                          label: const Text('恢复'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: '永久删除',
+                              icon: const Icon(Icons.delete_forever_outlined),
+                              onPressed: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: sheetContext,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: const Text('永久删除任务'),
+                                    content:
+                                        const Text('任务及其无引用附件将被永久删除，无法恢复。'),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () => Navigator.pop(
+                                              dialogContext, false),
+                                          child: const Text('取消')),
+                                      FilledButton(
+                                          onPressed: () => Navigator.pop(
+                                              dialogContext, true),
+                                          child: const Text('永久删除')),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed == true) {
+                                  await currentProvider
+                                      .permanentlyDeleteArchivedTask(task.id);
+                                }
+                              },
+                            ),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  currentProvider.restoreArchivedTask(task.id),
+                              icon: const Icon(Icons.restore_rounded),
+                              label: const Text('恢复'),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -4028,6 +4369,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _restoreTask(String id, TaskProvider provider) {
     final l = context.l;
     provider.restoreTask(id);
+    setState(() => _undoableCompletedTasks.remove(id));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(

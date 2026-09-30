@@ -1,5 +1,7 @@
 import 'dart:io';
 
+Future<void> deleteFile(String path) async {}
+
 /// 平台特定的文件操作工具（Stub 版本）
 /// 这个文件在没有具体实现的平台使用
 

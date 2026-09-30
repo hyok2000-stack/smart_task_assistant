@@ -3,6 +3,8 @@
 
 import 'dart:html' as html;
 
+Future<void> deleteFile(String path) async {}
+
 /// Web 文件下载
 void downloadFile(String content, String fileName, String mimeType) {
   final bytes = content.runes.toList();

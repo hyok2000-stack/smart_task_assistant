@@ -13,6 +13,7 @@ import '../database/database_helper.dart';
 import '../services/backend_api_service.dart';
 import '../services/sync_queue_service.dart';
 import '../services/task_comment_service.dart';
+import '../services/task_history_service.dart';
 
 // 条件导入：文件操作
 import '../utils/platform_file_stub.dart'
@@ -25,6 +26,7 @@ class TaskProvider extends ChangeNotifier {
 
   // 提醒状态清除回调
   Function(String taskId)? onReminderReset;
+  bool autoCompleteParentTasks = true;
 
   // Native reminder data change notification
   static const _reminderChannel =
@@ -53,7 +55,8 @@ class TaskProvider extends ChangeNotifier {
   DateTime? _lastAutoBackupAt;
   static const _autoBackupThrottle = Duration(minutes: 5);
   // 最近一次删除的任务（供 UI 层"撤销删除"恢复）
-  Task? _lastDeletedTask;
+  // 最近删除的任务（供 UI 层"撤销删除"恢复），按 id 存储，支持多个
+  final Map<String, Task> _recentlyDeletedTasks = {};
   DateTime? _lastBackendSyncAt;
   String? _backendSyncError;
   int _pendingBackendSyncCount = 0;
@@ -278,7 +281,9 @@ class TaskProvider extends ChangeNotifier {
       _tags = tags;
       // 逾期任务：未完成、未取消且已过截止时间（基于已加载的 tasks 在内存计算，
       // 不再单独查询数据库——避免与内存视图不一致）
-      _overdueTasks = tasks
+      // 逾期列表只能来自活动任务。此前使用包含归档任务的 tasks，导致归档中的
+      // 逾期任务仍出现在首页，但完成操作无法在 _tasks 中找到它，从而点击无反应。
+      _overdueTasks = _tasks
           .where(
             (t) =>
                 !t.isCompleted &&
@@ -369,6 +374,11 @@ class TaskProvider extends ChangeNotifier {
       debugPrint('任务: ${task.title}');
 
       await _storage.insertTask(task);
+      try {
+        await TaskHistoryService.instance.recordTaskCreated(task);
+      } catch (historyError) {
+        debugPrint('任务已创建，但创建审计记录失败: $historyError');
+      }
       debugPrint('存储完成');
 
       // 直接添加到内存列表
@@ -388,6 +398,7 @@ class TaskProvider extends ChangeNotifier {
       debugPrint('addTask 错误: $e');
       _error = e.toString();
       notifyListeners();
+      rethrow;
     }
   }
 
@@ -414,6 +425,12 @@ class TaskProvider extends ChangeNotifier {
 
       // 写入数据库
       await _storage.updateTask(task);
+      // 审计记录是辅助数据，不能让它的存储故障阻断任务本身的保存。
+      try {
+        await TaskHistoryService.instance.recordTaskChanges(oldTask, task);
+      } catch (historyError) {
+        debugPrint('任务已保存，但审计记录写入失败: $historyError');
+      }
 
       // 内存中直接替换，避免全表 reload
       if (taskIndex >= 0) {
@@ -432,7 +449,9 @@ class TaskProvider extends ChangeNotifier {
 
       // 子任务→父任务联动：子任务刚完成时，若父任务的所有子任务都已完成，
       // 则自动完成父任务（避免用户手动再点一次）。
-      if (wasJustCompleted && task.parentId != null) {
+      if (autoCompleteParentTasks &&
+          wasJustCompleted &&
+          task.parentId != null) {
         await _maybeCompleteParentTask(task.parentId!);
       }
 
@@ -445,6 +464,7 @@ class TaskProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      rethrow;
     }
   }
 
@@ -664,18 +684,20 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 触发自动备份（节流：5 分钟内只备份一次）。
-  /// 用于关键操作（删除、批量操作）后保护数据安全。
-  Future<void> _triggerAutoBackup() async {
+  /// 返回 true 表示备份成功（或节流跳过视为成功），false 表示备份失败。
+  Future<bool> _triggerAutoBackup() async {
     try {
       final now = DateTime.now();
       if (_lastAutoBackupAt != null &&
           now.difference(_lastAutoBackupAt!) < _autoBackupThrottle) {
-        return; // 节流窗口内，跳过
+        return true; // 节流窗口内，跳过
       }
       _lastAutoBackupAt = now;
       await _storage.autoBackup();
+      return true;
     } catch (e) {
       debugPrint('触发自动备份失败: $e');
+      return false;
     }
   }
 
@@ -684,8 +706,8 @@ class TaskProvider extends ChangeNotifier {
     try {
       // Save real task data before removing
       final realTask = _tasks.where((t) => t.id == id).firstOrNull;
-      // 删除前缓存任务对象，供 UI 层"撤销删除"恢复
-      _lastDeletedTask = realTask;
+      // 删除前缓存任务对象，供 UI 层"撤销删除"恢复（按 id 存储，支持多个）
+      if (realTask != null) _recentlyDeletedTasks[id] = realTask;
       // 删除前触发一次自动备份（节流），作为数据安全兜底
       await _triggerAutoBackup();
       await _storage.deleteTask(id);
@@ -706,6 +728,7 @@ class TaskProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      rethrow; // 传播错误，让调用方知道删除失败
     }
   }
 
@@ -714,6 +737,13 @@ class TaskProvider extends ChangeNotifier {
     if (index < 0) return;
     final archived = _tasks[index].copyWith(archivedAt: DateTime.now());
     await _storage.updateTask(archived);
+    await TaskHistoryService.instance.record(
+      taskId: id,
+      action: '归档',
+      field: '归档状态',
+      beforeValue: '正常',
+      afterValue: '已归档',
+    );
     _tasks.removeAt(index);
     _archivedTasks.insert(0, archived);
     _refreshTaskLists();
@@ -727,6 +757,13 @@ class TaskProvider extends ChangeNotifier {
     if (index < 0) return;
     final restored = _archivedTasks[index].copyWith(archivedAt: null);
     await _storage.updateTask(restored);
+    await TaskHistoryService.instance.record(
+      taskId: id,
+      action: '恢复',
+      field: '归档状态',
+      beforeValue: '已归档',
+      afterValue: '正常',
+    );
     _archivedTasks.removeAt(index);
     _tasks.insert(0, restored);
     _refreshTaskLists();
@@ -741,20 +778,86 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> completeTaskWithSubtasks(
+    String id, {
+    required bool includeSubtasks,
+  }) async {
+    if (includeSubtasks) {
+      final children = _tasks
+          .where((task) => task.parentId == id && !task.isCompleted)
+          .toList();
+      for (final child in children) {
+        await completeTask(child.id);
+      }
+    }
+    await completeTask(id);
+  }
+
+  Future<void> archiveTaskWithSubtasks(
+    String id, {
+    required bool includeSubtasks,
+  }) async {
+    if (includeSubtasks) {
+      final childIds = _tasks
+          .where((task) => task.parentId == id)
+          .map((task) => task.id)
+          .toList();
+      for (final childId in childIds) {
+        await archiveTask(childId);
+      }
+    }
+    await archiveTask(id);
+  }
+
+  Future<void> permanentlyDeleteArchivedTask(String id) async {
+    final index = _archivedTasks.indexWhere((task) => task.id == id);
+    if (index < 0) return;
+    final removed = _archivedTasks[index];
+    await _storage.deleteTask(id);
+    _archivedTasks.removeAt(index);
+    await _cleanupUnreferencedAttachments(removed.attachmentPaths);
+    notifyListeners();
+    _notifyNativeDataChanged('task', id);
+    _syncTaskSilently(removed, deleted: true);
+  }
+
+  Future<void> cleanupUnreferencedAttachments(Iterable<String> paths) async {
+    await _cleanupUnreferencedAttachments(paths);
+  }
+
+  Future<void> _cleanupUnreferencedAttachments(Iterable<String> paths) async {
+    final referenced = <String>{
+      for (final task in [..._tasks, ..._archivedTasks])
+        ...task.attachmentPaths,
+    };
+    for (final path in paths.toSet().difference(referenced)) {
+      if (path.startsWith('content://')) continue;
+      try {
+        final normalized = path.replaceAll('\\', '/').toLowerCase();
+        if (!normalized.contains('/attachments/')) continue;
+        await deleteFile(path);
+      } catch (e) {
+        debugPrint('清理无引用附件失败: $path, $e');
+      }
+    }
+  }
+
   /// 撤销最近一次删除（由 UI 层 SnackBar 的"撤销"按钮触发）。
+  /// 恢复指定 id 的已删除任务（按 id 从缓存取出，而非只恢复最后一个）。
   /// 将缓存的任务重新插回 DB 和内存列表。返回是否恢复成功。
-  Future<bool> undoDeleteTask() async {
-    final task = _lastDeletedTask;
+  Future<bool> undoDeleteTask(String id) async {
+    final task = _recentlyDeletedTasks.remove(id);
     if (task == null) return false;
     try {
       await _storage.insertTask(task);
       _tasks.insert(0, task);
       _refreshTaskLists();
-      _lastDeletedTask = null; // 只能撤销一次
       notifyListeners();
       _notifyNativeDataChanged('task', task.id);
       return true;
     } catch (e) {
+      // 恢复失败，把任务放回缓存
+      _recentlyDeletedTasks[id] = task;
       _error = e.toString();
       notifyListeners();
       return false;
@@ -844,12 +947,16 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 设置搜索关键词
+  /// 设置搜索关键词（每次按键触发，不记录搜索历史——避免 I/O 风暴和数据污染）
   void setSearchQuery(String query) {
     _searchQuery = query;
-    if (query.trim().isNotEmpty) _addRecentSearch(query.trim());
     _filteredTasksCache = null;
     notifyListeners();
+  }
+
+  /// 提交搜索（用户按回车/搜索键时调用），才记录到搜索历史
+  void commitSearch() {
+    if (_searchQuery.trim().isNotEmpty) _addRecentSearch(_searchQuery.trim());
   }
 
   void setFilterDateRange(DateTime? from, DateTime? to) {
@@ -1049,8 +1156,11 @@ class TaskProvider extends ChangeNotifier {
       debugPrint('===== 开始导入数据 =====');
 
       // 导入前强制生成一份自动备份，防止导入覆盖后无法恢复
-      _lastAutoBackupAt = null; // 绕过节流，确保本次一定备份
-      await _triggerAutoBackup();
+      _lastAutoBackupAt = null;
+      final backupOk = await _triggerAutoBackup();
+      if (!backupOk) {
+        debugPrint('⚠️ 导入前备份失败，继续导入但无回滚点');
+      }
 
       // 解析任务列表（按 updatedAt 比对，避免旧备份覆盖本地新数据）
       final tasksData = data['tasks'] as List?;
@@ -1745,13 +1855,16 @@ class TaskProvider extends ChangeNotifier {
   /// 从模板创建一个新任务（生成新 id，状态重置为待处理，不设截止时间）。
   Future<Task> createTaskFromTemplate(String templateId) async {
     final templates = await getTaskTemplates();
-    final tpl = templates.firstWhere((t) => t.id == templateId);
+    final tpl = templates.firstWhere(
+      (t) => t.id == templateId,
+      orElse: () => throw Exception('模板不存在: $templateId'),
+    );
     final newTask = tpl.copyWith(
       id: const Uuid().v4(),
       status: TaskStatus.pending,
       createdAt: DateTime.now(),
       completedAt: null,
-      dueTime: null, // 从模板创建时不带原截止时间，由用户重新设定
+      dueTime: null,
       startTime: null,
       version: 1,
     );

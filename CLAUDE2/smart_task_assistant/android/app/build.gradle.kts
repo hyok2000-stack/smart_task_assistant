@@ -59,6 +59,13 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 混淆 + 资源压缩（减小 APK 体积），ML Kit keep 规则见 proguard-rules.pro
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
@@ -69,4 +76,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // ML Kit 中文识别模型——google_mlkit_text_recognition 0.13.x 只打包了拉丁文
+    // (text-recognition)，中文脚本需要的 artifact 必须手动引入，
+    // 否则运行时 ClassNotFoundException: ChineseTextRecognizerOptions
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }

@@ -131,6 +131,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _backendPasswordController.text =
           backend.password ?? _backendPasswordController.text;
       setState(() {});
+    }).catchError((e) {
+      debugPrint('BackendApiService 初始化失败（已忽略）: $e');
     });
   }
 
@@ -316,6 +318,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                   value: settings.clipboardMonitor,
                   onChanged: (value) {
                     settings.setClipboardMonitor(value);
+                  },
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ),
+              _buildDivider(),
+              _buildListTile(
+                icon: Icons.account_tree_outlined,
+                title: '子任务全部完成时完成父任务',
+                subtitle: '关闭后，父任务需要手动完成',
+                trailing: Switch(
+                  value: settings.autoCompleteParentTask,
+                  onChanged: (value) {
+                    settings.setAutoCompleteParentTask(value);
+                    context.read<TaskProvider>().autoCompleteParentTasks =
+                        value;
                   },
                   activeColor: AppTheme.primaryColor,
                 ),
