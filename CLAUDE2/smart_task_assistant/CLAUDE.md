@@ -18,7 +18,7 @@ Smart Task Assistant is a cross-platform Flutter app for intelligent task manage
 - PostgreSQL 15, Redis 7
 - Docker Compose for deployment
 
-**Current Version:** 1.3.33+62
+**Current Version:** 2.2.16+190
 
 ## Common Commands
 
@@ -67,18 +67,19 @@ lib/
 │   ├── task_distribution.dart   # Task distribution analysis
 │   └── city.dart                # CityInfo model for weather service
 ├── providers/                   # State management (ChangeNotifier + Provider)
-│   ├── task_provider.dart       # Task CRUD, filtering, statistics
-│   ├── task_provider_optimized.dart  # Cached/optimized task provider variant
+│   ├── task_provider.dart       # Task CRUD, filtering, statistics, sync
 │   ├── settings_provider.dart   # App settings, AI config sync
 │   ├── habit_provider.dart      # Habit CRUD, progress tracking, completion logging
 │   └── task_distribution_provider.dart  # Task distribution state
 ├── services/
 │   ├── ai_service.dart          # Natural language parsing, chat, suggestions
-│   ├── reminder_service.dart    # Notification scheduling (platform-conditional)
+│   ├── reminder_service.dart    # In-app reminders (foreground+screen-on only)
+│   ├── ocr_service.dart         # ML Kit offline OCR (camera/gallery, Chinese)
 │   ├── tts_service.dart         # TTS singleton: voice synthesis + custom audio file playback
 │   ├── habit_service.dart       # Habit time calculation, trigger logic
 │   ├── clipboard_monitor_service.dart  # Clipboard watching (platform-conditional)
 │   ├── weather_service.dart     # Weather API with city model
+│   ├── task_history_service.dart # Task operation history (SharedPreferences JSON)
 │   └── task_distribution_service.dart  # Task analysis algorithms
 ├── screens/
 │   ├── home_screen.dart         # 5-tab bottom nav: Today, All Tasks, Habits, Stats, Settings
@@ -111,9 +112,17 @@ Uses **Provider** with `ChangeNotifier`:
 
 ### Database Architecture
 - **Singleton** `DatabaseHelper` with init lock to prevent concurrent initialization
-- **Schema version 8** — tables: `tasks`, `tags`, `reminders`, `task_distributions`, `habits`, `habit_logs`
+- **Schema version 15** — tables: `tasks`, `tags`, `reminders`, `task_distributions`, `habits`, `habit_logs`；v15 增加 `archived_at` 字段（任务归档/恢复），v15 起启用 `PRAGMA foreign_keys`
 - Auto-reconnect on app resume via `WidgetsBindingObserver`
-- Version 8 added custom voice file fields (`custom_voice_path`) to tasks and habits
+- **原生层直接读取同一 SQLite 文件**（`ReminderChecker.kt`，只读）——改 schema 时必须双端同步
+
+### Reminder Architecture（前后台双通道）
+- **前台+亮屏**：Flutter `ReminderService`（Timer 轮询）弹窗 + flutter_tts 播报
+- **后台/熄屏/APP 被杀**：原生 `ReminderForegroundService`（前台服务）+ `ReminderAlarmReceiver`
+  （30 秒 setAlarmClock 闹钟链）直接读 SQLite 触发：MediaPlayer 铃声（多级兜底+音量流自适应）
+  + Vibrator + TTS 文件合成播报（`speakViaFile`，规避华为等 ROM 后台冻结 TTS 实时输出）
+- 声音/振动全局开关存于 Flutter prefs（`flutter.taskReminderSoundEnabled` 等），原生读取
+- 任务延期/修改截止时间后必须调用 `clearReminderState` 清除原生提醒状态
 
 **Migration pattern:**
 ```dart

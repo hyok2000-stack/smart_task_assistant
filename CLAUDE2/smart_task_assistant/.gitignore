@@ -56,3 +56,23 @@ app.*.map.json
 /android/*.jks
 /android/*.keystore
 /backup_keystore/
+
+# 历史归档（旧版 APK、一次性调试脚本）——保留在本地，不进版本库
+/archive/
+
+# 与本 APP 无关的嵌入项目与本地目录
+/node_modules/
+/demo_engineering_safety_platform/
+/demo_engineering_safety_platform.rar/
+/hunan_digital_dashboard/
+/tunnel_monitor_cockpit/
+/tunnel_monitor_cockpit.rar/
+/tool/
+/tools/
+/outputs/
+/databack/
+/.appdata/
+/.localappdata/
+/plugins/
+/ancient_fairy_dance.svg
+/workbook_preview*.json

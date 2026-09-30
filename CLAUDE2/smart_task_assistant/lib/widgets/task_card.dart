@@ -690,17 +690,6 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  /// 切换标签选择
-  void _toggleTag(String tagId) {
-    final currentTags = List<String>.from(task.tagIds);
-    if (currentTags.contains(tagId)) {
-      currentTags.remove(tagId);
-    } else {
-      currentTags.add(tagId);
-    }
-    onTagsChanged?.call(currentTags);
-  }
-
   /// 显示标签编辑对话框
   void _showTagEditDialog(BuildContext context) {
     if (availableTags == null || availableTags!.isEmpty) {
