@@ -14,6 +14,7 @@ analyzer:
     - build/**
     - .dart_tool/**
     - OUTPUT/**
+    - archive/**
     - databack/**
     - android/.gradle/**
     - android/app/build/**
