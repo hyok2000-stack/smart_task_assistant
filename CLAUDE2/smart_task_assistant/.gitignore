@@ -63,10 +63,10 @@ app.*.map.json
 # 与本 APP 无关的嵌入项目与本地目录
 /node_modules/
 /demo_engineering_safety_platform/
-/demo_engineering_safety_platform.rar/
+/demo_engineering_safety_platform.rar
 /hunan_digital_dashboard/
 /tunnel_monitor_cockpit/
-/tunnel_monitor_cockpit.rar/
+/tunnel_monitor_cockpit.rar
 /tool/
 /tools/
 /outputs/
