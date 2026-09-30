@@ -11,8 +11,13 @@ class ReminderActionDialog extends StatelessWidget {
   /// - reminderMinutes: 新的提前提醒时间（分钟），更新任务的提醒设置
   /// - dismissed: 是否永久关闭提醒
   /// - snoozeMinutes: 稍后提醒的分钟数（临时提醒，不修改任务）
-  final Function({int? reminderMinutes, bool dismissed, int? snoozeMinutes})
-      onAction;
+  /// - postponeToTomorrow: 真正延期——任务截止时间 +1 天
+  final Function({
+    int? reminderMinutes,
+    bool dismissed,
+    int? snoozeMinutes,
+    bool postponeToTomorrow,
+  }) onAction;
 
   const ReminderActionDialog({
     super.key,
@@ -24,7 +29,6 @@ class ReminderActionDialog extends StatelessWidget {
   static const List<Map<String, dynamic>> _timeOptions = [
     {'minutes': 10, 'label': '10分钟后'},
     {'minutes': 60, 'label': '1小时后'},
-    {'minutes': 1440, 'label': '明天'},
   ];
 
   @override
@@ -138,20 +142,24 @@ class ReminderActionDialog extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
-                children: _timeOptions.map((option) {
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        right: option == _timeOptions.last ? 0 : 8,
+                children: [
+                  ..._timeOptions.map((option) {
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: _buildTimeButton(
+                          context: context,
+                          label: option['label'] as String,
+                          minutes: option['minutes'] as int,
+                        ),
                       ),
-                      child: _buildTimeButton(
-                        context: context,
-                        label: option['label'] as String,
-                        minutes: option['minutes'] as int,
-                      ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }),
+                  // 真延期：任务截止时间顺延一天（区别于临时静音的稍后提醒）
+                  Expanded(
+                    child: _buildPostponeButton(context),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               // 不再提醒按钮
@@ -220,14 +228,39 @@ class ReminderActionDialog extends StatelessWidget {
       child: Text(label, style: const TextStyle(fontSize: 13)),
     );
   }
+
+  /// 「延期到明日」按钮：真正把任务截止时间顺延一天（保留原时分），
+  /// 与"稍后提醒"的临时静音不同。
+  Widget _buildPostponeButton(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: () {
+        onAction(postponeToTomorrow: true);
+        Navigator.pop(context);
+      },
+      icon: const Icon(Icons.event_repeat_rounded, size: 16),
+      label: const Text('延期到明日', style: TextStyle(fontSize: 13)),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppTheme.warningColor,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
 }
 
 /// 显示提醒对话框的辅助函数
 Future<void> showReminderDialog(
   BuildContext context, {
   required Task task,
-  required Function({int? reminderMinutes, bool dismissed, int? snoozeMinutes})
-      onAction,
+  required Function({
+    int? reminderMinutes,
+    bool dismissed,
+    int? snoozeMinutes,
+    bool postponeToTomorrow,
+  }) onAction,
 }) {
   return showDialog(
     context: context,

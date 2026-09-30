@@ -59,7 +59,11 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 15, // 添加 archived_at 字段（任务归档/恢复）
+      version: 15,
+      onConfigure: (db) async {
+        // 启用外键约束——sqflite 默认关闭，不开启则 ON DELETE CASCADE 不生效
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );

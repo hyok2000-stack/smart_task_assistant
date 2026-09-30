@@ -56,6 +56,10 @@ class ReminderService {
 
   // 习惯上次提醒时间
   final Map<String, DateTime> _lastHabitReminderTime = {};
+  // 习惯当天已触发的分钟时间点（habitId -> Set<"HH:mm"），确保每个触发点只提醒一次
+  final Map<String, Set<String>> _habitTriggeredPoints = {};
+  // 记录上次检查的日期（跨天时清理 _habitTriggeredPoints）
+  DateTime? _lastCheckDate;
 
   // 稍后提醒的任务（用户选择"稍后提醒"，在指定时间后再次提醒）
   final Map<String, DateTime> _snoozedTasks = {};
@@ -199,13 +203,10 @@ class ReminderService {
     }
   }
 
-  /// 启动定时检查
+  /// 启动定时检查——动态间隔：有任务时 30 秒，无任务时 5 分钟，减少 CPU 唤醒和发热。
   void startChecking() {
     _checkTimer?.cancel();
-    _checkTimer = Timer.periodic(
-      const Duration(seconds: 30), // 每30秒检查一次（从10秒改为30秒，减少 CPU 唤醒频率降低发热）
-      (_) => _checkReminders(),
-    );
+    _scheduleNextCheck();
     debugPrint('提醒检查已启动');
   }
 
@@ -225,7 +226,25 @@ class ReminderService {
       _checkRemindersInner();
     } catch (e, stack) {
       debugPrint('===== _checkReminders 异常（已捕获，不崩溃）=====\n$e\n$stack');
+    } finally {
+      _scheduleNextCheck(); // 动态间隔：根据有无任务决定下次检查时间
     }
+  }
+
+  /// 动态调度下次检查：有可提醒的任务/习惯时 30 秒，否则 5 分钟（大幅降低发热）。
+  void _scheduleNextCheck() {
+    final hasRemindable = (_taskProvider?.tasks.any((t) =>
+            !t.isCompleted &&
+            t.status != TaskStatus.cancelled &&
+            t.dueTime != null &&
+            t.reminderMinutes != null &&
+            !t.reminderDismissed) ??
+        false);
+    final hasEnabledHabits = _habitProvider?.habits.any((h) => h.isEnabled) ?? false;
+    final interval = (hasRemindable || hasEnabledHabits)
+        ? const Duration(seconds: 30)
+        : const Duration(minutes: 5);
+    _checkTimer = Timer(interval, _checkReminders);
   }
 
   void _checkRemindersInner() {
@@ -340,6 +359,13 @@ class ReminderService {
   void _checkHabitReminders(DateTime now) {
     if (_habitProvider == null) return;
 
+    // 跨天清理：日期变化时清空已触发记录，确保新的一天每个时间点能正常触发
+    final today = DateTime(now.year, now.month, now.day);
+    if (_lastCheckDate == null || !_isSameDay(_lastCheckDate!, today)) {
+      _habitTriggeredPoints.clear();
+      _lastCheckDate = today;
+    }
+
     int checkedCount = 0;
     int needRemindCount = 0;
 
@@ -364,6 +390,18 @@ class ReminderService {
       final shouldRemind = _habitService.shouldTriggerReminder(habit, now);
 
       if (shouldRemind) {
+        // 去重：检查当前时间点（精确到分钟）是否已经触发过——避免同一个触发点在
+        // 1 分钟窗口内被多次 30 秒轮询命中导致反复弹窗
+        final nowKey =
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        final triggered = _habitTriggeredPoints.putIfAbsent(habit.id, () => {});
+        if (triggered.contains(nowKey)) {
+          // 这个时间点已经触发过了，跳过
+          continue;
+        }
+        // 记录已触发
+        triggered.add(nowKey);
+
         needRemindCount++;
         debugPrint(
             '[习惯提醒] "${habit.title}" 需要提醒 (类型: ${habit.triggerType}, 间隔: ${habit.intervalMinutes}分钟)');
@@ -594,7 +632,8 @@ class ReminderService {
         onAction: (
             {int? reminderMinutes,
             bool dismissed = false,
-            int? snoozeMinutes}) async {
+            int? snoozeMinutes,
+            bool postponeToTomorrow = false}) async {
           // 清除当前显示的提醒标记
           _currentShowingReminderId = null;
           _currentShowingReminderType = null;
@@ -610,6 +649,29 @@ class ReminderService {
             _firstReminderSent.remove(task.id);
 
             debugPrint('任务 "${task.title}" 已设置为不再提醒');
+          } else if (postponeToTomorrow) {
+            // 用户点击"延期到明日" - 真正延期：截止时间 +1 天（保留原时分）。
+            // 与"稍后提醒"不同：任务日期实际改变，列表里显示的截止时间同步更新，
+            // 提醒按新截止时间重新计算。
+            if (task.dueTime != null) {
+              final newDueTime =
+                  task.dueTime!.add(const Duration(days: 1));
+              final updatedTask = task.copyWith(
+                dueTime: newDueTime,
+                reminderDismissed: false,
+              );
+              await _taskProvider!.updateTask(updatedTask);
+
+              // 清除双端提醒状态：让原生层按新截止时间重新调度（否则
+              // 持续提醒状态会让它在 30 秒后按旧时间再次响铃）
+              _lastReminderTime.remove(task.id);
+              _snoozedTasks.remove(task.id);
+              _firstReminderSent.remove(task.id);
+              await _clearNativeTaskState(task.id);
+
+              debugPrint(
+                  '任务 "${task.title}" 已延期到明日 ${newDueTime.toIso8601String()}');
+            }
           } else if (reminderMinutes != null) {
             // 用户选择修改提醒时间 - 更新任务的提醒时间，并清除"不再提醒"状态
             final updatedTask = task.copyWith(
@@ -769,6 +831,9 @@ class ReminderService {
   }
 
   /// 释放资源
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
   void dispose() {
     stopChecking();
     _audioPlayer.dispose();
@@ -828,5 +893,16 @@ class ReminderService {
     _reminderChannel.invokeMethod<bool>('isScreenOn').then((on) {
       if (on != null) _isScreenOn = on;
     }).catchError((_) {});
+  }
+
+  /// 清除原生层该任务的提醒状态（firstSent/lastRemind/snooze）。
+  /// 用于真正修改任务截止时间后，让原生层按新时间重新调度。
+  Future<void> _clearNativeTaskState(String id) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderChannel.invokeMethod('clearReminderState', {'id': id});
+    } catch (e) {
+      debugPrint('Failed to clear native task state: $e');
+    }
   }
 }
