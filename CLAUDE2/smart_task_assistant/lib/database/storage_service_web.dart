@@ -1,5 +1,6 @@
 /// Web平台存储服务存根
 /// 此文件仅在Web平台编译时使用
+library;
 
 import 'storage_service.dart';
 

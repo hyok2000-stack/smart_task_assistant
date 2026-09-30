@@ -14,7 +14,7 @@ class TagManagementDialog extends StatefulWidget {
 
 class _TagManagementDialogState extends State<TagManagementDialog> {
   final TextEditingController _nameController = TextEditingController();
-  String _selectedColor = '#6366F1';
+  final String _selectedColor = '#6366F1';
 
   // 预定义颜色（统一使用大写，与tag_create_dialog保持一致）
   final List<String> _colorOptions = [
@@ -50,7 +50,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.15),
+              color: Colors.black.withValues(alpha: 0.15),
               blurRadius: 30,
               offset: const Offset(0, 10),
             ),
@@ -79,7 +79,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
         gradient: LinearGradient(
           colors: [
             AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.8),
+            AppTheme.primaryColor.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -89,7 +89,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
@@ -125,7 +125,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
@@ -227,7 +227,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -243,7 +243,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
               color: color,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Center(
+            child: const Center(
               child: Icon(Icons.label_rounded, color: Colors.white, size: 18),
             ),
           ),
@@ -376,7 +376,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
@@ -392,7 +392,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                     gradient: LinearGradient(
                       colors: [
                         AppTheme.primaryColor,
-                        AppTheme.primaryColor.withOpacity(0.8),
+                        AppTheme.primaryColor.withValues(alpha: 0.8),
                       ],
                     ),
                     borderRadius: const BorderRadius.vertical(
@@ -404,7 +404,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(
@@ -515,7 +515,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: selectedColor.withOpacity(0.5),
+                                          color: selectedColor.withValues(alpha: 0.5),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
                                         ),
@@ -630,7 +630,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
@@ -646,7 +646,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                     gradient: LinearGradient(
                       colors: [
                         AppTheme.primaryColor,
-                        AppTheme.primaryColor.withOpacity(0.8),
+                        AppTheme.primaryColor.withValues(alpha: 0.8),
                       ],
                     ),
                     borderRadius: const BorderRadius.vertical(
@@ -658,7 +658,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(
@@ -769,7 +769,7 @@ class _TagManagementDialogState extends State<TagManagementDialog> {
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: selectedColor.withOpacity(0.5),
+                                          color: selectedColor.withValues(alpha: 0.5),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
                                         ),

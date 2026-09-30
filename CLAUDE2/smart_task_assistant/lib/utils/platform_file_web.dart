@@ -1,5 +1,6 @@
 /// 平台特定的 Web 文件操作工具
 /// 这个文件只在 Web 平台使用
+library;
 
 import 'dart:html' as html;
 

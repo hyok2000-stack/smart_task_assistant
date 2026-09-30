@@ -1,5 +1,6 @@
 /// 原生平台存储服务实现
 /// 使用SQLite数据库
+library;
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';

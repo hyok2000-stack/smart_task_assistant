@@ -32,7 +32,7 @@ class HabitService {
     const defaultEndTime = 18; // 18:00
 
     if (_cachedHabits == null) {
-      debugPrint('    → 习惯列表未缓存，使用默认工作时间: ${defaultStartTime}:00 - ${defaultEndTime}:00');
+      debugPrint('    → 习惯列表未缓存，使用默认工作时间: $defaultStartTime:00 - $defaultEndTime:00');
       return (
         DateTime(now.year, now.month, now.day, defaultStartTime, 0),
         DateTime(now.year, now.month, now.day, defaultEndTime, 0),
@@ -62,21 +62,21 @@ class HabitService {
     int endHour = defaultEndTime;
 
     // 解析上班时间
-    if (clockInHabit != null && clockInHabit!.referenceTime != null) {
-      final parts = clockInHabit!.referenceTime!.split(':');
+    if (clockInHabit != null && clockInHabit.referenceTime != null) {
+      final parts = clockInHabit.referenceTime!.split(':');
       if (parts.isNotEmpty) startHour = int.tryParse(parts[0]) ?? defaultStartTime;
-      debugPrint('    → 使用上班打卡时间: ${clockInHabit!.referenceTime}');
+      debugPrint('    → 使用上班打卡时间: ${clockInHabit.referenceTime}');
     } else {
-      debugPrint('    → 上班打卡未启用或未设置，使用默认时间: ${defaultStartTime}:00');
+      debugPrint('    → 上班打卡未启用或未设置，使用默认时间: $defaultStartTime:00');
     }
 
     // 解析下班时间
     if (clockOutHabit != null) {
-      final parts = clockOutHabit!.referenceTime!.split(':');
+      final parts = clockOutHabit.referenceTime!.split(':');
       endHour = int.tryParse(parts[0]) ?? defaultEndTime;
-      debugPrint('    → 使用下班打卡时间: ${clockOutHabit!.referenceTime}');
+      debugPrint('    → 使用下班打卡时间: ${clockOutHabit.referenceTime}');
     } else {
-      debugPrint('    → 下班打卡未启用或未设置，使用默认时间: ${defaultEndTime}:00');
+      debugPrint('    → 下班打卡未启用或未设置，使用默认时间: $defaultEndTime:00');
     }
 
     final result = (

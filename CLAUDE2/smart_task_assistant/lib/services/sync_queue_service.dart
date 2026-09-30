@@ -77,7 +77,7 @@ class SyncQueueService {
   Future<void> removeByTaskId(String taskId) async {
     _items.removeWhere((item) {
       final payload = item.payload;
-      if (payload is Map) return payload['id'] == taskId;
+      return payload['id'] == taskId;
       return false;
     });
     await _save();

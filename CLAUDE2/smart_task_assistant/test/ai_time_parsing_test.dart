@@ -5,6 +5,7 @@
 ///    避免 "3小时" 被 timeRegex 的 "3时" 误匹配；
 /// 2. 时段换算规则（下午X点→X+12、晚上12点→0点等）；
 /// 3. 推荐提醒时长的收敛策略（远期任务最多提前2小时）。
+library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_task_assistant/models/task.dart';
 import 'package:smart_task_assistant/services/ai_service.dart';

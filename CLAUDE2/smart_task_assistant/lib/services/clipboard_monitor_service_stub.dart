@@ -1,5 +1,6 @@
 /// 非Web平台剪贴板监视存根
 /// 此文件在非Web平台编译时使用
+library;
 import 'package:flutter/material.dart';
 
 /// 开始监视剪贴板（非Web平台空实现）

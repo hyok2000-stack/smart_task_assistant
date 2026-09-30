@@ -46,11 +46,11 @@ Future<void> showSyncReportDialog(BuildContext context, SyncResult result) {
     context: context,
     builder: (_) => AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
+      title: const Row(
         children: [
-          const Icon(Icons.sync_rounded, color: Color(0xFF4F46E5)),
-          const SizedBox(width: 8),
-          const Text('同步报告', style: TextStyle(fontSize: 18)),
+          Icon(Icons.sync_rounded, color: Color(0xFF4F46E5)),
+          SizedBox(width: 8),
+          Text('同步报告', style: TextStyle(fontSize: 18)),
         ],
       ),
       content: SizedBox(
@@ -107,7 +107,7 @@ Widget _buildSection(IconData icon, Color color, String title, List<String> item
             const SizedBox(width: 6),
             Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
             const SizedBox(width: 4),
-            Text('(${items.length})', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text('(${items.length})', style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
         const SizedBox(height: 4),

@@ -94,7 +94,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     color: AppTheme.primaryColor.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  selectedDecoration: BoxDecoration(
+                  selectedDecoration: const BoxDecoration(
                     color: AppTheme.primaryColor,
                     shape: BoxShape.circle,
                   ),

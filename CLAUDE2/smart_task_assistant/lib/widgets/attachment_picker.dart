@@ -79,7 +79,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('无法获取该文件的引用，请尝试从文件管理器中选择'),
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
             ),
           );
         }
@@ -175,12 +175,12 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Icon(Icons.attach_file,
+                    : const Icon(Icons.attach_file,
                         size: 18, color: AppTheme.primaryColor),
                 const SizedBox(width: 6),
                 Text(
                   _paths.isEmpty ? '添加附件' : '继续添加',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppTheme.primaryColor,
                     fontWeight: FontWeight.w500,
                   ),
@@ -270,7 +270,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(fileName,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 13,
                           color: AppTheme.primaryColor,
                           decoration: TextDecoration.underline),

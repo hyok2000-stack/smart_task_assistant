@@ -749,7 +749,7 @@ class AIService {
         'status': _statusToString(t.status),
         'dueTime': t.dueTime?.toIso8601String(),
         'isOverdue': t.isOverdue,
-        'createdAt': t.createdAt?.toIso8601String(),
+        'createdAt': t.createdAt.toIso8601String(),
       };
     }).toList();
 

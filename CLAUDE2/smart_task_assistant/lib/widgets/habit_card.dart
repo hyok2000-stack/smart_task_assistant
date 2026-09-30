@@ -168,7 +168,7 @@ class HabitCard extends StatelessWidget {
                       children: [
                         Icon(Icons.schedule, size: 12, color: Colors.grey[400]),
                         ...todayCheckInTimes.map((time) => Text(
-                              '$time',
+                              time,
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey[500],

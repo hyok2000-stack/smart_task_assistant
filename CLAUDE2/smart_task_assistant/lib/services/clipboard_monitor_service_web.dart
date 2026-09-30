@@ -1,4 +1,5 @@
 /// Web 平台剪贴板监视实现
+library;
 import 'dart:async';
 import 'dart:html' as html;
 import 'package:flutter/material.dart';

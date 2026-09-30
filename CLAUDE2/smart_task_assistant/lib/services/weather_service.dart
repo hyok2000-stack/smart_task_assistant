@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:flutter/services.dart' show MethodChannel;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/city.dart';
@@ -109,7 +107,7 @@ class WeatherService {
 
   // 是否使用模拟数据（API不可用时自动切换）
   bool _useMockData = false;
-  String _mockDataMessage = '使用模拟数据（API不可用）';
+  final String _mockDataMessage = '使用模拟数据（API不可用）';
 
   // 配置常量
   static const Duration _timeout = Duration(seconds: 3);
@@ -331,7 +329,7 @@ class WeatherService {
   /// 不依赖 geolocator 原生插件，在华为等无 GMS 设备上也不会崩溃）。
   Future<void> _locateByIp() async {
     try {
-      final url = '$_ipLocateUrl?key=$_apiKey';
+      const url = '$_ipLocateUrl?key=$_apiKey';
       debugPrint('天气服务：请求 IP 定位...');
       final response = await http.get(Uri.parse(url)).timeout(_timeout);
 
@@ -407,9 +405,7 @@ class WeatherService {
       String? adcode = _cityAdcodes[normalizedCityName];
 
       // 如果没有找到，尝试原始名称
-      if (adcode == null) {
-        adcode = _cityAdcodes[cityName];
-      }
+      adcode ??= _cityAdcodes[cityName];
 
       // 如果还没有找到，尝试使用城市名作为adcode
       if (adcode == null) {

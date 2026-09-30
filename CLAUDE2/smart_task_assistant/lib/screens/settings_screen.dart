@@ -210,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               onChanged: (value) {
                 settings.toggleDarkMode(value);
               },
-              activeColor: AppTheme.primaryColor,
+              activeThumbColor: AppTheme.primaryColor,
             ),
           ),
           _buildDivider(),
@@ -218,7 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.language_outlined,
             title: '语言',
             subtitle: settings.isZh ? '简体中文' : 'English',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () {
               _showLanguageDialog(context, settings);
             },
@@ -275,7 +275,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           borderRadius: BorderRadius.circular(8),
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.05)
+              ? AppTheme.primaryColor.withValues(alpha: 0.05)
               : Colors.transparent,
         ),
         child: Row(
@@ -319,7 +319,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   onChanged: (value) {
                     settings.setClipboardMonitor(value);
                   },
-                  activeColor: AppTheme.primaryColor,
+                  activeThumbColor: AppTheme.primaryColor,
                 ),
               ),
               _buildDivider(),
@@ -334,7 +334,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     context.read<TaskProvider>().autoCompleteParentTasks =
                         value;
                   },
-                  activeColor: AppTheme.primaryColor,
+                  activeThumbColor: AppTheme.primaryColor,
                 ),
               ),
               if (Platform.isAndroid) ...[
@@ -348,16 +348,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.volume_up_outlined,
+                    const Icon(Icons.volume_up_outlined,
                         color: AppTheme.textSecondaryColor),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             '语音音量',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
                               color: AppTheme.textPrimaryColor,
@@ -382,7 +382,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       width: 48,
                       child: Text(
                         '${(settings.ttsVolume * 100).round()}%',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
                           color: AppTheme.textSecondaryColor,
                         ),
@@ -421,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               await _checkReminderServiceRunning();
               if (mounted) setState(() {});
             },
-            activeColor: AppTheme.primaryColor,
+            activeThumbColor: AppTheme.primaryColor,
           ),
         ),
         _buildDivider(),
@@ -452,7 +452,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 trailing: Switch(
                   value: settings.quietHoursEnabled,
                   onChanged: settings.setQuietHoursEnabled,
-                  activeColor: AppTheme.primaryColor,
+                  activeThumbColor: AppTheme.primaryColor,
                 ),
                 onTap: () => _selectQuietHours(settings),
               ),
@@ -638,7 +638,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           size: 20,
         ),
         const SizedBox(width: 8),
-        Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+        const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
       ],
     );
   }
@@ -763,7 +763,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 title: 'AI服务配置',
                 subtitle: '配置本地大模型或远程API',
                 trailing:
-                    Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+                    const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
                 onTap: () {
                   _showAISettingsDialog(context, settings);
                 },
@@ -775,7 +775,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     const EdgeInsets.symmetric(horizontal: 68, vertical: 12),
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.auto_awesome,
                       size: 16,
                       color: AppTheme.primaryColor,
@@ -784,7 +784,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Expanded(
                       child: Text(
                         '当前使用: ${settings.getCurrentAIModelName()}',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 13,
                           color: AppTheme.primaryColor,
                           fontWeight: FontWeight.w500,
@@ -811,7 +811,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           _buildListTile(
             icon: Icons.add_circle_outline,
             title: '添加标签',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () {
               showTagManagementDialog(context);
             },
@@ -827,15 +827,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(
                 Icons.label_outline,
                 color: AppTheme.textSecondaryColor,
                 size: 20,
               ),
-              const SizedBox(width: 12),
-              const Text(
+              SizedBox(width: 12),
+              Text(
                 '默认标签',
                 style: TextStyle(
                   fontSize: 16,
@@ -866,9 +866,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
@@ -891,7 +891,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.file_download_outlined,
             title: l.exportData,
             subtitle: '导出所有任务数据',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _exportData(context, l),
           ),
           _buildDivider(),
@@ -899,7 +899,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.table_chart_outlined,
             title: '导出 CSV',
             subtitle: '以 CSV 格式分享任务列表',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () async {
               final taskProvider = context.read<TaskProvider>();
               await ExportService.instance.exportAndShare(taskProvider.tasks);
@@ -910,7 +910,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.file_upload_outlined,
             title: l.importData,
             subtitle: '导入任务数据',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _importData(context, l),
           ),
           _buildDivider(),
@@ -918,7 +918,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.delete_outline,
             title: l.clearData,
             subtitle: '清除所有数据',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _clearData(context, l),
           ),
         ],
@@ -936,7 +936,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.restore_outlined,
             title: '重置所有设置',
             subtitle: '恢复到默认配置',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _showResetSettingsDialog(context, settings),
           ),
         ],
@@ -958,7 +958,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             title: backend.isLoggedIn ? '已登录：${backend.nickname}' : '登录后台同步',
             subtitle:
                 backend.isLoggedIn ? '地址：${backend.baseUrl}' : '配置后台地址、账号和密码',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _showBackendLoginDialog(context),
           ),
           _buildDivider(),
@@ -972,7 +972,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+                : const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: taskProvider.isBackendSyncing
                 ? null
                 : () => _syncBackendTasks(context),
@@ -982,7 +982,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.sync_problem_outlined,
             title: '同步中心',
             subtitle: '查看同步状态、失败记录和重试队列',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SyncCenterScreen()),
@@ -993,7 +993,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.group_outlined,
             title: '团队管理',
             subtitle: '创建或查看团队',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _showTeamDialog(context),
           ),
         ],
@@ -1036,9 +1036,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
+          color: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.22)),
+          border: Border.all(color: color.withValues(alpha: 0.22)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1097,7 +1097,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             width: 78,
             child: Text(
               label,
-              style: TextStyle(fontSize: 13, color: AppTheme.textHintColor),
+              style: const TextStyle(fontSize: 13, color: AppTheme.textHintColor),
             ),
           ),
           Expanded(
@@ -1142,7 +1142,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             icon: Icons.info_outline,
             title: '关于',
             subtitle: '版本 ${settings.appVersion}',
-            trailing: Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () {
               _showAboutDialog(context, settings);
             },
@@ -1173,12 +1173,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       subtitle: subtitle != null
           ? Text(
               subtitle,
-              style: TextStyle(fontSize: 13, color: AppTheme.textHintColor),
+              style: const TextStyle(fontSize: 13, color: AppTheme.textHintColor),
             )
           : null,
       trailing: trailing ??
           (showTrailing
-              ? Icon(Icons.chevron_right, color: AppTheme.textHintColor)
+              ? const Icon(Icons.chevron_right, color: AppTheme.textHintColor)
               : null),
       onTap: onTap,
     );
@@ -1250,27 +1250,27 @@ class _SettingsScreenState extends State<SettingsScreen>
                 TextButton(
                   onPressed: isLoading
                       ? null
-                      : () async {
-                          // 登出前询问是否清除本地任务数据（防止下一个账号串库）
-                          final clearLocal =
-                              await _confirmLogoutClearData(context);
-                          await backend.logout();
-                          if (clearLocal) {
-                            // 清除前先备份，给用户留后悔药
-                            final taskProvider = context.read<TaskProvider>();
-                            await taskProvider.clearAllData();
-                          }
-                          if (!mounted) return;
-                          Navigator.pop(context);
-                          setState(() {});
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(clearLocal
-                                  ? '已退出登录并清除本地数据'
-                                  : '已退出后台登录（本地数据已保留）'),
-                            ),
-                          );
-                        },
+                    : () async {
+                        final taskProvider = context.read<TaskProvider>();
+                        // 登出前询问是否清除本地任务数据（防止下一个账号串库）
+                        final clearLocal =
+                            await _confirmLogoutClearData(context);
+                        await backend.logout();
+                        if (clearLocal) {
+                          // 清除前先备份，给用户留后悔药
+                          await taskProvider.clearAllData();
+                        }
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(clearLocal
+                                ? '已退出登录并清除本地数据'
+                                : '已退出后台登录（本地数据已保留）'),
+                          ),
+                        );
+                      },
                   child: const Text('退出登录'),
                 ),
               TextButton(
@@ -1282,6 +1282,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ? null
                     : () async {
                         setDialogState(() => isLoading = true);
+                        final taskProvider = context.read<TaskProvider>();
                         try {
                           final session = await backend.login(
                             account: _backendAccountController.text.trim(),
@@ -1294,10 +1295,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 kIsWeb ? 'Web APP' : Platform.localHostname,
                             platform: kIsWeb ? 'web' : Platform.operatingSystem,
                           );
-                          final syncedCount = await context
-                              .read<TaskProvider>()
-                              .syncAllWithBackend();
-                          if (!mounted) return;
+                          final syncedCount =
+                              await taskProvider.syncAllWithBackend();
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1308,7 +1308,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                           );
                         } catch (e) {
-                          if (!mounted) return;
+                          if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('登录失败：$e')),
                           );
@@ -1489,6 +1489,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         }
 
                         setDialogState(() => isLoading = true);
+                        final taskProvider = context.read<TaskProvider>();
                         try {
                           final session = await backend.register(
                             nickname: nickname,
@@ -1509,10 +1510,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 kIsWeb ? 'Web APP' : Platform.localHostname,
                             platform: kIsWeb ? 'web' : Platform.operatingSystem,
                           );
-                          final syncedCount = await context
-                              .read<TaskProvider>()
-                              .syncAllWithBackend();
-                          if (!mounted) return;
+                          final syncedCount =
+                              await taskProvider.syncAllWithBackend();
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1523,11 +1523,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                           );
                         } catch (e) {
+                          if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('注册失败：$e')),
                           );
                         } finally {
-                          setDialogState(() => isLoading = false);
+                          if (mounted) {
+                            setDialogState(() => isLoading = false);
+                          }
                         }
                       },
                 child: Text(isLoading ? '注册中...' : '注册'),
@@ -1688,12 +1691,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       final taskProvider = context.read<TaskProvider>();
       final count = await taskProvider.syncFromBackend();
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('同步完成，新增 $count 个任务')),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('同步失败：$e')),
       );
@@ -1860,8 +1863,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: _testConnectionSuccess
-                                ? AppTheme.successColor.withOpacity(0.1)
-                                : AppTheme.errorColor.withOpacity(0.1),
+                                ? AppTheme.successColor.withValues(alpha: 0.1)
+                                : AppTheme.errorColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _testConnectionSuccess
@@ -1911,6 +1914,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         onPressed: () async {
                           // 同步 AI 配置到 AIService
                           await settings.syncAIConfig();
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                           _showConfigSavedMessage(context, settings.aiMode);
                         },
@@ -1989,7 +1993,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           borderRadius: BorderRadius.circular(8),
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.05)
+              ? AppTheme.primaryColor.withValues(alpha: 0.05)
               : Colors.transparent,
         ),
         child: Row(
@@ -2033,7 +2037,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildAPIKeyField(SettingsProvider settings) {
-    bool _obscureText = false;
+    bool obscureText = false;
 
     return StatefulBuilder(
       builder: (context, setState) {
@@ -2042,13 +2046,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             labelText: 'API Key',
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
-              tooltip: _obscureText ? '显示' : '隐藏',
+              tooltip: obscureText ? '显示' : '隐藏',
               icon: Icon(
-                _obscureText ? Icons.visibility_off : Icons.visibility,
+                obscureText ? Icons.visibility_off : Icons.visibility,
               ),
               onPressed: () {
                 setState(() {
-                  _obscureText = !_obscureText;
+                  obscureText = !obscureText;
                 });
               },
             ),
@@ -2057,7 +2061,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           onChanged: (value) {
             settings.setAPIKey(value);
           },
-          obscureText: _obscureText,
+          obscureText: obscureText,
         );
       },
     );
@@ -2086,7 +2090,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           borderRadius: BorderRadius.circular(8),
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.05)
+              ? AppTheme.primaryColor.withValues(alpha: 0.05)
               : Colors.transparent,
         ),
         child: Column(
@@ -2268,8 +2272,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
 
       // 显示成功对话框
+      if (!context.mounted) return;
       _showExportSuccessDialog(context, fileName, kbSize, exportData);
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${l.exportFailed}: $e'),
@@ -2298,7 +2304,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -2314,7 +2320,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.successColor,
-                      AppTheme.successColor.withOpacity(0.8),
+                      AppTheme.successColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -2326,7 +2332,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -2352,7 +2358,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.check_circle_rounded,
                       size: 64,
                       color: AppTheme.successColor,
@@ -2378,17 +2384,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppTheme.successColor.withOpacity(0.1),
+                        color: AppTheme.successColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppTheme.successColor.withOpacity(0.3),
+                          color: AppTheme.successColor.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Column(
                         children: [
                           Row(
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.insert_drive_file_rounded,
                                 color: AppTheme.successColor,
                                 size: 32,
@@ -2407,7 +2413,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       ),
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(
+                                    const Text(
                                       'JSON格式',
                                       style: TextStyle(
                                         fontSize: 12,
@@ -2450,6 +2456,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _importData(BuildContext context, AppLocalizations l) async {
+    // 在进入任何 await 之前先取好 provider，避免跨异步间隙使用 context
+    final taskProvider = context.read<TaskProvider>();
     try {
       String? content;
       String? fileName;
@@ -2538,8 +2546,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           }
         }
 
-        // 导入数据
-        final taskProvider = context.read<TaskProvider>();
+        // 导入数据（taskProvider 已在方法开头取得）
 
         if (kIsWeb) {
           // Web平台使用存储服务
@@ -2556,7 +2563,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             return;
           }
 
-          final success = await (storageService as WebStorageService)
+          final success = await (storageService)
               .restoreFromBackup(data);
 
           if (!success) {
@@ -2621,7 +2628,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -2637,7 +2644,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.8),
+                      AppTheme.primaryColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -2649,7 +2656,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -2739,7 +2746,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -2772,7 +2779,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.chevron_right,
               color: AppTheme.textHintColor,
             ),
@@ -2835,7 +2842,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -2850,7 +2857,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.8),
+                      AppTheme.primaryColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -2862,7 +2869,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -2933,10 +2940,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
                                         color: AppTheme.primaryColor
-                                            .withOpacity(0.1),
+                                            .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: Icon(
+                                      child: const Icon(
                                         Icons.description_rounded,
                                         color: AppTheme.primaryColor,
                                         size: 24,
@@ -2968,7 +2975,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                         ],
                                       ),
                                     ),
-                                    Icon(
+                                    const Icon(
                                       Icons.chevron_right,
                                       color: AppTheme.textHintColor,
                                     ),
@@ -3043,7 +3050,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -3059,7 +3066,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.successColor,
-                      AppTheme.successColor.withOpacity(0.8),
+                      AppTheme.successColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -3098,15 +3105,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppTheme.successColor.withOpacity(0.1),
+                        color: AppTheme.successColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppTheme.successColor.withOpacity(0.3),
+                          color: AppTheme.successColor.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.insert_drive_file_rounded,
                             color: AppTheme.successColor,
                             size: 32,
@@ -3171,7 +3178,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -3187,25 +3194,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.errorColor,
-                      AppTheme.errorColor.withOpacity(0.8),
+                      AppTheme.errorColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.warning_rounded,
                   size: 64,
                   color: Colors.white,
                 ),
               ),
               // 内容
-              Padding(
-                padding: const EdgeInsets.all(24),
+              const Padding(
+                padding: EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       '确认清除所有数据',
                       style: TextStyle(
                         fontSize: 20,
@@ -3213,8 +3220,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         color: AppTheme.textPrimaryColor,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
+                    SizedBox(height: 12),
+                    Text(
                       '此操作将永久删除所有任务和标签，无法恢复！',
                       style: TextStyle(
                         fontSize: 14,
@@ -3249,10 +3256,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                           Navigator.pop(context);
 
                           try {
-                            final taskProvider = context.read<TaskProvider>();
+                            final taskProvider =
+                                context.read<TaskProvider>();
                             await taskProvider.clearAllData();
 
-                            if (mounted) {
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('所有数据已清除'),
@@ -3261,7 +3269,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               );
                             }
                           } catch (e) {
-                            if (mounted) {
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text('清除失败: $e'),
@@ -3309,7 +3317,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -3325,25 +3333,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppTheme.warningColor,
-                      AppTheme.warningColor.withOpacity(0.8),
+                      AppTheme.warningColor.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.restore_rounded,
                   size: 64,
                   color: Colors.white,
                 ),
               ),
               // 内容
-              Padding(
-                padding: const EdgeInsets.all(24),
+              const Padding(
+                padding: EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       '重置所有设置',
                       style: TextStyle(
                         fontSize: 20,
@@ -3351,8 +3359,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         color: AppTheme.textPrimaryColor,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
+                    SizedBox(height: 12),
+                    Text(
                       '此操作将恢复所有设置到默认值，您的任务数据不会受影响。',
                       style: TextStyle(
                         fontSize: 14,
@@ -3387,7 +3395,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           Navigator.pop(context);
                           await settings.resetToDefault();
                           _loadSettingsToControllers();
-                          if (mounted) {
+                          if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('设置已重置'),
@@ -3431,7 +3439,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -3716,10 +3724,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -3773,7 +3781,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
@@ -3816,7 +3824,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.1),
+            color: AppTheme.primaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: AppTheme.primaryColor, size: 20),

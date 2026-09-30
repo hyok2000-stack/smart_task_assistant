@@ -147,11 +147,13 @@ class TaskProvider extends ChangeNotifier {
       result = result.where((t) {
         final dt = t.dueTime ?? t.startTime;
         if (dt == null) return false;
-        if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!))
+        if (_filterDateFrom != null && dt.isBefore(_filterDateFrom!)) {
           return false;
+        }
         if (_filterDateTo != null &&
-            dt.isAfter(_filterDateTo!.add(const Duration(days: 1))))
+            dt.isAfter(_filterDateTo!.add(const Duration(days: 1)))) {
           return false;
+        }
         return true;
       }).toList();
     }
@@ -620,15 +622,13 @@ class TaskProvider extends ChangeNotifier {
       }
 
       // 包含今天创建的任务
-      if (t.createdAt != null) {
-        final createdDate = t.createdAt!;
-        if (createdDate.year == now.year &&
-            createdDate.month == now.month &&
-            createdDate.day == now.day) {
-          return true;
-        }
+      final createdDate = t.createdAt;
+      if (createdDate.year == now.year &&
+          createdDate.month == now.month &&
+          createdDate.day == now.day) {
+        return true;
       }
-
+    
       // 包含今天截止的任务
       if (t.dueTime != null) {
         final due = t.dueTime!;
@@ -1077,8 +1077,8 @@ class TaskProvider extends ChangeNotifier {
       // Clean up tag references in all tasks
       for (int i = 0; i < _tasks.length; i++) {
         final task = _tasks[i];
-        if (task.tagIds != null && task.tagIds!.contains(id)) {
-          final updatedTagIds = task.tagIds!.where((tid) => tid != id).toList();
+        if (task.tagIds.contains(id)) {
+          final updatedTagIds = task.tagIds.where((tid) => tid != id).toList();
           final updated =
               task.copyWith(tagIds: updatedTagIds.isEmpty ? [] : updatedTagIds);
           await _storage.updateTask(updated);

@@ -1,5 +1,6 @@
 /// 非Web平台提醒声音存根
 /// 此文件在非Web平台编译时使用
+library;
 
 /// 播放提醒声音（非Web平台空实现）
 void playReminderSoundWeb() {

@@ -595,8 +595,9 @@ class BackendApiService {
   Future<List<ConflictInfo>> pushTasks(List<Task> tasks,
       {List<String>? deletedIds}) async {
     if (!isLoggedIn ||
-        (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty)))
+        (tasks.isEmpty && (deletedIds == null || deletedIds.isEmpty))) {
       return [];
+    }
     final items = <Map<String, dynamic>>[];
     for (final task in tasks) {
       items.add(taskToBackendJson(task));

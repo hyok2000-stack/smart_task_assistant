@@ -271,7 +271,7 @@ class TaskCard extends StatelessWidget {
                       // 重复周期图标
                       if (task.isRecurring) ...[
                         const SizedBox(width: 6),
-                        Icon(
+                        const Icon(
                           Icons.repeat_rounded,
                           size: 11,
                           color: AppTheme.primaryColor,
@@ -281,11 +281,11 @@ class TaskCard extends StatelessWidget {
                       if (task.reminderMinutes != null &&
                           task.reminderMinutes! > 0) ...[
                         const SizedBox(width: 6),
-                        Icon(Icons.alarm, size: 11, color: Colors.orange),
+                        const Icon(Icons.alarm, size: 11, color: Colors.orange),
                       ],
                       if (isDistributed) ...[
                         const SizedBox(width: 6),
-                        Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
+                        const Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
                       ],
                     ],
                   ),
@@ -323,7 +323,7 @@ class TaskCard extends StatelessWidget {
               const SizedBox(width: 4),
               GestureDetector(
                 onTap: onPinToggle,
-                child: Icon(Icons.push_pin, size: 16, color: AppTheme.primaryColor),
+                child: const Icon(Icons.push_pin, size: 16, color: AppTheme.primaryColor),
               ),
             ],
           ],
@@ -534,7 +534,7 @@ class TaskCard extends StatelessWidget {
                         // 更多操作按钮
                         if (onDelete != null)
                           PopupMenuButton<String>(
-                            icon: Icon(
+                            icon: const Icon(
                               Icons.more_vert,
                               size: 20,
                               color: AppTheme.textHintColor,
@@ -556,7 +556,7 @@ class TaskCard extends StatelessWidget {
                                 value: 'edit',
                                 child: Row(
                                   children: [
-                                    Icon(
+                                    const Icon(
                                       Icons.edit_outlined,
                                       color: AppTheme.primaryColor,
                                       size: 20,
@@ -571,7 +571,7 @@ class TaskCard extends StatelessWidget {
                                   value: 'template',
                                   child: Row(
                                     children: [
-                                      Icon(
+                                      const Icon(
                                         Icons.bookmark_add_outlined,
                                         color: AppTheme.infoColor,
                                         size: 20,
@@ -585,7 +585,7 @@ class TaskCard extends StatelessWidget {
                                 value: 'delete',
                                 child: Row(
                                   children: [
-                                    Icon(
+                                    const Icon(
                                       Icons.delete_outline,
                                       color: AppTheme.errorColor,
                                       size: 20,
@@ -675,11 +675,11 @@ class TaskCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
+          const Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
           const SizedBox(width: 3),
           Text(
             l.distributed,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppTheme.primaryColor,
               fontWeight: FontWeight.w600,
@@ -1116,11 +1116,11 @@ class TaskCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.repeat_rounded, size: 11, color: AppTheme.primaryColor),
+            const Icon(Icons.repeat_rounded, size: 11, color: AppTheme.primaryColor),
             const SizedBox(width: 3),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
@@ -1165,11 +1165,11 @@ class TaskCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.alarm, size: 11, color: Colors.orange),
+            const Icon(Icons.alarm, size: 11, color: Colors.orange),
             const SizedBox(width: 3),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
                 color: Colors.orange,
                 fontWeight: FontWeight.w600,
@@ -1228,7 +1228,7 @@ class TaskCard extends StatelessWidget {
                     color: color,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.label_rounded,
                     size: 8,
                     color: Colors.white,

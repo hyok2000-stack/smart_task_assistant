@@ -59,7 +59,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 15,
+      version: 16,
       onConfigure: (db) async {
         // 启用外键约束——sqflite 默认关闭，不开启则 ON DELETE CASCADE 不生效
         await db.execute('PRAGMA foreign_keys = ON');
@@ -168,6 +168,11 @@ class DatabaseHelper {
         'CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_tasks_status_due_time ON tasks(status, due_time)');
+    // 部分索引：原生提醒轮询查询（30 秒一次）的精确覆盖——
+    // WHERE status IN (0,1) AND archived_at IS NULL AND reminder_dismissed = 0，
+    // 普通索引无法匹配 IS NULL 条件，避免随任务量增长退化为全表扫描
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tasks_reminder_active ON tasks(status, due_time) WHERE archived_at IS NULL AND reminder_dismissed = 0');
 
     // 插入默认标签
     await _insertDefaultTags(db);
@@ -263,6 +268,11 @@ class DatabaseHelper {
       } catch (e) {
         debugPrint('列 archived_at 已存在: $e');
       }
+    }
+    // 版本15 -> 版本16: 提醒轮询查询的部分索引（覆盖 archived_at IS NULL 条件）
+    if (oldVersion < 16) {
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_tasks_reminder_active ON tasks(status, due_time) WHERE archived_at IS NULL AND reminder_dismissed = 0');
     }
     // 版本1 -> 版本2: 添加提醒相关字段
     if (oldVersion < 2) {

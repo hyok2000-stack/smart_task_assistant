@@ -85,11 +85,11 @@ class SubtaskList extends StatelessWidget {
                 constraints: const BoxConstraints(minHeight: 44),
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.add, size: 18, color: AppTheme.primaryColor),
-                    const SizedBox(width: 4),
+                    SizedBox(width: 4),
                     Text(
                       '添加子任务',
                       style: TextStyle(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w500),

@@ -95,7 +95,7 @@ class StatsScreen extends StatelessWidget {
             children: [
               Text(
                 l.taskOverview,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppTheme.textSecondaryColor,
                   fontSize: 14,
                 ),
@@ -105,7 +105,7 @@ class StatsScreen extends StatelessWidget {
                 l.isZh
                     ? '共 ${stats['total'] ?? 0} 个任务'
                     : '${stats['total'] ?? 0} tasks total',
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppTheme.textPrimaryColor,
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -265,14 +265,14 @@ class StatsScreen extends StatelessWidget {
                 children: [
                   Text(
                     '${l.completedTasks} $completed',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppTheme.textSecondaryColor,
                       fontSize: 13,
                     ),
                   ),
                   Text(
                     '${l.isZh ? "共" : "Total"} $total',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppTheme.textHintColor,
                       fontSize: 13,
                     ),
@@ -316,7 +316,7 @@ class StatsScreen extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             l.completedThisWeek(thisWeek),
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppTheme.textSecondaryColor,
             ),
@@ -392,7 +392,7 @@ class StatsScreen extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     l.navToday,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textPrimaryColor,
@@ -501,7 +501,7 @@ class StatsScreen extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         l.overdueTasks,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimaryColor,
@@ -610,7 +610,7 @@ class StatsScreen extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     l.tagManagement,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textPrimaryColor,
@@ -623,7 +623,7 @@ class StatsScreen extends StatelessWidget {
                 Center(
                   child: Text(
                     l.isZh ? '暂无标签数据' : 'No tag data',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppTheme.textHintColor,
                       fontSize: 14,
                     ),
@@ -665,7 +665,7 @@ class StatsScreen extends StatelessWidget {
                         ),
                         Text(
                           '${entry.value}${l.isZh ? "个" : ""}',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textPrimaryColor,
@@ -674,7 +674,7 @@ class StatsScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           '($percentage%)',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.textHintColor,
                           ),
@@ -711,7 +711,7 @@ class StatsScreen extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             color: AppTheme.textSecondaryColor,
           ),

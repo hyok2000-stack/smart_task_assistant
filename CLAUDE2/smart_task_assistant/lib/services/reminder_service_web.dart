@@ -1,4 +1,5 @@
 /// Web 平台提醒声音实现
+library;
 import 'dart:html' as html;
 import 'dart:js' as js;
 

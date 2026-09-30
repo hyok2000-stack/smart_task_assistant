@@ -40,22 +40,22 @@ class StatCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? color.withOpacity(0.15)
+              ? color.withValues(alpha: 0.15)
               : (isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.white.withOpacity(0.95)),
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.white.withValues(alpha: 0.95)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? color
                 : (isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.5)),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.5)),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(isSelected ? 0.2 : 0.08),
+              color: color.withValues(alpha: isSelected ? 0.2 : 0.08),
               blurRadius: isSelected ? 20 : 10,
               offset: const Offset(0, 4),
             ),
@@ -72,12 +72,12 @@ class StatCard extends StatelessWidget {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(isSelected ? 0.3 : 0.15),
+                    color: color.withValues(alpha: isSelected ? 0.3 : 0.15),
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: isSelected
                         ? [
                             BoxShadow(
-                              color: color.withOpacity(0.3),
+                              color: color.withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -99,7 +99,7 @@ class StatCard extends StatelessWidget {
                       color: (trendUp
                               ? AppTheme.successColor
                               : AppTheme.errorColor)
-                          .withOpacity(0.15),
+                          .withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -148,7 +148,7 @@ class StatCard extends StatelessWidget {
               title,
               style: TextStyle(
                 color: isSelected
-                    ? color.withOpacity(0.8)
+                    ? color.withValues(alpha: 0.8)
                     : AppTheme.textSecondaryColor,
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
@@ -159,7 +159,7 @@ class StatCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle!,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppTheme.textHintColor,
                   fontSize: 12,
                 ),
@@ -204,22 +204,22 @@ class FilterStatCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? color.withOpacity(0.15)
+              ? color.withValues(alpha: 0.15)
               : (isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.white.withOpacity(0.9)),
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.white.withValues(alpha: 0.9)),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? color
                 : (isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.5)),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.5)),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -231,7 +231,7 @@ class FilterStatCard extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(isSelected ? 0.3 : 0.15),
+                color: color.withValues(alpha: isSelected ? 0.3 : 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(

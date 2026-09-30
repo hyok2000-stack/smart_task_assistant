@@ -232,12 +232,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                             [ConnectivityResult.wifi];
                                         final isOffline = results
                                             .contains(ConnectivityResult.none);
-                                        if (!isOffline)
+                                        if (!isOffline) {
                                           return const SizedBox.shrink();
+                                        }
                                         return Container(
                                           width: 8,
                                           height: 8,
-                                          decoration: BoxDecoration(
+                                          decoration: const BoxDecoration(
                                             color: Colors.orange,
                                             shape: BoxShape.circle,
                                           ),
@@ -321,7 +322,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       const SizedBox(width: 6),
                       Text(
                         '${l.overdueTasks} (${provider.overdueTasks.length})',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.errorColor,
@@ -350,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 const SizedBox(height: 12),
                                 Text(
                                   l.allTasksCompleted,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.primaryColor,
@@ -360,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 Text(
                                   l.completedTasksMsg(
                                       provider.todayTasks.length),
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 13,
                                     color: AppTheme.textHintColor,
                                   ),
@@ -686,7 +687,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               // 加载中：显示骨架屏，避免空数据时误显示"无任务"
               if (provider.isLoading && provider.tasks.isEmpty)
-                SliverToBoxAdapter(child: TaskListSkeleton(itemCount: 4))
+                const SliverToBoxAdapter(child: TaskListSkeleton(itemCount: 4))
               else if (_getFilteredTaskList(provider).isEmpty)
                 SliverToBoxAdapter(
                   child: _buildEmptyState(isWhite: true),
@@ -704,8 +705,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final task = filteredTasks[index];
-                          if (task.parentId != null)
+                          if (task.parentId != null) {
                             return const SizedBox.shrink();
+                          }
                           final subtasks =
                               provider.subtasksByParentId[task.id] ?? [];
                           return Column(
@@ -871,7 +873,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(width: 4),
             Text(
               _weatherInfo?.temperatureText ?? '--°C',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.primaryColor,
@@ -880,8 +882,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (_weatherInfo?.cityName != null) ...[
               const SizedBox(width: 3),
               Text(
-                _weatherInfo!.cityName!,
-                style: TextStyle(
+                _weatherInfo!.cityName,
+                style: const TextStyle(
                   fontSize: 12,
                   color: AppTheme.textHintColor,
                 ),
@@ -1169,12 +1171,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bar_chart_rounded,
+            const Icon(Icons.bar_chart_rounded,
                 size: 16, color: AppTheme.primaryColor),
             const SizedBox(width: 4),
             Text(
               l.navStats,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.primaryColor,
@@ -1444,7 +1446,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     Text(
                       '$completedCount/$totalCount',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppTheme.textSecondaryColor,
                       ),
@@ -1503,7 +1505,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             color: AppTheme.textSecondaryColor,
           ),
@@ -1581,7 +1583,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // 关闭按钮
             GestureDetector(
               onTap: () => setState(() => _isAICardDismissed = true),
-              child: Icon(
+              child: const Icon(
                 Icons.close_rounded,
                 size: 16,
                 color: AppTheme.textHintColor,
@@ -1608,10 +1610,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         expand: false,
         builder: (context, scrollController) {
           return Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
+                  BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Column(
               children: [
@@ -1693,7 +1695,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           const SizedBox(height: 12),
                           Text(
                             task.content!,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 15,
                               color: AppTheme.textSecondaryColor,
                               height: 1.5,
@@ -1706,12 +1708,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           l.deadline,
                           task.dueTimeDescription,
                         ),
-                        if (task.createdAt != null)
-                          _buildDetailRow(
-                            Icons.add_circle_outline,
-                            l.createTime,
-                            _formatDateTime(task.createdAt!),
-                          ),
+                        _buildDetailRow(
+                          Icons.add_circle_outline,
+                          l.createTime,
+                          _formatDateTime(task.createdAt),
+                        ),
                         Consumer<TaskProvider>(
                           builder: (_, provider, __) {
                             final t = provider.tasks.firstWhere(
@@ -1985,7 +1986,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.swap_horiz_rounded,
                     size: 18,
                     color: AppTheme.textSecondaryColor,
@@ -1993,7 +1994,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(width: 8),
                   Text(
                     l.changeStatus,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2130,9 +2131,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2152,7 +2153,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   Text(l.selectDeadline,
                       style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -2260,21 +2261,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     int selectedMinutes = task.reminderMinutes ?? 30;
     final options = [5, 15, 30, 60, 120, 1440]; // 分钟
     final labels = [
-      '${l.reminder5Min}',
-      '${l.reminder15Min}',
-      '${l.reminder30Min}',
-      '${l.reminder1Hour}',
-      '${l.reminder2Hour}',
-      '${l.reminder1Day}'
+      (l.reminder5Min),
+      (l.reminder15Min),
+      (l.reminder30Min),
+      (l.reminder1Hour),
+      (l.reminder2Hour),
+      (l.reminder1Day)
     ];
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2295,7 +2296,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   Text(l.reminder,
                       style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Wrap(
                     spacing: 8,
@@ -2373,9 +2374,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2396,7 +2397,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   Text(l.repeatCycle,
                       style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Wrap(
                     spacing: 8,
@@ -2611,7 +2612,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             children: [
                               Text(
                                 l.noComments,
-                                style: TextStyle(
+                                style: const TextStyle(
                                     color: AppTheme.textSecondaryColor),
                               ),
                               const Spacer(),
@@ -2715,7 +2716,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: DropdownButtonFormField<String?>(
-                      value: targetTaskId,
+                      initialValue: targetTaskId,
                       decoration: const InputDecoration(
                           labelText: '发送给', border: OutlineInputBorder()),
                       items: [
@@ -3138,7 +3139,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.send_rounded,
+                      const Icon(Icons.send_rounded,
                           size: 18, color: AppTheme.primaryColor),
                       const SizedBox(width: 8),
                       Text(
@@ -3156,7 +3157,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                         child: Text(
                           '${distributions.length}',
-                          style: TextStyle(
+                          style: const TextStyle(
                               fontSize: 12,
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600),
@@ -3215,12 +3216,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(height: 6),
             Row(
               children: [
-                Icon(Icons.assignment_rounded,
+                const Icon(Icons.assignment_rounded,
                     size: 14, color: AppTheme.textSecondaryColor),
                 const SizedBox(width: 4),
                 Text(
                   l.counterpartTaskStatus(taskStatusText),
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 12, color: AppTheme.textSecondaryColor),
                 ),
               ],
@@ -3237,7 +3238,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.chat_bubble_outline_rounded,
+                    const Icon(Icons.chat_bubble_outline_rounded,
                         size: 14, color: AppTheme.infoColor),
                     const SizedBox(width: 4),
                     Expanded(
@@ -3247,7 +3248,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 d.commentCount, d.lastCommentSummary!)
                             : l.commentsCount(d.commentCount),
                         style:
-                            TextStyle(fontSize: 12, color: AppTheme.infoColor),
+                            const TextStyle(fontSize: 12, color: AppTheme.infoColor),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -3269,7 +3270,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     const SizedBox(width: 4),
-                    Icon(Icons.chevron_right,
+                    const Icon(Icons.chevron_right,
                         size: 16, color: AppTheme.textHintColor),
                   ],
                 ),
@@ -3285,16 +3286,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(Icons.history_rounded,
+                  const Icon(Icons.history_rounded,
                       size: 14, color: AppTheme.textSecondaryColor),
                   const SizedBox(width: 4),
                   Text(
                     l.statusChangeLog,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 12, color: AppTheme.textSecondaryColor),
                   ),
                   const Spacer(),
-                  Icon(Icons.chevron_right,
+                  const Icon(Icons.chevron_right,
                       size: 16, color: AppTheme.textHintColor),
                 ],
               ),
@@ -3402,7 +3403,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       const Spacer(),
                                       Text(
                                         _formatDateTime(c.serverCreatedAt),
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                             fontSize: 12,
                                             color: AppTheme.textHintColor),
                                       ),
@@ -3582,7 +3583,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           const SizedBox(height: 2),
                                           Text(
                                             _formatDateTime(log.createdAt),
-                                            style: TextStyle(
+                                            style: const TextStyle(
                                                 fontSize: 12,
                                                 color: AppTheme.textHintColor),
                                           ),
@@ -3627,7 +3628,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
                   color: AppTheme.textHintColor,
                 ),
@@ -4050,7 +4051,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   AnimatedRotation(
                     turns: _isRecycleBinExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: Icon(Icons.keyboard_arrow_down_rounded,
+                    child: const Icon(Icons.keyboard_arrow_down_rounded,
                         color: AppTheme.textHintColor, size: 24),
                   ),
                 ],
@@ -4188,7 +4189,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(width: 12),
                   Text(
                     l.completed,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -4224,7 +4225,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   AnimatedRotation(
                     turns: _isCompletedExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: Icon(
+                    child: const Icon(
                       Icons.keyboard_arrow_down_rounded,
                       color: AppTheme.textHintColor,
                       size: 24,
@@ -4273,7 +4274,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         l.isZh
                             ? '查看全部 ${completedTasks.length} 个已完成任务'
                             : 'View all ${completedTasks.length} completed tasks',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppTheme.primaryColor,
                           fontSize: 13,
                         ),
@@ -4472,7 +4473,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(height: 12),
               Text(createdAtText,
                   style:
-                      TextStyle(fontSize: 12, color: AppTheme.textHintColor)),
+                      const TextStyle(fontSize: 12, color: AppTheme.textHintColor)),
             ],
           ),
         ),
@@ -4673,11 +4674,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Icon(Icons.person_outline_rounded,
+              const Icon(Icons.person_outline_rounded,
                   size: 18, color: AppTheme.textSecondaryColor),
               const SizedBox(width: 8),
               Text(l.assignedTo,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 13, color: AppTheme.textSecondaryColor)),
               const Spacer(),
               Container(
@@ -4690,11 +4691,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.person_rounded,
+                    const Icon(Icons.person_rounded,
                         size: 14, color: AppTheme.primaryColor),
                     const SizedBox(width: 4),
                     Text(name,
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: 13,
                             color: AppTheme.primaryColor,
                             fontWeight: FontWeight.w500)),

@@ -291,7 +291,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   _aiSuggestion!,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 13,
                                     color: AppTheme.textSecondaryColor,
                                   ),
@@ -536,7 +536,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                     keyboardType: TextInputType.number,
                                     decoration: InputDecoration(
                                       hintText: l.enterMinutes,
-                                      hintStyle: TextStyle(
+                                      hintStyle: const TextStyle(
                                         fontSize: 13,
                                         color: AppTheme.textHintColor,
                                       ),
@@ -625,7 +625,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           onChanged: (value) {
                             setState(() => _reminderVoiceEnabled = value);
                           },
-                          activeColor: AppTheme.primaryColor,
+                          activeThumbColor: AppTheme.primaryColor,
                           contentPadding: EdgeInsets.zero,
                         ),
                         if (_reminderVoiceEnabled) ...[
@@ -660,7 +660,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                     }
                                   });
                                 },
-                                activeColor: AppTheme.primaryColor,
+                                activeThumbColor: AppTheme.primaryColor,
                               ),
                             ],
                           ),
@@ -856,7 +856,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.label_outline,
                               color: AppTheme.textHintColor,
                               size: 20,
@@ -866,7 +866,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                               l.isZh
                                   ? '暂无标签，请在设置中添加'
                                   : 'No tags, please add in settings',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: AppTheme.textHintColor,
                                 fontSize: 14,
                               ),
@@ -900,7 +900,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   ),
                                   child: Text(
                                     l.defaultTags,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: AppTheme.textHintColor,
                                       fontWeight: FontWeight.w500,
@@ -933,7 +933,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             ),
                             child: Text(
                               l.customTags,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.textHintColor,
                                 fontWeight: FontWeight.w500,
@@ -994,7 +994,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         onChanged: (value) {
                           setState(() => _isRecurring = value);
                         },
-                        activeColor: AppTheme.primaryColor,
+                        activeThumbColor: AppTheme.primaryColor,
                         contentPadding: EdgeInsets.zero,
                       ),
                       if (_isRecurring) ...[
@@ -1062,8 +1062,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       children: [
                         // 指派给
                         if (_teamMembers.isNotEmpty) ...[
-                          Text('指派给',
-                              style: const TextStyle(
+                          const Text('指派给',
+                              style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.textSecondaryColor)),
@@ -1411,8 +1411,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       ),
     );
     controller.dispose();
-    if (!mounted || result == null || result.isEmpty || result == c.content)
+    if (!mounted || result == null || result.isEmpty || result == c.content) {
       return;
+    }
     try {
       // 1. 先落本地持久化（标记 synced=false 待同步）——保证刷新/重进后编辑不丢失
       final updated =
@@ -1448,9 +1449,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('编辑失败：$e')));
+      }
     }
   }
 
@@ -1494,9 +1496,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('删除失败：$e')));
+      }
     }
   }
 
@@ -2564,16 +2567,18 @@ class _DistributionCommentsSheetState
         ],
       ),
     );
-    if (!mounted || result == null || result.isEmpty || result == c.content)
+    if (!mounted || result == null || result.isEmpty || result == c.content) {
       return;
+    }
     try {
       await BackendApiService.instance
           .editComment(taskId: c.taskId, commentId: c.id, content: result);
       _fetchComments();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('编辑失败：$e')));
+      }
     }
   }
 
@@ -2600,9 +2605,10 @@ class _DistributionCommentsSheetState
           .deleteComment(taskId: c.taskId, commentId: c.id);
       _fetchComments();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('删除失败：$e')));
+      }
     }
   }
 

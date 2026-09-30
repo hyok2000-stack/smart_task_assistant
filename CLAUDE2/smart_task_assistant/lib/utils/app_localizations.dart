@@ -575,12 +575,12 @@ class AppLocalizations {
   // 周期任务
   String recurringTaskCompleted(String title) => isZh
       ? '周期任务「$title」已完成，已自动创建下一期'
-      : 'Recurring task \"$title\" completed, next occurrence created';
+      : 'Recurring task "$title" completed, next occurrence created';
 
   // AI 建议
   String get aiNoPendingTasks => isZh ? '🎉 今天没有待处理任务！' : '🎉 No pending tasks today!';
-  String aiSuggestionPriority(String title) => isZh ? '💡 优先处理「$title」' : '💡 Priority: \"$title\"';
-  String aiSuggestionNext(String title) => isZh ? '💡 建议处理「$title」' : '💡 Suggested: \"$title\"';
+  String aiSuggestionPriority(String title) => isZh ? '💡 优先处理「$title」' : '💡 Priority: "$title"';
+  String aiSuggestionNext(String title) => isZh ? '💡 建议处理「$title」' : '💡 Suggested: "$title"';
 }
 
 class _AppLocalizationsDelegate
@@ -604,6 +604,6 @@ class _AppLocalizationsDelegate
 /// 简化的国际化扩展方法
 extension LocalizationExtension on BuildContext {
   AppLocalizations get l =>
-      AppLocalizations.of(this) ?? AppLocalizations(Locale('zh', 'CN'));
+      AppLocalizations.of(this) ?? AppLocalizations(const Locale('zh', 'CN'));
   bool get isZh => appSettings.isZh;
 }

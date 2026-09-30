@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import '../models/task.dart';
 
 /// 任务过滤器工具类
@@ -18,15 +17,13 @@ class TaskFilter {
       }
 
       // 包含今天创建的任务（即使已完成）
-      if (t.createdAt != null) {
-        final createdDate = t.createdAt!;
-        if (createdDate.year == now.year &&
-            createdDate.month == now.month &&
-            createdDate.day == now.day) {
-          return true;
-        }
+      final createdDate = t.createdAt;
+      if (createdDate.year == now.year &&
+          createdDate.month == now.month &&
+          createdDate.day == now.day) {
+        return true;
       }
-
+    
       // 包含今天截止的任务（即使已完成）
       if (t.dueTime != null) {
         final due = t.dueTime!;

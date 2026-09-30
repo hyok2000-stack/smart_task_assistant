@@ -163,6 +163,8 @@ class _AIChatDialogState extends State<AIChatDialog>
     _scrollToBottom();
 
     try {
+      // 在进入 await 前先取好 provider，避免跨异步间隙使用 context
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       // 强制重新加载AI配置，确保使用最新的设置
       await _aiService.loadConfig(forceReload: true);
 
@@ -188,7 +190,6 @@ class _AIChatDialogState extends State<AIChatDialog>
       }
 
       // 获取任务列表
-      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final tasks = taskProvider.tasks;
 
       // 构建历史消息（只包含真正的对话消息，排除欢迎、紧急提醒等系统消息）
@@ -295,31 +296,31 @@ class _AIChatDialogState extends State<AIChatDialog>
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         children: [
           // 头部
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFF6366F1),
-                  const Color(0xFF8B5CF6),
+                  Color(0xFF6366F1),
+                  Color(0xFF8B5CF6),
                 ],
               ),
               borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(28)),
+                  BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -348,7 +349,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Row(
@@ -446,8 +447,8 @@ class _AIChatDialogState extends State<AIChatDialog>
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(
-                          color: const Color(0xFF6366F1),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF6366F1),
                           width: 2,
                         ),
                       ),
@@ -471,7 +472,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF6366F1).withOpacity(0.3),
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -572,7 +573,7 @@ class _AIChatDialogState extends State<AIChatDialog>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -590,7 +591,7 @@ class _AIChatDialogState extends State<AIChatDialog>
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          const Text(
             '输入任何问题，AI 将为你解答',
             style: TextStyle(
               color: AppTheme.textSecondaryColor,
@@ -709,7 +710,7 @@ class _AIChatDialogState extends State<AIChatDialog>
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
@@ -753,10 +754,10 @@ class _AIChatDialogState extends State<AIChatDialog>
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border:
-                    Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
+                    Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.1),
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -799,9 +800,9 @@ class _AIChatDialogState extends State<AIChatDialog>
                     const SizedBox(height: 12),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text(
+                    const Text(
                       '推荐处理顺序：',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textSecondaryColor,
@@ -816,7 +817,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           '...还有 ${suggestion.items.length - 5} 个任务',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondaryColor,
                           ),
@@ -897,7 +898,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: priorityColor.withOpacity(0.1),
+                          color: priorityColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -914,7 +915,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.info_outline,
                         size: 12,
                         color: AppTheme.textSecondaryColor,
@@ -923,7 +924,7 @@ class _AIChatDialogState extends State<AIChatDialog>
                       Expanded(
                         child: Text(
                           item.reason,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondaryColor,
                           ),
@@ -934,18 +935,18 @@ class _AIChatDialogState extends State<AIChatDialog>
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.check_circle_outline,
                         size: 12,
-                        color: const Color(0xFF6366F1),
+                        color: Color(0xFF6366F1),
                       ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           item.suggestion,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
-                            color: const Color(0xFF6366F1),
+                            color: Color(0xFF6366F1),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1030,11 +1031,11 @@ class _AIChatDialogState extends State<AIChatDialog>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
-                const Icon(Icons.auto_awesome, color: AppTheme.primaryColor, size: 18),
-                const SizedBox(width: 8),
-                const Text('AI 任务建议', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                Icon(Icons.auto_awesome, color: AppTheme.primaryColor, size: 18),
+                SizedBox(width: 8),
+                Text('AI 任务建议', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
               ],
             ),
             const SizedBox(height: 12),
@@ -1136,7 +1137,7 @@ class _AIChatDialogState extends State<AIChatDialog>
           child: Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppTheme.textSecondaryColor,
               shape: BoxShape.circle,
             ),

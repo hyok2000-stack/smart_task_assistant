@@ -69,16 +69,21 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
   }
 
   IconData _actionIcon(String action) {
-    if (action.contains('create') || action.contains('创建'))
+    if (action.contains('create') || action.contains('创建')) {
       return Icons.add_circle_outline;
-    if (action.contains('update') || action.contains('编辑'))
+    }
+    if (action.contains('update') || action.contains('编辑')) {
       return Icons.edit_rounded;
-    if (action.contains('complete') || action.contains('状态'))
+    }
+    if (action.contains('complete') || action.contains('状态')) {
       return Icons.check_circle_outline;
-    if (action.contains('delete') || action.contains('删除'))
+    }
+    if (action.contains('delete') || action.contains('删除')) {
       return Icons.delete_outline;
-    if (action.contains('comment') || action.contains('评论'))
+    }
+    if (action.contains('comment') || action.contains('评论')) {
       return Icons.chat_bubble_outline;
+    }
     if (action.contains('归档')) return Icons.archive_outlined;
     if (action.contains('恢复')) return Icons.restore_rounded;
     if (action.contains('指派')) return Icons.person_add_alt_rounded;
@@ -87,16 +92,21 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
   }
 
   Color _actionColor(String action) {
-    if (action.contains('create') || action.contains('创建'))
+    if (action.contains('create') || action.contains('创建')) {
       return AppTheme.successColor;
-    if (action.contains('update') || action.contains('编辑'))
+    }
+    if (action.contains('update') || action.contains('编辑')) {
       return AppTheme.infoColor;
-    if (action.contains('complete') || action.contains('状态'))
+    }
+    if (action.contains('complete') || action.contains('状态')) {
       return AppTheme.successColor;
-    if (action.contains('delete') || action.contains('删除'))
+    }
+    if (action.contains('delete') || action.contains('删除')) {
       return AppTheme.errorColor;
-    if (action.contains('comment') || action.contains('评论'))
+    }
+    if (action.contains('comment') || action.contains('评论')) {
       return AppTheme.primaryColor;
+    }
     return AppTheme.textSecondaryColor;
   }
 
@@ -153,7 +163,7 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
                 const SizedBox(width: 12),
                 Text(
                   widget.taskId == null ? '团队动态' : '任务操作历史',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -219,7 +229,7 @@ class _ActivityFeedDialogState extends State<ActivityFeedDialog> {
                 if (taskTitle.isNotEmpty)
                   TextSpan(
                       text: ' 「$taskTitle」',
-                      style: TextStyle(color: AppTheme.primaryColor)),
+                      style: const TextStyle(color: AppTheme.primaryColor)),
               ],
             ),
           ),

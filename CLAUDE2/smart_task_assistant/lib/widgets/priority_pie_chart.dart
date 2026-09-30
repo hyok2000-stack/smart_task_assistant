@@ -31,7 +31,7 @@ class PriorityPieChart extends StatelessWidget {
         child: Center(
           child: Text(
             l.isZh ? '暂无任务数据' : 'No task data',
-            style: TextStyle(color: AppTheme.textHintColor, fontSize: 13),
+            style: const TextStyle(color: AppTheme.textHintColor, fontSize: 13),
           ),
         ),
       );

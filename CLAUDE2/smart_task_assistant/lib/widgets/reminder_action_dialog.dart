@@ -54,7 +54,7 @@ class ReminderActionDialog extends StatelessWidget {
                       color: AppTheme.warningColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.notifications_active_rounded,
                       color: AppTheme.warningColor,
                       size: 24,
@@ -74,7 +74,7 @@ class ReminderActionDialog extends StatelessWidget {
                         ),
                         Text(
                           '截止时间: ${task.dueTimeDescription}',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
                             color: AppTheme.textSecondaryColor,
                           ),
@@ -103,7 +103,7 @@ class ReminderActionDialog extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.task_alt_rounded,
                         color: AppTheme.primaryColor,
                         size: 20,

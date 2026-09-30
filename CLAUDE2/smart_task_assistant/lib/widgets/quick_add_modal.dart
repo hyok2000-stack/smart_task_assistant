@@ -25,7 +25,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _aiService = AIService();
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isAILoading = false;
   bool _isOcrProcessing = false;
   ParsedTask? _parsedTask;
@@ -128,21 +128,19 @@ class _QuickAddModalState extends State<QuickAddModal> {
     setState(() {
       _parsedTask = result;
       // 自动更新选择器的值
-      if (result != null) {
-        _selectedPriority = result.priority;
-        _selectedDueTime = result.dueTime;
-        _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
-        // 应用推荐的提醒时间
-        if (result.recommendedReminderMinutes != null) {
-          _selectedReminderMinutes = result.recommendedReminderMinutes;
-          // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
-          _showCustomReminder = !_isInReminderOptions(_selectedReminderMinutes);
-          if (_showCustomReminder) {
-            _customReminderMinutes = _selectedReminderMinutes;
-          }
+      _selectedPriority = result.priority;
+      _selectedDueTime = result.dueTime;
+      _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
+      // 应用推荐的提醒时间
+      if (result.recommendedReminderMinutes != null) {
+        _selectedReminderMinutes = result.recommendedReminderMinutes;
+        // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
+        _showCustomReminder = !_isInReminderOptions(_selectedReminderMinutes);
+        if (_showCustomReminder) {
+          _customReminderMinutes = _selectedReminderMinutes;
         }
       }
-    });
+        });
   }
 
   /// 检查提醒时间是否在预设选项中
@@ -174,7 +172,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
           _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
         });
       }
-    } catch (e) {
     } finally {
       if (mounted) {
         setState(() => _isAILoading = false);
@@ -411,12 +408,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
@@ -451,14 +448,14 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                   onChanged: _parseInputLocal,
                                   maxLines: 3,
                                   minLines: 1,
-                                  decoration: InputDecoration(
+                                  decoration: const InputDecoration(
                                     hintText: '例如：明天下午3点开会，比较紧急 #工作',
                                     hintStyle: TextStyle(
                                       color: AppTheme.textHintColor,
                                       fontSize: 15,
                                     ),
                                     border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.all(16),
+                                    contentPadding: EdgeInsets.all(16),
                                   ),
                                   style: const TextStyle(
                                     fontSize: 15,
@@ -516,7 +513,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                       fontSize: 14,
                                       color: AppTheme.textPrimaryColor,
                                     ),
-                                    items: [
+                                    items: const [
                                       DropdownMenuItem(
                                         value: TaskPriority.high,
                                         child: Row(
@@ -524,8 +521,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                             Icon(Icons.flag,
                                                 size: 16,
                                                 color: AppTheme.errorColor),
-                                            const SizedBox(width: 8),
-                                            const Text('高优先级'),
+                                            SizedBox(width: 8),
+                                            Text('高优先级'),
                                           ],
                                         ),
                                       ),
@@ -536,8 +533,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                             Icon(Icons.flag,
                                                 size: 16,
                                                 color: AppTheme.warningColor),
-                                            const SizedBox(width: 8),
-                                            const Text('中优先级'),
+                                            SizedBox(width: 8),
+                                            Text('中优先级'),
                                           ],
                                         ),
                                       ),
@@ -548,8 +545,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                             Icon(Icons.flag,
                                                 size: 16,
                                                 color: AppTheme.successColor),
-                                            const SizedBox(width: 8),
-                                            const Text('低优先级'),
+                                            SizedBox(width: 8),
+                                            Text('低优先级'),
                                           ],
                                         ),
                                       ),
@@ -574,13 +571,13 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                       horizontal: 12, vertical: 14),
                                   decoration: BoxDecoration(
                                     color: _selectedDueTime != null
-                                        ? AppTheme.primaryColor.withOpacity(0.1)
+                                        ? AppTheme.primaryColor.withValues(alpha: 0.1)
                                         : Colors.grey.shade50,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: _selectedDueTime != null
                                           ? AppTheme.primaryColor
-                                              .withOpacity(0.3)
+                                              .withValues(alpha: 0.3)
                                           : Colors.grey.shade200,
                                     ),
                                   ),
@@ -647,22 +644,22 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color:
-                                        AppTheme.primaryColor.withOpacity(0.3),
+                                        AppTheme.primaryColor.withValues(alpha: 0.3),
                                   ),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.label,
+                                    const Icon(Icons.label,
                                         size: 14, color: AppTheme.primaryColor),
                                     const SizedBox(width: 4),
                                     Text(
                                       tag,
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontSize: 12,
                                         color: AppTheme.primaryColor,
                                         fontWeight: FontWeight.w500,
@@ -675,7 +672,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                           _selectedTags.remove(tag);
                                         });
                                       },
-                                      child: Icon(Icons.close,
+                                      child: const Icon(Icons.close,
                                           size: 14,
                                           color: AppTheme.primaryColor),
                                     ),
@@ -691,12 +688,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: _isRecurring
-                                ? const Color(0xFF8B5CF6).withOpacity(0.1)
+                                ? const Color(0xFF8B5CF6).withValues(alpha: 0.1)
                                 : Colors.grey.shade50,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: _isRecurring
-                                  ? const Color(0xFF8B5CF6).withOpacity(0.3)
+                                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.3)
                                   : Colors.grey.shade200,
                             ),
                           ),
@@ -722,7 +719,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                     onChanged: (value) {
                                       setState(() => _isRecurring = value);
                                     },
-                                    activeColor: const Color(0xFF8B5CF6),
+                                    activeThumbColor: const Color(0xFF8B5CF6),
                                   ),
                                 ],
                               ),
@@ -806,14 +803,14 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                   gradient: LinearGradient(
                                     colors: [
                                       AppTheme.primaryColor,
-                                      AppTheme.primaryColor.withOpacity(0.8),
+                                      AppTheme.primaryColor.withValues(alpha: 0.8),
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(14),
                                   boxShadow: [
                                     BoxShadow(
                                       color: AppTheme.primaryColor
-                                          .withOpacity(0.3),
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     ),
@@ -855,12 +852,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _reminderVoiceEnabled
-            ? AppTheme.primaryColor.withOpacity(0.08)
+            ? AppTheme.primaryColor.withValues(alpha: 0.08)
             : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _reminderVoiceEnabled
-              ? AppTheme.primaryColor.withOpacity(0.3)
+              ? AppTheme.primaryColor.withValues(alpha: 0.3)
               : Colors.grey.shade200,
         ),
       ),
@@ -870,7 +867,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: _reminderVoiceEnabled
-                  ? AppTheme.primaryColor.withOpacity(0.15)
+                  ? AppTheme.primaryColor.withValues(alpha: 0.15)
                   : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
@@ -917,7 +914,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
             onChanged: (value) {
               setState(() => _reminderVoiceEnabled = value);
             },
-            activeColor: AppTheme.primaryColor,
+            activeThumbColor: AppTheme.primaryColor,
           ),
         ],
       ),
@@ -970,7 +967,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
               decoration: InputDecoration(
                 hintText: '请输入分钟数',
                 hintStyle:
-                    TextStyle(fontSize: 13, color: AppTheme.textHintColor),
+                    const TextStyle(fontSize: 13, color: AppTheme.textHintColor),
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1042,12 +1039,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
         decoration: BoxDecoration(
           color: isSelected
               ? chipColor
-              : chipColor.withOpacity(isRecommended ? 0.2 : 0.1),
+              : chipColor.withValues(alpha: isRecommended ? 0.2 : 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
                 ? chipColor
-                : chipColor.withOpacity(isRecommended ? 0.5 : 0.3),
+                : chipColor.withValues(alpha: isRecommended ? 0.5 : 0.3),
             width: isRecommended && !isSelected ? 2 : 1,
           ),
         ),
@@ -1101,7 +1098,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
         gradient: LinearGradient(
           colors: [
             AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.8),
+            AppTheme.primaryColor.withValues(alpha: 0.8),
           ],
         ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1111,7 +1108,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -1150,7 +1147,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
@@ -1295,7 +1292,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: AppTheme.successColor.withOpacity(0.1),
+                  color: AppTheme.successColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -1366,7 +1363,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
               if (_selectedReminderMinutes != null)
                 _buildPreviewChip(
                   Icons.notifications_rounded,
-                  '提前${_selectedReminderMinutes}分钟',
+                  '提前$_selectedReminderMinutes分钟',
                   AppTheme.warningColor,
                 ),
               for (final tag in _selectedTags)
@@ -1423,9 +1420,9 @@ class _QuickAddModalState extends State<QuickAddModal> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1454,15 +1451,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF8B5CF6)
-              : const Color(0xFF8B5CF6).withOpacity(0.1),
+              : const Color(0xFF8B5CF6).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: const Color(0xFF8B5CF6).withOpacity(isSelected ? 1 : 0.3),
+            color: const Color(0xFF8B5CF6).withValues(alpha: isSelected ? 1 : 0.3),
           ),
         ),
         child: Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 13,
             color: AppTheme.textPrimaryColor,
             fontWeight: FontWeight.w500,
@@ -1526,15 +1523,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.add,
                               size: 14, color: AppTheme.primaryColor),
-                          const SizedBox(width: 4),
+                          SizedBox(width: 4),
                           Text(
                             '新建',
                             style: TextStyle(
@@ -1642,10 +1639,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? color : color.withOpacity(0.1),
+          color: isSelected ? color : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? color : color.withOpacity(0.3),
+            color: isSelected ? color : color.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

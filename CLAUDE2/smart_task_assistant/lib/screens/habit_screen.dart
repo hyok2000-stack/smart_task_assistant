@@ -61,7 +61,7 @@ class _HabitScreenState extends State<HabitScreen> {
                   const SizedBox(height: 16),
                   Text(
                     '加载失败: ${provider.error}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 15,
                       color: AppTheme.textSecondaryColor,
                     ),
@@ -113,7 +113,7 @@ class _HabitScreenState extends State<HabitScreen> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text(
+                        const Text(
                           '习惯',
                           style: TextStyle(
                             fontSize: 22,
@@ -131,7 +131,7 @@ class _HabitScreenState extends State<HabitScreen> {
                           ),
                           child: Text(
                             '${habits.length}',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,

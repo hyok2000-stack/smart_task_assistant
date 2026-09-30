@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_task_assistant/models/task.dart';
 import 'package:smart_task_assistant/models/task_distribution.dart';
 import 'package:uuid/uuid.dart';
 
@@ -533,7 +532,7 @@ void main() {
       });
 
       test('应该处理多个分发到同一个任务', () {
-        final taskId = 'task-multi';
+        const taskId = 'task-multi';
         service.create(taskId: taskId, assigneeName: '张三');
         service.create(taskId: taskId, assigneeName: '李四');
         service.create(taskId: taskId, assigneeName: '王五');

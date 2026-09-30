@@ -6,6 +6,7 @@
 /// - 最坏情况（逆序）: O(n²)
 ///
 /// 空间复杂度: O(1) - 原地排序
+library;
 
 import 'dart:math';
 
