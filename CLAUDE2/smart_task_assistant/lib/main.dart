@@ -227,6 +227,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // 应用从后台恢复
         _notifyNativeForeground();
         widget.reminderService.isAppForeground = true;
+        // 回前台重载 snooze：通知栏「延后10分钟」由原生直写 prefs，
+        // 不重载的话 Flutter 检查链无此记录，会立即再次弹窗
+        widget.reminderService
+            .reloadSnoozedFromPrefs()
+            .catchError((e) => debugPrint('重载 snooze 失败（已忽略）: $e'));
         // 仅刷新内存数据（后台期间原生层可能修改过 DB）。
         // 不再强制重置数据库连接：database getter 自带 ping 失效检测，
         // 真正失效时会自动重连，无需每次回前台都关闭正常连接并重建。

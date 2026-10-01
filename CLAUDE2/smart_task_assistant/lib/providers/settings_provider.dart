@@ -266,6 +266,11 @@ class SettingsProvider extends ChangeNotifier {
   static _SettingsKV _createStore(SharedPreferences? prefs) =>
       prefs == null ? _WebKV() : _PrefsKV(prefs);
 
+  /// 上次保存时 API Key 是否因 SecureStorage 不可用而只存于进程内存
+  /// （重启即丢）。UI 层可读取此标志提示用户。
+  bool get aiKeyDegradedToMemory =>
+      !kIsWeb && SecureStorageService.instance.lastWriteDegraded;
+
   void setThemeMode(ThemeMode mode) {
     _themeMode = mode;
     _saveSettings();

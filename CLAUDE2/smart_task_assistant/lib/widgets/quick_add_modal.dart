@@ -70,6 +70,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   @override
   void dispose() {
+    // 弹窗关闭时若仍在聆听，立即停麦（隐私敏感：不允许后台持续拾音）
+    if (_isListening) {
+      SpeechInputService.instance.stopListening();
+      _isListening = false;
+    }
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -1181,9 +1186,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
   /// 语音输入：口述任务内容 → 文字填入输入框 → 本地规则解析。
   /// 再次点击停止聆听（以最终识别结果触发一次解析）。
   Future<void> _toggleSpeechInput() async {
-    if (SpeechInputService.instance.isListening) {
+    // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
+    if (_isListening || SpeechInputService.instance.isListening) {
       await SpeechInputService.instance.stopListening();
-      setState(() => _isListening = false);
+      if (mounted) setState(() => _isListening = false);
       return;
     }
 
@@ -1198,6 +1204,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
     }
     // 麦克风运行时权限（首次会弹系统授权）
     final status = await Permission.microphone.request();
+    if (status.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('麦克风权限已被拒绝，请到系统设置中开启')),
+        );
+        openAppSettings();
+      }
+      return;
+    }
     if (!status.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1226,6 +1241,18 @@ class _QuickAddModalState extends State<QuickAddModal> {
         setState(() => _isListening = false);
         final full = baseText.isEmpty ? finalText : '$baseText $finalText'.trim();
         if (full.isNotEmpty) _parseInputLocal(full);
+      },
+      onStopped: () {
+        // 引擎异常停止（无最终结果）：复位按钮状态，避免卡在"停止语音"
+        if (mounted && _isListening) setState(() => _isListening = false);
+      },
+      onError: (message) {
+        if (mounted) {
+          setState(() => _isListening = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
       },
     );
   }

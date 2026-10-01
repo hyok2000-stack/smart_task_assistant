@@ -789,18 +789,19 @@ class DatabaseHelper {
     return db.query('task_trash', orderBy: 'deleted_at DESC');
   }
 
-  /// 从回收站恢复任务到任务列表。返回是否成功恢复（同 id 已存在时仅清理快照）。
-  Future<bool> restoreFromTrash(String trashId) async {
+  /// 从回收站恢复任务到任务列表。返回恢复的 Task（快照缺失返回 null）。
+  /// 注意：仅回插本地，后端同步由调用方（TaskProvider）负责。
+  Future<Task?> restoreFromTrash(String trashId) async {
     final db = await database;
     final rows = await db
         .query('task_trash', where: 'id = ?', whereArgs: [trashId], limit: 1);
-    if (rows.isEmpty) return false;
+    if (rows.isEmpty) return null;
     final payload =
         jsonDecode(rows.first['payload'] as String) as Map<String, dynamic>;
     final task = Task.fromJson(payload);
     await insertTask(task);
     await db.delete('task_trash', where: 'id = ?', whereArgs: [trashId]);
-    return true;
+    return task;
   }
 
   /// 彻底删除回收站中的单条快照

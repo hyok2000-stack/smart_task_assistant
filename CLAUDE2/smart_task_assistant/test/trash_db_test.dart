@@ -37,7 +37,7 @@ void main() {
     final target = entries.firstWhere((e) => e['id'] == 'trash-2');
 
     final ok = await db.restoreFromTrash(target['id'] as String);
-    expect(ok, isTrue);
+    expect(ok, isNotNull);
 
     // 恢复后任务重新出现在 tasks 表
     final all = await db.getAllTasks();

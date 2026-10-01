@@ -27,25 +27,44 @@ class _FocusScreenState extends State<FocusScreen> {
   int _remainingSeconds = 0;
   bool _running = false;
   DateTime? _startedAt;
+  DateTime? _deadlineAt; // 墙钟截止时刻：后台 Timer 冻结时据此校准
 
   @override
   void dispose() {
     _timer?.cancel();
+    // 专注进行中直接退出页面：会话按已进行时长落库（incomplete），不丢数据
+    if (_running && _startedAt != null) {
+      final elapsed =
+          DateTime.now().difference(_startedAt!).inMinutes;
+      DatabaseHelper().saveFocusSession(
+        id: const Uuid().v4(),
+        taskId: _selectedTask?.id,
+        taskTitle: _selectedTask?.title,
+        startedAt: _startedAt!,
+        endedAt: DateTime.now(),
+        durationMinutes: elapsed <= 0 ? 1 : elapsed,
+        completed: false,
+      );
+    }
     super.dispose();
   }
 
   Future<void> _start() async {
+    final deadline = DateTime.now().add(Duration(minutes: _selectedMinutes));
     setState(() {
       _remainingSeconds = _selectedMinutes * 60;
       _running = true;
       _startedAt = DateTime.now();
+      _deadlineAt = deadline;
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_remainingSeconds <= 1) {
+      // 以墙钟校准：退后台 Timer 冻结后回来自动追平
+      final remaining = _deadlineAt!.difference(DateTime.now()).inSeconds;
+      if (remaining <= 0) {
         timer.cancel();
         await _finish(completed: true);
       } else {
-        setState(() => _remainingSeconds--);
+        setState(() => _remainingSeconds = remaining);
       }
     });
   }
@@ -56,9 +75,10 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   Future<void> _finish({required bool completed}) async {
+    _timer?.cancel();
     final startedAt = _startedAt ?? DateTime.now();
-    final elapsedMinutes =
-        ((_selectedMinutes * 60 - _remainingSeconds) / 60).ceil();
+    // 会话时长按墙钟计算（而非剩余秒数），后台冻结不会失真
+    final elapsed = DateTime.now().difference(startedAt).inMinutes;
     try {
       await DatabaseHelper().saveFocusSession(
         id: const Uuid().v4(),
@@ -66,7 +86,7 @@ class _FocusScreenState extends State<FocusScreen> {
         taskTitle: _selectedTask?.title,
         startedAt: startedAt,
         endedAt: DateTime.now(),
-        durationMinutes: elapsedMinutes <= 0 ? 1 : elapsedMinutes,
+        durationMinutes: elapsed <= 0 ? 1 : elapsed,
         completed: completed,
       );
     } catch (_) {
@@ -77,6 +97,7 @@ class _FocusScreenState extends State<FocusScreen> {
       _running = false;
       _remainingSeconds = 0;
       _startedAt = null;
+      _deadlineAt = null;
     });
 
     if (completed) {
@@ -121,9 +142,14 @@ class _FocusScreenState extends State<FocusScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TaskProvider>();
-    final candidates = provider.tasks
+    var candidates = provider.tasks
         .where((t) => !t.isCompleted && t.status != TaskStatus.cancelled)
         .toList();
+    // 所选任务在专注期间被完成/移出候选时，仍保留为选项，避免 value 悬空崩溃
+    final selected = _selectedTask;
+    if (selected != null && candidates.every((t) => t.id != selected.id)) {
+      candidates = [selected, ...candidates];
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,

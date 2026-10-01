@@ -37,6 +37,10 @@ class SecureStorageService {
     }
   }
 
+  /// 最近一次写入是否降级到了纯内存（Keystore/SecureStorage 不可用）。
+  /// 降级意味着数据只存活于当前进程——UI 层可据此提示用户。
+  bool lastWriteDegraded = false;
+
   Future<String?> read(String key) async {
     if (kIsWeb) return _memoryStore[key];
     try {
@@ -53,15 +57,20 @@ class SecureStorageService {
       _memoryStore[key] = value;
       return;
     }
+    lastWriteDegraded = false;
     try {
       _storage ??= _tryCreateStorage();
       if (_storage == null) {
+        lastWriteDegraded = true;
         _memoryStore[key] = value;
+        debugPrint('SecureStorage 不可用，写入已降级为进程内存（重启丢失）');
         return;
       }
       await _storage!.write(key: key, value: value);
     } catch (_) {
+      lastWriteDegraded = true;
       _memoryStore[key] = value;
+      debugPrint('SecureStorage 写入异常，已降级为进程内存（重启丢失）');
     }
   }
 

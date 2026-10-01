@@ -312,6 +312,10 @@ class TaskProvider extends ChangeNotifier {
       _lastBackendSyncAt = await _backend.getLastSyncAt();
       await _loadBackendSyncState();
       notifyListeners();
+
+      // 任务数据整体变化（含后端同步 pull 直写库的场景）→
+      // 通知原生刷新桌面小组件；原生服务未启动时静默失败（onResume 会补刷）
+      _notifyNativeDataChanged('all', null);
     } catch (e, stackTrace) {
       debugPrint('===== TaskProvider.loadData 失败 =====');
       debugPrint('错误: $e');
@@ -701,12 +705,17 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
-  /// 从回收站恢复任务（重新加载列表使恢复的任务可见）
+  /// 从回收站恢复任务（重新加载列表使恢复的任务可见，
+  /// 并回同步后端——撤销此前删除推送的墓碑，避免恢复被云端覆盖）
   Future<bool> restoreFromTrash(String trashId) async {
     try {
-      final ok = await DatabaseHelper().restoreFromTrash(trashId);
-      if (ok) await loadData();
-      return ok;
+      final restored = await DatabaseHelper().restoreFromTrash(trashId);
+      if (restored != null) {
+        await loadData();
+        await _syncTaskSilently(restored);
+        return true;
+      }
+      return false;
     } catch (e) {
       _error = e.toString();
       notifyListeners();

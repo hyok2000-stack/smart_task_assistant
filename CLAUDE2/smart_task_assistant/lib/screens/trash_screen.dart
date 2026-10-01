@@ -57,6 +57,7 @@ class _TrashScreenState extends State<TrashScreen> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
     await context.read<TaskProvider>().purgeTrashItem(trashId);
     _load();
   }
@@ -78,6 +79,7 @@ class _TrashScreenState extends State<TrashScreen> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
     await context.read<TaskProvider>().emptyTrash();
     _load();
   }

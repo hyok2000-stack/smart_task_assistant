@@ -145,6 +145,10 @@ class ReminderService {
     debugPrint('提醒服务已初始化');
   }
 
+  /// 重新加载持久化的 snooze 状态（回前台时调用）。
+  /// 通知栏「延后10分钟」由原生直接写入 prefs，回前台合并后 Flutter 检查链才能感知。
+  Future<void> reloadSnoozedFromPrefs() => _loadSnoozedFromPrefs();
+
   /// 从 SharedPreferences 恢复 snooze 状态，清理已过期条目。
   Future<void> _loadSnoozedFromPrefs() async {
     try {
@@ -502,22 +506,19 @@ class ReminderService {
 
     debugPrint('===== 显示任务提醒: ${task.title} =====');
 
-    // 标记首次提醒已发送
+    // 标记首次提醒已发送 + 提醒历史（仅首次记录，持续提醒不刷屏；
+    // 门控用 _firstReminderSent 而非语音时间表——语音关闭的任务也要有历史）
     if (!_firstReminderSent.contains(task.id)) {
       _firstReminderSent.add(task.id);
       debugPrint('标记首次提醒已发送: ${task.id}');
+      DatabaseHelper()
+          .logReminder(title: task.title, targetId: task.id, source: 'flutter');
     }
 
     // 记录上次提醒时间
     _lastReminderTime[task.id] = DateTime.now();
     _currentShowingReminderId = task.id;
     _currentShowingReminderType = 'task';
-
-    // 提醒历史（仅首次记录，持续提醒不刷屏）
-    if (!_lastVoiceReminderTime.containsKey(task.id)) {
-      DatabaseHelper()
-          .logReminder(title: task.title, targetId: task.id, source: 'flutter');
-    }
 
     debugPrint('记录提醒时间: $_lastReminderTime[task.id]');
     debugPrint(
@@ -675,12 +676,19 @@ class ReminderService {
 
             debugPrint('任务 "${task.title}" 已设置为不再提醒');
           } else if (postponeToTomorrow) {
-            // 用户点击"延期到明日" - 真正延期：截止时间 +1 天（保留原时分）。
-            // 与"稍后提醒"不同：任务日期实际改变，列表里显示的截止时间同步更新，
-            // 提醒按新截止时间重新计算。
+            // 用户点击"延期到明日" - 真正延期：截止时间顺延到明天（保留原时分）。
+            // 以"明天"为锚点而非原时间+1天：任务已逾期多日时，
+            // 原时间+1天仍落在过去，会导致提醒立即继续响。
             if (task.dueTime != null) {
-              final newDueTime =
-                  task.dueTime!.add(const Duration(days: 1));
+              final now = DateTime.now();
+              final tomorrow = DateTime(now.year, now.month, now.day + 1);
+              final newDueTime = DateTime(
+                tomorrow.year,
+                tomorrow.month,
+                tomorrow.day,
+                task.dueTime!.hour,
+                task.dueTime!.minute,
+              );
               final updatedTask = task.copyWith(
                 dueTime: newDueTime,
                 reminderDismissed: false,

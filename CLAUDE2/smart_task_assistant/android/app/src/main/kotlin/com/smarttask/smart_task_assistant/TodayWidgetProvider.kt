@@ -60,10 +60,11 @@ class TodayWidgetProvider : AppWidgetProvider() {
         private fun buildRemoteViews(context: Context): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_today)
 
-            val tasks = queryTasks(context)
-            val count = tasks.size
+            val result = queryTasks(context)
+            val tasks = result.rows
+            val count = result.total
 
-            // 头部：今日任务 / 接下来的任务
+            // 头部：今日任务 / 接下来的任务（计数为真实总数，而非展示的 ≤5 条）
             val isToday = tasks.isNotEmpty() && tasks.first().third == true
             views.setTextViewText(
                 R.id.widget_header_title,
@@ -117,37 +118,52 @@ class TodayWidgetProvider : AppWidgetProvider() {
         /**
          * 查询小组件任务：优先今天到期的未完成任务；
          * 没有则取接下来（due_time >= 现在）的 5 个未完成任务。
-         * 返回 (id, title, isToday) 列表。
+         * 返回 rows=(id, title, isToday) 列表 + total=该分支下的真实总数。
          */
-        private fun queryTasks(context: Context): List<Triple<String, String, Boolean>> {
-            val db = openDb(context) ?: return emptyList()
+        private fun queryTasks(context: Context): QueryResult {
+            val db = openDb(context) ?: return QueryResult(emptyList(), 0)
             return try {
-                val todaySql = """
-                    SELECT id, title FROM tasks
-                    WHERE status IN (0, 1) AND archived_at IS NULL
+                val todayWhere = """
+                    status IN (0, 1) AND archived_at IS NULL
                       AND reminder_dismissed = 0 AND due_time IS NOT NULL
                       AND date(due_time) = date('now','localtime')
-                    ORDER BY priority DESC, due_time ASC LIMIT $MAX_ROWS
                 """.trimIndent()
-                var rows = queryRows(db, todaySql, isToday = true)
+                val upcomingWhere = """
+                    status IN (0, 1) AND archived_at IS NULL
+                      AND reminder_dismissed = 0 AND due_time IS NOT NULL
+                      AND due_time >= datetime('now','localtime')
+                """.trimIndent()
+
+                var rows = queryRows(db, """
+                    SELECT id, title FROM tasks
+                    WHERE $todayWhere
+                    ORDER BY priority DESC, due_time ASC LIMIT $MAX_ROWS
+                """.trimIndent(), isToday = true)
+                var where = todayWhere
                 if (rows.isEmpty()) {
-                    val upcomingSql = """
+                    rows = queryRows(db, """
                         SELECT id, title FROM tasks
-                        WHERE status IN (0, 1) AND archived_at IS NULL
-                          AND reminder_dismissed = 0 AND due_time IS NOT NULL
-                          AND due_time >= datetime('now','localtime')
+                        WHERE $upcomingWhere
                         ORDER BY due_time ASC LIMIT $MAX_ROWS
-                    """.trimIndent()
-                    rows = queryRows(db, upcomingSql, isToday = false)
+                    """.trimIndent(), isToday = false)
+                    where = upcomingWhere
                 }
-                rows
+
+                val cursor = db.rawQuery("SELECT COUNT(*) FROM tasks WHERE $where", null)
+                val total = cursor.use { if (it.moveToFirst()) it.getInt(0) else 0 }
+                QueryResult(rows, total)
             } catch (e: Exception) {
                 Log.w(TAG, "queryTasks failed", e)
-                emptyList()
+                QueryResult(emptyList(), 0)
             } finally {
                 db.close()
             }
         }
+
+        private class QueryResult(
+            val rows: List<Triple<String, String, Boolean>>,
+            val total: Int
+        )
 
         private fun queryRows(
             db: SQLiteDatabase,

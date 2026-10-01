@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.sqlite.SQLiteDatabase
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
@@ -275,6 +276,7 @@ class ReminderForegroundService : Service() {
             ACTION_STOP -> {
                 userRequestedStop = true
                 cancelScheduledCheck()
+                cancelDeadlineAlarm()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -421,6 +423,25 @@ class ReminderForegroundService : Service() {
         Log.d(TAG, "Scheduled check cancelled")
     }
 
+    /** 取消按任务调度的截止闹钟（requestCode 1003）——用户主动停止服务时必须一并取消，
+     *  否则到点会经 ReminderAlarmReceiver 重建轮询链，把"停止"静默撤销 */
+    private fun cancelDeadlineAlarm() {
+        try {
+            val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+                action = ReminderAlarmReceiver.ACTION_CHECK
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, DEADLINE_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(pendingIntent)
+            Log.d(TAG, "Deadline alarm cancelled")
+        } catch (e: Exception) {
+            Log.w(TAG, "cancelDeadlineAlarm failed", e)
+        }
+    }
+
     /**
      * 按任务精确调度一次性闹钟：在最近的"未来提醒时刻"（dueTime-reminderMinutes）
      * 精确触发一次检查——即使 30 秒轮询链因故中断，提醒也会准点响。
@@ -518,31 +539,46 @@ class ReminderForegroundService : Service() {
                     else "您有${titles.size}个任务到期：" + titles.joinToString("，")
                 } else null
 
+                val delivered = mutableListOf<ReminderChecker.ReminderItem>()
                 for (item in items) {
                     Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
-                    // 提醒历史：任务只在首次触发时记录（持续提醒不刷屏）；
-                    // 习惯按触发点自然去重（间隔/固定时间每个触发点只到一次）
-                    val shouldLog = item.type == "habit" ||
-                        checker?.isTaskFirstTrigger(item.id) == true
-                    if (shouldLog) logReminderHistory(item)
                     val voiceAcceptedOrNoVoice = triggerReminder(
                         item,
                         speakVoice = mergedVoiceText == null,
                     )
                     if (voiceAcceptedOrNoVoice) {
-                        markReminderDelivered(item)
+                        delivered.add(item)
                     } else {
                         Log.w(TAG, "Reminder voice was not accepted; keeping state unmarked for retry: ${item.id}")
                     }
                 }
 
-                // 合并语音播报：一条语音覆盖全部到期任务
+                // 合并语音播报：一条语音覆盖全部到期任务（沿用首个任务的语音设置）。
+                // 语义与单条一致：语音成功才标记 delivered；失败则铃声兜底 + 下一轮整组重试。
                 if (mergedVoiceText != null) {
-                    val accepted = ttsHelper?.speakViaFile(text = mergedVoiceText) ?: false
-                    if (!accepted) {
-                        Log.w(TAG, "Merged voice failed, playing ringtone as fallback")
+                    val lead = items.first()
+                    val accepted = ttsHelper?.speakViaFile(
+                        text = mergedVoiceText,
+                        voiceType = lead.voiceType,
+                        voiceStyle = lead.voiceStyle,
+                        speed = lead.voiceSpeed,
+                    ) ?: false
+                    if (accepted) {
+                        for (item in items) {
+                            if (delivered.none { it.id == item.id }) delivered.add(item)
+                        }
+                    } else {
+                        Log.w(TAG, "Merged voice failed; ringtone fallback, retry next round")
                         audioHelper?.playReminderSound()
                     }
+                }
+
+                // 提醒历史 + 状态标记：仅在交付成功后执行（重试不会重复记录）
+                for (item in delivered) {
+                    val shouldLog = item.type == "habit" ||
+                        checker?.isTaskFirstTrigger(item.id) == true
+                    if (shouldLog) logReminderHistory(item)
+                    markReminderDelivered(item)
                 }
 
                 items.any {
@@ -583,29 +619,35 @@ class ReminderForegroundService : Service() {
         Log.d(TAG, "Marked reminder delivered after voice accepted/no voice: type=${item.type} id=${item.id}")
     }
 
-    /** 提醒历史落库（reminder_logs 表，与 Flutter 前台共用同一张表） */
+    /** 提醒历史落库（reminder_logs 表，与 Flutter 前台共用同一张表）。
+     *  id 含分钟粒度时间桶：同一分钟的重复触发（30s 持续提醒）自然去重 */
     private fun logReminderHistory(item: ReminderChecker.ReminderItem) {
+        var db: SQLiteDatabase? = null
         try {
-            val db = openOrCreateDatabase(
+            db = openOrCreateDatabase(
                 "smart_task_assistant.db", Context.MODE_PRIVATE, null
             )
+            val minuteBucket = SimpleDateFormat(
+                "yyyyMMdd_HHmm", Locale.US
+            ).format(Date())
             db.execSQL(
                 """INSERT OR REPLACE INTO reminder_logs
                    (id, target_id, title, type, source, shown_at)
                    VALUES (?, ?, ?, ?, 'native', ?)""",
                 arrayOf<Any>(
-                    "${System.currentTimeMillis()}_${item.id}_native",
+                    "${item.id}_$minuteBucket",
                     item.id,
                     item.title ?: "",
                     item.type,
-                    java.text.SimpleDateFormat(
-                        "yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US
+                    SimpleDateFormat(
+                        "yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US
                     ).format(Date())
                 )
             )
-            db.close()
         } catch (e: Exception) {
             Log.w(TAG, "logReminderHistory failed", e)
+        } finally {
+            try { db?.close() } catch (_: Exception) {}
         }
     }
 
