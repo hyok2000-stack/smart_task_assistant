@@ -81,6 +81,9 @@ dependencies {
     // 否则运行时 ClassNotFoundException: ChineseTextRecognizerOptions
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     // Vosk 离线语音识别（华为等无 GMS 设备没有系统识别服务，本地识别兜底）。
-    // Java 包名为 org.vosk（com.alphacephei 只是 Maven 组名）
+    // Java 包名为 org.vosk（com.alphacephei 只是 Maven 组名）。
+    // 必须同时引入 JNA 的 @aar 变体：默认的 jna.jar 不携带 libjnidispatch.so，
+    // 缺失时 vosk 初始化直接 UnsatisfiedLinkError 崩溃
     implementation("com.alphacephei:vosk-android:0.3.47")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 }

@@ -67,8 +67,8 @@ class VoskSpeechHandler(private val context: Context) {
                     model = Model(dir.absolutePath)
                 }
                 mainHandler.post { result.success(true) }
-            } catch (e: Exception) {
-                Log.e(TAG, "vosk init failed", e)
+            } catch (t: Throwable) {
+                Log.e(TAG, "vosk init failed", t)
                 mainHandler.post { result.success(false) }
             }
         }
@@ -107,8 +107,8 @@ class VoskSpeechHandler(private val context: Context) {
                 speechService = service
                 service.startListening(listener)
                 Log.d(TAG, "vosk listening started")
-            } catch (e: Exception) {
-                Log.e(TAG, "vosk start failed", e)
+            } catch (t: Throwable) {
+                Log.e(TAG, "vosk start failed", t)
             }
         }
     }
