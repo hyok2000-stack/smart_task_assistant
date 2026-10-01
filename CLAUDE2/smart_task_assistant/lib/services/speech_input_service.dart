@@ -14,6 +14,10 @@ class SpeechInputService {
   final SpeechToText _speech = SpeechToText();
   bool _initialized = false;
 
+  /// 系统 ASR 是否被判定不可靠（如华为识别服务卡死：会话一直 in progress
+  /// 却永远不返回结果）。置位后调用方应直接改用 Vosk 离线引擎。
+  bool systemAsrUnreliable = false;
+
   // Vosk 离线引擎
   static const _voskChannel =
       MethodChannel('com.smarttask.smart_task_assistant/speech');

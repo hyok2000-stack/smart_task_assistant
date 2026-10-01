@@ -62,10 +62,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
     super.initState();
 
     // 异步预检语音可用性（两级引擎：系统 ASR → Vosk 离线模型；
-    // Vosk 首次加载需解压模型，耗时数秒）
+    // Vosk 首次加载需解压模型，耗时数秒，这里同时预热，故障切换时即时可用）
     SpeechInputService.instance.ensureInitialized().then((systemOk) async {
       if (systemOk) {
         if (mounted) setState(() => _speechSupported = true);
+        await SpeechInputService.instance.ensureVoskReady();
         return;
       }
       final voskOk = await SpeechInputService.instance.ensureVoskReady();
@@ -1208,7 +1209,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   /// 语音输入：口述任务内容 → 文字填入输入框 → 本地规则解析。
   /// 再次点击停止聆听（以最终识别结果触发一次解析）。
-  /// 双引擎：系统 ASR 可用走系统识别；否则走 Vosk 离线识别。
+  /// 双引擎：系统 ASR 可用走系统识别；系统识别卡死/无响应自动切 Vosk 离线。
   Future<void> _toggleSpeechInput() async {
     // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
     if (_isListening || SpeechInputService.instance.isListening) {
@@ -1218,19 +1219,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
       return;
     }
 
-    // 系统识别不可用 → Vosk 离线路径
-    if (_speechSupported == false) {
+    // 系统 ASR 已被判定不可靠（本次会话曾无结果）→ 直接走离线引擎
+    if (SpeechInputService.instance.systemAsrUnreliable ||
+        _speechSupported == false) {
       await _toggleVoskInput();
       return;
     }
 
     final ok = await SpeechInputService.instance.ensureInitialized();
     if (!ok) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('当前设备没有可用的语音识别服务')),
-        );
-      }
+      // 系统识别不可用 → 离线引擎
+      await _toggleVoskInput();
       return;
     }
     // 麦克风运行时权限（首次会弹系统授权）
@@ -1253,11 +1252,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
       return;
     }
 
+    // 清掉可能卡死的旧会话（华为识别服务的会话可能永不超时，
+    // 不清理则后续 startListening 全部被 "in progress" 拒绝）
+    await SpeechInputService.instance.stopListening();
+
     setState(() => _isListening = true);
     final baseText = _controller.text;
+    var gotText = false;
     await SpeechInputService.instance.startListening(
       onResult: (text) {
         if (!mounted) return;
+        if (text.trim().isNotEmpty) gotText = true;
         // 实时把识别内容追加到已有输入后面
         setState(() {
           _controller.text =
@@ -1270,12 +1275,24 @@ class _QuickAddModalState extends State<QuickAddModal> {
       onFinal: (finalText) {
         if (!mounted) return;
         setState(() => _isListening = false);
-        final full = baseText.isEmpty ? finalText : '$baseText $finalText'.trim();
+        if (finalText.trim().isEmpty) {
+          // 聆听了但零结果：系统引擎不可靠，标记后切离线引擎
+          SpeechInputService.instance.systemAsrUnreliable = true;
+          _toggleVoskInput();
+          return;
+        }
+        final full =
+            baseText.isEmpty ? finalText : '$baseText $finalText'.trim();
         if (full.isNotEmpty) _parseInputLocal(full);
       },
       onStopped: () {
-        // 引擎异常停止（无最终结果）：复位按钮状态，避免卡在"停止语音"
-        if (mounted && _isListening) setState(() => _isListening = false);
+        // 引擎停止：有文字则已处理；无文字（卡死会话被清）标记不可靠
+        if (!mounted) return;
+        if (_isListening && !gotText) {
+          SpeechInputService.instance.systemAsrUnreliable = true;
+          debugPrint('系统 ASR 会话无结果，已标记为不可靠，后续走离线引擎');
+        }
+        if (_isListening) setState(() => _isListening = false);
       },
       onError: (message) {
         if (mounted) {
