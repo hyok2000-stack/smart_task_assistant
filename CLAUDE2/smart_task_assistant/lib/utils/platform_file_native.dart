@@ -123,15 +123,15 @@ Future<void> exportDataNative({
 @Deprecated('请使用 getExportFilesList 和 importDataFromPath 替代')
 Future<Map<String, String>?> importDataNative() async {
   // 移动端使用文件选择器
-  FilePickerResult? result = await FilePicker.platform.pickFiles(
+  final files = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['json'],
   );
 
-  if (result != null && result.files.single.path != null) {
-    final file = File(result.files.single.path!);
+  if (files.isNotEmpty && files.single.path != null) {
+    final file = File(files.single.path!);
     final content = await file.readAsString();
-    final fileName = result.files.single.name;
+    final fileName = files.single.name;
     return {
       'content': content,
       'fileName': fileName,

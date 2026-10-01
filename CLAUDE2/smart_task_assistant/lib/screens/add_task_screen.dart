@@ -2046,13 +2046,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   /// 选择自定义语音文件
   Future<void> _pickCustomVoice() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final picked = await FilePicker.pickFile(
         type: FileType.audio,
-        allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final sourcePath = result.files.single.path!;
+      if (picked != null && picked.path != null) {
+        final sourcePath = picked.path!;
 
         // 将文件复制到应用内部存储，确保后台服务也能访问
         final internalPath = await _copyVoiceToInternalStorage(sourcePath);

@@ -43,16 +43,17 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      if (result == null || result.files.isEmpty) {
+      final files = await FilePicker.pickFiles();
+      if (files.isEmpty) {
         if (mounted) setState(() => _picking = false);
         return;
       }
 
       final newPaths = <String>[];
-      for (final file in result.files) {
-        final ref = file.identifier ?? file.path;
-        if (ref != null && ref.isNotEmpty) {
+      for (final file in files) {
+        // v13 API：identifier 已移除，path 为空时退回内容 URI
+        final ref = file.path ?? file.uri.toString();
+        if (ref.isNotEmpty) {
           newPaths.add(ref);
           // content URI 需要持久化读取权限，否则 App 重启后无法打开
           if (ref.startsWith('content://')) {
@@ -67,8 +68,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
         } else {
           debugPrint('附件无可用引用: name=${file.name}, '
               'hasPath=${file.path != null}, '
-              'hasIdentifier=${file.identifier != null}, '
-              'size=${file.size}');
+              'uri=${file.uri}');
         }
       }
 

@@ -2401,18 +2401,18 @@ class _SettingsScreenState extends State<SettingsScreen>
       } else {
         // 移动端：用系统文件选择器从任意位置导入备份文件
         // 支持 JSON 和 CSV 两种格式
-        final result = await FilePicker.platform.pickFiles(
+        final files = await FilePicker.pickFiles(
           type: FileType.custom,
           allowedExtensions: ['json', 'csv'],
         );
 
-        if (result == null || result.files.single.path == null) {
+        if (files.isEmpty || files.single.path == null) {
           // 用户取消选择
           return;
         }
 
-        final filePath = result.files.single.path!;
-        fileName = result.files.single.name;
+        final filePath = files.single.path!;
+        fileName = files.single.name;
         try {
           final file = File(filePath);
           content = await file.readAsString();

@@ -23,17 +23,17 @@ dependencies:
   cupertino_icons: ^1.0.6
   flutter_slidable: ^3.0.1
   shimmer: ^3.0.0
-  fl_chart: ^0.66.0
+  fl_chart: 1.2.0
   
   # 网络请求
   dio: ^5.4.0
   
   # 本地存储
   shared_preferences: ^2.2.2
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: 10.0.0
   path_provider: ^2.1.1
   universal_html: ^2.2.4
-  package_info_plus: ^8.0.0
+  package_info_plus: 10.0.0
 
   # 时间处理
   intl: ^0.20.2
@@ -48,14 +48,14 @@ dependencies:
   audioplayers: ^6.0.0
   
   # 振动
-  vibration: ^2.0.0
+  vibration: 3.1.0
 
   # 语音合成（TTS）
   flutter_tts: ^4.0.0
 
   # 文件操作（移动端）
-  file_picker: ^8.0.0
-  share_plus: 10.1.0
+  file_picker: 13.0.0
+  share_plus: 13.0.0
 
   # 拍照 + OCR 文本识别（离线，ML Kit on-device 不依赖 GMS，华为可用）
   image_picker: ^1.1.2
@@ -65,11 +65,12 @@ dependencies:
   http: ^1.2.0
 
   # 网络状态
-  connectivity_plus: ^6.0.0
+  connectivity_plus: 7.0.0
 
   # 日历
   table_calendar: ^3.1.2
   speech_to_text: 7.0.0
+  web: 1.1.1
 
 dev_dependencies:
   flutter_test:

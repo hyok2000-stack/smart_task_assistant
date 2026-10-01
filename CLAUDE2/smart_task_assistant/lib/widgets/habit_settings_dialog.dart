@@ -401,15 +401,14 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
               onChanged: (value) async {
                 if (value) {
                   // 先选择文件，选择成功后再启用自定义语音
-                  final result = await FilePicker.platform.pickFiles(
+                  final picked = await FilePicker.pickFile(
                     type: FileType.audio,
-                    allowMultiple: false,
                   );
-                  if (result != null && result.files.single.path != null) {
+                  if (picked != null && picked.path != null) {
                     setState(() {
                       _editedHabit = _editedHabit.copyWith(
                         voiceType: 'custom',
-                        customVoicePath: result.files.single.path,
+                        customVoicePath: picked.path,
                       );
                     });
                   }
@@ -591,15 +590,14 @@ class _HabitSettingsDialogState extends State<HabitSettingsDialog> {
   /// 选择自定义语音文件
   Future<void> _pickCustomVoice() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final picked = await FilePicker.pickFile(
         type: FileType.audio,
-        allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
+      if (picked != null && picked.path != null) {
         setState(() {
           _editedHabit = _editedHabit.copyWith(
-            customVoicePath: result.files.single.path,
+            customVoicePath: picked.path,
           );
         });
       }
