@@ -29,6 +29,7 @@
         android:label="智能任务助手"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:requestLegacyExternalStorage="true"
@@ -57,6 +58,13 @@
         <!-- 提醒闹钟接收器：AlarmManager 唤醒后启动提醒服务 -->
         <receiver
             android:name=".ReminderAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+        </receiver>
+
+        <!-- 提醒通知快捷操作（完成/延后） -->
+        <receiver
+            android:name=".ReminderActionReceiver"
             android:enabled="true"
             android:exported="false">
         </receiver>

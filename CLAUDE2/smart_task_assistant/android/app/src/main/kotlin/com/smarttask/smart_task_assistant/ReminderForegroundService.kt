@@ -39,6 +39,10 @@ class ReminderForegroundService : Service() {
         private const val CHECK_REQUEST_CODE = 1001
         private const val RESTART_REQUEST_CODE = 2001
 
+        /** 精确提醒闹钟的 requestCode（与轮询闹钟 1001 区分） */
+        private const val DEADLINE_REQUEST_CODE = 1003
+        private const val MAX_DEADLINE_AHEAD_MS = 7 * 24 * 3600_000L
+
         @Volatile
         var isRunning = false
             private set
@@ -412,6 +416,49 @@ class ReminderForegroundService : Service() {
         Log.d(TAG, "Scheduled check cancelled")
     }
 
+    /**
+     * 按任务精确调度一次性闹钟：在最近的"未来提醒时刻"（dueTime-reminderMinutes）
+     * 精确触发一次检查——即使 30 秒轮询链因故中断，提醒也会准点响。
+     * 每轮检查后重新调度（覆盖式，始终只保留最近的一个截止时刻）。
+     */
+    private fun scheduleDeadlineAlarm() {
+        try {
+            val deadline = checker?.nextTaskReminderDeadline() ?: return
+            val delay = deadline - System.currentTimeMillis()
+            if (delay <= 0 || delay > MAX_DEADLINE_AHEAD_MS) return
+
+            val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+                action = ReminderAlarmReceiver.ACTION_CHECK
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, DEADLINE_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            try {
+                // 闹钟级别（免 Doze 限流），墙钟时间
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(deadline, null),
+                    pendingIntent
+                )
+                Log.d(TAG, "Deadline alarm scheduled at $deadline (in ${delay / 1000}s)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Deadline AlarmClock failed, fallback to exact alarm", e)
+                try {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + delay,
+                        pendingIntent
+                    )
+                } catch (e2: Exception) {
+                    Log.w(TAG, "Exact deadline alarm also failed (polling chain covers)", e2)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "scheduleDeadlineAlarm failed", e)
+        }
+    }
+
     // ==================== Check logic ====================
 
     /**
@@ -459,13 +506,32 @@ class ReminderForegroundService : Service() {
 
                 Log.d(TAG, "Check found ${items.size} items to trigger")
 
+                // 多任务同时到期：各自响铃/振动，语音合并为一条播报，避免声音相互覆盖
+                val mergedVoiceText = if (items.size > 1) {
+                    val titles = items.mapNotNull { it.title }.filter { it.isNotBlank() }
+                    if (titles.isEmpty()) null
+                    else "您有${titles.size}个任务到期：" + titles.joinToString("，")
+                } else null
+
                 for (item in items) {
                     Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
-                    val voiceAcceptedOrNoVoice = triggerReminder(item)
+                    val voiceAcceptedOrNoVoice = triggerReminder(
+                        item,
+                        speakVoice = mergedVoiceText == null,
+                    )
                     if (voiceAcceptedOrNoVoice) {
                         markReminderDelivered(item)
                     } else {
                         Log.w(TAG, "Reminder voice was not accepted; keeping state unmarked for retry: ${item.id}")
+                    }
+                }
+
+                // 合并语音播报：一条语音覆盖全部到期任务
+                if (mergedVoiceText != null) {
+                    val accepted = ttsHelper?.speakViaFile(text = mergedVoiceText) ?: false
+                    if (!accepted) {
+                        Log.w(TAG, "Merged voice failed, playing ringtone as fallback")
+                        audioHelper?.playReminderSound()
                     }
                 }
 
@@ -480,6 +546,8 @@ class ReminderForegroundService : Service() {
 
         // 在释放 WakeLock 前先调度下次检查，确保闹钟不会丢失
         scheduleNextCheck()
+        // 按任务精确调度一次性闹钟：即使轮询链中断，提醒也会在精确时刻触发
+        scheduleDeadlineAlarm()
 
         if (needsVoiceHold) {
             // 语音播放和 TTS 重试需要额外时间，延迟释放锁。
@@ -505,7 +573,7 @@ class ReminderForegroundService : Service() {
         Log.d(TAG, "Marked reminder delivered after voice accepted/no voice: type=${item.type} id=${item.id}")
     }
 
-    private fun triggerReminder(item: ReminderChecker.ReminderItem): Boolean {
+    private fun triggerReminder(item: ReminderChecker.ReminderItem, speakVoice: Boolean = true): Boolean {
         // 到达此方法时 effectiveForeground 必为 false（onHandleCheck 已跳过前台场景）
         // 由原生层全权处理：声音、语音（不弹全屏界面）
 
@@ -543,7 +611,8 @@ class ReminderForegroundService : Service() {
         val hasVoiceContent = item.voiceEnabled &&
             (!item.voiceText.isNullOrBlank() || !item.customVoicePath.isNullOrBlank() || !item.title.isNullOrBlank())
         Log.d(TAG, "Voice check for '${item.title}': voiceEnabled=${item.voiceEnabled}, hasContent=$hasVoiceContent")
-        var voiceAccepted = !hasVoiceContent
+        // speakVoice=false：多任务合并播报模式，本条语音由合并播报覆盖，视为已交付
+        var voiceAccepted = !hasVoiceContent || !speakVoice
 
         // ====== 声音策略 ======
         // 有语音时：先响一下（~800ms 预热音频硬件），然后停掉再播 TTS 语音。
@@ -564,7 +633,7 @@ class ReminderForegroundService : Service() {
         }
 
         // TTS 语音播报
-        if (hasVoiceContent) {
+        if (hasVoiceContent && speakVoice) {
             // 注意：不再在 800ms 后停掉铃声。后台 TTS 引擎可能已被系统冻结——
             // onStart 照常回调但实际无声，提前掐断铃声会同时失去两路声音。
             // 让铃声完整播完、语音短暂叠加，保证至少有一路可闻。
@@ -678,9 +747,20 @@ class ReminderForegroundService : Service() {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(true)
                 .setTimeoutAfter(30_000L)
-                .build()
 
-            nm.notify(item.id.hashCode(), notification)
+            // 任务提醒带快捷操作按钮：无需解锁进 APP 即可完成/延后（习惯无此操作）
+            if (item.type == "task") {
+                notification.addAction(
+                    0, "完成",
+                    ReminderActionReceiver.completePendingIntent(this, item.id)
+                )
+                notification.addAction(
+                    0, "延后10分钟",
+                    ReminderActionReceiver.snoozePendingIntent(this, item.id)
+                )
+            }
+
+            nm.notify(item.id.hashCode(), notification.build())
             Log.d(TAG, "Sound notification posted for: ${item.title} (sound=${item.soundEnabled}, vibration=${item.vibrationEnabled})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to post notification", e)

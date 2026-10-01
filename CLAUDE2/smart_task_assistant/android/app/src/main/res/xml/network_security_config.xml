@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全策略：后端 task_server 是用户自托管的局域网服务（无固定域名/TLS），
+  必须允许明文 HTTP，否则 Android 9+ 真机上同步功能被系统直接阻断。
+  第三方服务（天气/OCR/AI API）均走 HTTPS，不受影响。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

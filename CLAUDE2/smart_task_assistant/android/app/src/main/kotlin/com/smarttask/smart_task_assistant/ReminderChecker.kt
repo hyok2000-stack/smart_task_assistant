@@ -654,6 +654,33 @@ class ReminderChecker(private val context: Context) {
     // --- Main entry ---
 
     /**
+     * 最近的"未来任务提醒时刻"（dueTime - reminderMinutes 的最小值）。
+     * 用于按任务精确调度一次性闹钟——即使 30 秒轮询链中断，
+     * 提醒也会在精确时刻触发。无未来提醒时返回 null。
+     */
+    fun nextTaskReminderDeadline(): Long? {
+        val db = openDb() ?: return null
+        return try {
+            val now = System.currentTimeMillis()
+            var nearest: Long? = null
+            for (task in queryActiveTasks(db)) {
+                val due = parseDueTimeMillis(task.dueTime ?: continue) ?: continue
+                val minutes = task.reminderMinutes ?: continue
+                val reminderAt = due - minutes * 60_000L
+                if (reminderAt > now && (nearest == null || reminderAt < nearest)) {
+                    nearest = reminderAt
+                }
+            }
+            nearest
+        } catch (e: Exception) {
+            Log.e(TAG, "nextTaskReminderDeadline failed", e)
+            null
+        } finally {
+            db.close()
+        }
+    }
+
+    /**
      * @param isForeground 当 APP 在前台时，跳过习惯的触发标记，
      *   避免原生层"消耗"习惯触发但 Flutter 层因 ±1 分钟窗口错过而无法播放语音
      */
