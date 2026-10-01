@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
+import '../database/database_helper.dart';
 import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
 import '../providers/settings_provider.dart';
@@ -512,6 +513,12 @@ class ReminderService {
     _currentShowingReminderId = task.id;
     _currentShowingReminderType = 'task';
 
+    // 提醒历史（仅首次记录，持续提醒不刷屏）
+    if (!_lastVoiceReminderTime.containsKey(task.id)) {
+      DatabaseHelper()
+          .logReminder(title: task.title, targetId: task.id, source: 'flutter');
+    }
+
     debugPrint('记录提醒时间: $_lastReminderTime[task.id]');
     debugPrint(
         '下次提醒时间将在 ${_lastReminderTime[task.id]!.add(const Duration(seconds: _continualReminderIntervalSeconds))}');
@@ -761,6 +768,9 @@ class ReminderService {
 
   /// 显示习惯提醒对话框（弹窗构建由 UI 层注入，见 showHabitReminderDialog）
   void _showHabitReminderDialog(Habit habit) {
+    // 提醒历史（每个触发点只记一次）
+    DatabaseHelper().logReminder(
+        title: habit.title, targetId: habit.id, type: 'habit', source: 'flutter');
     final shower = showHabitReminderDialog;
     if (shower == null) {
       debugPrint('⚠️ showHabitReminderDialog 未注入，跳过弹窗');

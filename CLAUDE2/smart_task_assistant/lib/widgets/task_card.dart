@@ -60,7 +60,13 @@ class TaskCard extends StatelessWidget {
     this.onPinToggle,
     this.enableSwipeActions = true,
     this.onSaveAsTemplate,
+    this.subtaskDone,
+    this.subtaskTotal,
   });
+
+  /// 子任务进度（父任务卡片角标 n/m，null 表示无子任务）
+  final int? subtaskDone;
+  final int? subtaskTotal;
 
   @override
   Widget build(BuildContext context) {
@@ -231,18 +237,50 @@ class TaskCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    task.title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      decoration:
-                          task.isCompleted ? TextDecoration.lineThrough : null,
-                      color:
-                          task.isCompleted ? AppTheme.textSecondaryColor : null,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            decoration: task.isCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: task.isCompleted
+                                ? AppTheme.textSecondaryColor
+                                : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // 子任务进度角标（n/m 已完成，有子任务时才显示）
+                      if ((subtaskTotal ?? 0) > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (subtaskDone ?? 0) >= subtaskTotal!
+                                ? AppTheme.successColor.withValues(alpha: 0.15)
+                                : AppTheme.primaryColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$subtaskDone/$subtaskTotal',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: (subtaskDone ?? 0) >= subtaskTotal!
+                                  ? AppTheme.successColor
+                                  : AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(

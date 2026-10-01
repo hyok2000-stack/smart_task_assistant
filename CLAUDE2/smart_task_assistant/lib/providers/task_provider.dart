@@ -701,6 +701,37 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
+  /// 从回收站恢复任务（重新加载列表使恢复的任务可见）
+  Future<bool> restoreFromTrash(String trashId) async {
+    try {
+      final ok = await DatabaseHelper().restoreFromTrash(trashId);
+      if (ok) await loadData();
+      return ok;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// 彻底删除回收站中的单条快照
+  Future<void> purgeTrashItem(String trashId) async {
+    try {
+      await DatabaseHelper().purgeTrashItem(trashId);
+    } catch (e) {
+      debugPrint('彻底删除回收站快照失败: $e');
+    }
+  }
+
+  /// 清空回收站
+  Future<void> emptyTrash() async {
+    try {
+      await DatabaseHelper().emptyTrash();
+    } catch (e) {
+      debugPrint('清空回收站失败: $e');
+    }
+  }
+
   /// 删除任务
   Future<void> deleteTask(String id) async {
     try {
@@ -710,6 +741,14 @@ class TaskProvider extends ChangeNotifier {
       if (realTask != null) _recentlyDeletedTasks[id] = realTask;
       // 删除前触发一次自动备份（节流），作为数据安全兜底
       await _triggerAutoBackup();
+      // 快照进回收站（30 天内可在回收站页面恢复）
+      if (realTask != null) {
+        try {
+          await DatabaseHelper().moveToTrash(realTask);
+        } catch (e) {
+          debugPrint('移入回收站失败（已忽略，继续删除）: $e');
+        }
+      }
       await _storage.deleteTask(id);
       _tasks.removeWhere((t) => t.id == id);
 

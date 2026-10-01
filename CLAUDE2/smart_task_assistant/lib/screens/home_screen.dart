@@ -14,6 +14,7 @@ import '../widgets/quick_add_modal.dart';
 import '../widgets/task_list_skeleton.dart';
 import '../widgets/task_template_dialog.dart';
 import '../widgets/ai_chat_dialog.dart';
+import 'focus_screen.dart';
 import '../utils/app_localizations.dart';
 import '../services/weather_service.dart';
 import '../models/city.dart';
@@ -261,6 +262,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ),
                                   const SizedBox(width: 8),
                                   _buildHeaderButton(
+                                    Icons.timer_rounded,
+                                    () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) => const FocusScreen()),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildHeaderButton(
                                     Icons.notifications_none_rounded,
                                     () => _showNotificationCenter(),
                                     badge: _unreadNotificationCount > 0
@@ -415,6 +427,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     : null,
                                 child: TaskCard(
                                   task: task,
+                                  subtaskDone: (provider
+                                          .subtasksByParentId[task.id] ??
+                                      const [])
+                                      .where((t) => t.isCompleted)
+                                      .length,
+                                  subtaskTotal:
+                                      provider.subtasksByParentId[task.id]?.length,
                                   onTap: () => _showTaskDetail(task),
                                   isDistributed: provider.distributedTaskIds
                                       .contains(task.id),
@@ -717,6 +736,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: TaskCard(
                                   task: task,
+                                  subtaskDone: (provider
+                                          .subtasksByParentId[task.id] ??
+                                      const [])
+                                      .where((t) => t.isCompleted)
+                                      .length,
+                                  subtaskTotal:
+                                      provider.subtasksByParentId[task.id]?.length,
                                   onTap: _isBatchMode
                                       ? () => setState(() {
                                             if (_selectedTaskIds

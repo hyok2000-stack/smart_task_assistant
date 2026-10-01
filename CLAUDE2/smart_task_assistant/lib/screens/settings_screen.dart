@@ -11,6 +11,8 @@ import '../providers/settings_provider.dart';
 import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
 import '../theme/app_theme.dart';
+import '../screens/trash_screen.dart';
+import '../screens/reminder_history_screen.dart';
 import '../utils/app_localizations.dart';
 import '../widgets/error_state_widget.dart';
 import '../widgets/tag_management_dialog.dart';
@@ -886,6 +888,32 @@ class _SettingsScreenState extends State<SettingsScreen>
             subtitle: '清除所有数据',
             trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
             onTap: () => _clearData(context, l),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.restore_from_trash_rounded,
+            title: '回收站',
+            subtitle: '已删除的任务保留 30 天，可恢复',
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TrashScreen()),
+              );
+            },
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.history_rounded,
+            title: '提醒历史',
+            subtitle: '查看近期触发过的任务/习惯提醒',
+            trailing: const Icon(Icons.chevron_right, color: AppTheme.textHintColor),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ReminderHistoryScreen()),
+              );
+            },
           ),
         ],
       ),

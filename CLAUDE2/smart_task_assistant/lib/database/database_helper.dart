@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -59,7 +61,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'smart_task_assistant.db');
     return await openDatabase(
       path,
-      version: 16,
+      version: 17,
       onConfigure: (db) async {
         // 启用外键约束——sqflite 默认关闭，不开启则 ON DELETE CASCADE 不生效
         await db.execute('PRAGMA foreign_keys = ON');
@@ -219,6 +221,41 @@ class DatabaseHelper {
       )
     ''');
 
+    // 回收站：删除任务时的完整快照（payload 为任务 JSON），恢复时回插 tasks
+    await db.execute('''
+      CREATE TABLE task_trash (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        deleted_at TEXT NOT NULL
+      )
+    ''');
+
+    // 提醒历史：每次提醒触发的记录（前台/后台双通道都写）
+    await db.execute('''
+      CREATE TABLE reminder_logs (
+        id TEXT PRIMARY KEY,
+        target_id TEXT,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'task',
+        source TEXT NOT NULL DEFAULT 'flutter',
+        shown_at TEXT NOT NULL
+      )
+    ''');
+
+    // 专注模式会话（番茄钟）
+    await db.execute('''
+      CREATE TABLE focus_sessions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        task_title TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        duration_minutes INTEGER NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
     // 创建习惯相关索引
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_habits_is_enabled ON habits(is_enabled)');
@@ -273,6 +310,38 @@ class DatabaseHelper {
     if (oldVersion < 16) {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_tasks_reminder_active ON tasks(status, due_time) WHERE archived_at IS NULL AND reminder_dismissed = 0');
+    }
+    // 版本16 -> 版本17: 回收站 / 提醒历史 / 专注会话
+    if (oldVersion < 17) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS task_trash (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          deleted_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reminder_logs (
+          id TEXT PRIMARY KEY,
+          target_id TEXT,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'task',
+          source TEXT NOT NULL DEFAULT 'flutter',
+          shown_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS focus_sessions (
+          id TEXT PRIMARY KEY,
+          task_id TEXT,
+          task_title TEXT,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          duration_minutes INTEGER NOT NULL DEFAULT 0,
+          completed INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
     }
     // 版本1 -> 版本2: 添加提醒相关字段
     if (oldVersion < 2) {
@@ -691,6 +760,123 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  // ==================== 回收站 ====================
+
+  /// 删除前把任务完整快照放入回收站（恢复时按 payload 回插 tasks）
+  Future<void> moveToTrash(Task task) async {
+    final db = await database;
+    await db.insert(
+      'task_trash',
+      {
+        'id': task.id,
+        'title': task.title,
+        'payload': jsonEncode(task.toJson()),
+        'deleted_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 回收站列表（自动清理 30 天前的快照），按删除时间倒序。
+  /// 返回字段：id / title / payload / deleted_at
+  Future<List<Map<String, dynamic>>> getTrashEntries() async {
+    final db = await database;
+    final cutoff =
+        DateTime.now().subtract(const Duration(days: 30)).toIso8601String();
+    await db.delete('task_trash', where: 'deleted_at < ?', whereArgs: [cutoff]);
+    return db.query('task_trash', orderBy: 'deleted_at DESC');
+  }
+
+  /// 从回收站恢复任务到任务列表。返回是否成功恢复（同 id 已存在时仅清理快照）。
+  Future<bool> restoreFromTrash(String trashId) async {
+    final db = await database;
+    final rows = await db
+        .query('task_trash', where: 'id = ?', whereArgs: [trashId], limit: 1);
+    if (rows.isEmpty) return false;
+    final payload =
+        jsonDecode(rows.first['payload'] as String) as Map<String, dynamic>;
+    final task = Task.fromJson(payload);
+    await insertTask(task);
+    await db.delete('task_trash', where: 'id = ?', whereArgs: [trashId]);
+    return true;
+  }
+
+  /// 彻底删除回收站中的单条快照
+  Future<void> purgeTrashItem(String trashId) async {
+    final db = await database;
+    await db.delete('task_trash', where: 'id = ?', whereArgs: [trashId]);
+  }
+
+  /// 清空回收站
+  Future<void> emptyTrash() async {
+    final db = await database;
+    await db.delete('task_trash');
+  }
+
+  // ==================== 提醒历史 ====================
+
+  /// 记录一次提醒触发（前台/后台双通道都会调用）
+  Future<void> logReminder({
+    required String title,
+    String? targetId,
+    String type = 'task',
+    String source = 'flutter',
+  }) async {
+    try {
+      final db = await database;
+      await db.insert('reminder_logs', {
+        'id': '${DateTime.now().millisecondsSinceEpoch}_${targetId ?? ''}_$source',
+        'target_id': targetId,
+        'title': title,
+        'type': type,
+        'source': source,
+        'shown_at': DateTime.now().toIso8601String(),
+      });
+      // 只保留最近 500 条，防止无限增长
+      await db.execute(
+          'DELETE FROM reminder_logs WHERE id NOT IN (SELECT id FROM reminder_logs ORDER BY shown_at DESC LIMIT 500)');
+    } catch (e) {
+      debugPrint('logReminder 失败（已忽略）: $e');
+    }
+  }
+
+  /// 提醒历史列表（倒序，默认 200 条）
+  Future<List<Map<String, dynamic>>> getReminderLogs({int limit = 200}) async {
+    final db = await database;
+    return db.query('reminder_logs',
+        orderBy: 'shown_at DESC', limit: limit);
+  }
+
+  // ==================== 专注会话 ====================
+
+  /// 保存一次专注会话（番茄钟结束/放弃时调用）
+  Future<void> saveFocusSession({
+    required String id,
+    String? taskId,
+    String? taskTitle,
+    required DateTime startedAt,
+    DateTime? endedAt,
+    required int durationMinutes,
+    required bool completed,
+  }) async {
+    final db = await database;
+    await db.insert('focus_sessions', {
+      'id': id,
+      'task_id': taskId,
+      'task_title': taskTitle,
+      'started_at': startedAt.toIso8601String(),
+      'ended_at': endedAt?.toIso8601String(),
+      'duration_minutes': durationMinutes,
+      'completed': completed ? 1 : 0,
+    });
+  }
+
+  /// 专注会话统计（最近 N 条）
+  Future<List<Map<String, dynamic>>> getFocusSessions({int limit = 100}) async {
+    final db = await database;
+    return db.query('focus_sessions', orderBy: 'started_at DESC', limit: limit);
   }
 
   /// 批量删除任务

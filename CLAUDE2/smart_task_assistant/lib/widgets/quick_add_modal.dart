@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../services/ocr_service.dart';
@@ -8,6 +9,7 @@ import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../services/ai_service.dart';
+import '../services/speech_input_service.dart';
 import '../services/task_parse_controller.dart';
 import '../theme/app_theme.dart';
 import '../utils/color_utils.dart';
@@ -31,6 +33,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   final bool _isLoading = false;
   bool _isAILoading = false;
   bool _isOcrProcessing = false;
+  bool _isListening = false;
   ParsedTask? _parsedTask;
   // 解析出的标题（用户可在预览中修正），为空时回退到 parsed.title
   String? _editableTitle;
@@ -141,10 +144,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
       }
         });
   }
-
-  /// 检查提醒时间是否在预设选项中
-  bool _isInReminderOptions(int? minutes) =>
-      TaskParseController.isInPresetReminderOptions(minutes);
 
   /// 使用AI智能识别（手动调用）
   Future<void> _parseInputWithAI() async {
@@ -475,6 +474,22 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                         color: AppTheme.primaryColor,
                                         onPressed: _showOcrSourcePicker,
                                       ),
+                              ),
+                              // 语音输入（口述任务，走 AI 解析链）
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(right: 8, bottom: 8),
+                                child: IconButton(
+                                  tooltip: _isListening ? '停止语音' : '语音输入',
+                                  icon: _isListening
+                                      ? const Icon(Icons.mic_rounded, size: 24)
+                                      : const Icon(Icons.mic_none_rounded,
+                                          size: 22),
+                                  color: _isListening
+                                      ? AppTheme.errorColor
+                                      : AppTheme.primaryColor,
+                                  onPressed: _toggleSpeechInput,
+                                ),
                               ),
                             ],
                           ),
@@ -1161,6 +1176,58 @@ class _QuickAddModalState extends State<QuickAddModal> {
     if (fromCamera != null && mounted) {
       await _performOcr(fromCamera: fromCamera);
     }
+  }
+
+  /// 语音输入：口述任务内容 → 文字填入输入框 → 本地规则解析。
+  /// 再次点击停止聆听（以最终识别结果触发一次解析）。
+  Future<void> _toggleSpeechInput() async {
+    if (SpeechInputService.instance.isListening) {
+      await SpeechInputService.instance.stopListening();
+      setState(() => _isListening = false);
+      return;
+    }
+
+    final ok = await SpeechInputService.instance.ensureInitialized();
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前设备没有可用的语音识别服务')),
+        );
+      }
+      return;
+    }
+    // 麦克风运行时权限（首次会弹系统授权）
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('需要麦克风权限才能使用语音输入')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isListening = true);
+    final baseText = _controller.text;
+    await SpeechInputService.instance.startListening(
+      onResult: (text) {
+        if (!mounted) return;
+        // 实时把识别内容追加到已有输入后面
+        setState(() {
+          _controller.text =
+              baseText.isEmpty ? text : '$baseText $text'.trim();
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+        });
+      },
+      onFinal: (finalText) {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+        final full = baseText.isEmpty ? finalText : '$baseText $finalText'.trim();
+        if (full.isNotEmpty) _parseInputLocal(full);
+      },
+    );
   }
 
   /// 执行 OCR 识别：结果填入输入框并触发本地解析（自动提取时间/优先级/标签）

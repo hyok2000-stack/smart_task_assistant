@@ -199,6 +199,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: TaskCard(
               task: task,
+              subtaskDone: (provider.subtasksByParentId[task.id] ?? const []).where((t) => t.isCompleted).length,
+              subtaskTotal: provider.subtasksByParentId[task.id]?.length,
               onTap: () => _showTaskDetail(task),
               isDistributed: provider.distributedTaskIds.contains(task.id),
               onComplete: () => _completeTask(task, provider),
@@ -260,6 +262,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   opacity: 0.6,
                   child: TaskCard(
                     task: task,
+                    subtaskDone: (provider.subtasksByParentId[task.id] ?? const [])
+                        .where((t) => t.isCompleted)
+                        .length,
+                    subtaskTotal: provider.subtasksByParentId[task.id]?.length,
                     onTap: () => _showTaskDetail(task),
                     isDistributed: provider.distributedTaskIds.contains(task.id),
                     onComplete: () => _restoreTask(task, provider),

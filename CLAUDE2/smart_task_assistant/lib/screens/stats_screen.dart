@@ -51,6 +51,9 @@ class StatsScreen extends StatelessWidget {
                     // 逾期任务统计
                     _buildOverdueStatsCard(context, provider, l),
                     const SizedBox(height: 24),
+                    // 效率洞察：平均完成耗时 + 最有效率时段
+                    _buildEfficiencyCard(context, provider, l),
+                    const SizedBox(height: 24),
                     // 优先级分布
                     _buildPriorityDistributionCard(context, provider, l),
                     const SizedBox(height: 24),
@@ -160,6 +163,124 @@ class StatsScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// 效率洞察：平均完成耗时（创建→完成）+ 最有效率时段（完成时刻分布）
+  Widget _buildEfficiencyCard(
+      BuildContext context, TaskProvider provider, AppLocalizations l) {
+    final completed = provider.tasks
+        .where((t) =>
+            t.isCompleted &&
+            t.createdAt != null &&
+            t.completedAt != null &&
+            !t.completedAt!.isBefore(t.createdAt))
+        .toList();
+
+    // 平均完成耗时
+    String avgText = '—';
+    if (completed.isNotEmpty) {
+      final totalMinutes = completed
+          .map((t) => t.completedAt!.difference(t.createdAt!).inMinutes)
+          .reduce((a, b) => a + b);
+      final avgHours = totalMinutes / completed.length / 60.0;
+      avgText = avgHours < 1
+          ? '${(avgHours * 60).round()} 分钟'
+          : avgHours < 48
+              ? '${avgHours.toStringAsFixed(1)} 小时'
+              : '${(avgHours / 24).toStringAsFixed(1)} 天';
+    }
+
+    // 最有效率时段：按完成时刻的小时分桶
+    String bestText = '—';
+    if (completed.isNotEmpty) {
+      final buckets = List.filled(24, 0);
+      for (final t in completed) {
+        buckets[t.completedAt!.hour]++;
+      }
+      var bestHour = -1;
+      for (var h = 0; h < 24; h++) {
+        if (buckets[h] > 0 && (bestHour == -1 || buckets[h] > buckets[bestHour])) {
+          bestHour = h;
+        }
+      }
+      if (bestHour >= 0) {
+        bestText = '$bestHour:00–${bestHour + 1}:00（完成 ${buckets[bestHour]} 次）';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.insights_rounded,
+                  size: 18, color: AppTheme.primaryColor),
+              const SizedBox(width: 8),
+              Text('效率洞察',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimaryColor)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('平均完成耗时',
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondaryColor)),
+                    const SizedBox(height: 4),
+                    Text(avgText,
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.primaryColor)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('最有效率时段',
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondaryColor)),
+                    const SizedBox(height: 4),
+                    Text(bestText,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimaryColor)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (completed.isEmpty) ...[
+            const SizedBox(height: 8),
+            Text('完成带截止/创建时间的任务后，这里会给出你的效率画像',
+                style: TextStyle(fontSize: 11, color: AppTheme.textHintColor)),
+          ],
+        ],
+      ),
     );
   }
 
