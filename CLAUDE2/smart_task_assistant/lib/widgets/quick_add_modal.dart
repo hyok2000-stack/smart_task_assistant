@@ -54,9 +54,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
   bool _isRecurring = false;
   String _recurringRule = 'daily'; // daily, weekly, monthly, yearly
 
+  // 语音可用性预检：null=检测中，false=设备无识别服务（按钮置灰）
+  bool? _speechSupported;
+
   @override
   void initState() {
     super.initState();
+
+    // 异步预检语音识别可用性（华为等无 GMS 设备没有系统识别服务）
+    SpeechInputService.instance.ensureInitialized().then((ok) {
+      if (mounted) setState(() => _speechSupported = ok);
+    });
 
     // 如果有初始内容，设置到输入框并自动解析
     if (widget.initialContent != null && widget.initialContent!.isNotEmpty) {
@@ -480,20 +488,29 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                         onPressed: _showOcrSourcePicker,
                                       ),
                               ),
-                              // 语音输入（口述任务，走 AI 解析链）
+                              // 语音输入（口述任务，走 AI 解析链）；
+                              // 设备无识别服务时置灰，提示用输入法语音替代
                               Padding(
                                 padding:
                                     const EdgeInsets.only(right: 8, bottom: 8),
-                                child: IconButton(
-                                  tooltip: _isListening ? '停止语音' : '语音输入',
-                                  icon: _isListening
-                                      ? const Icon(Icons.mic_rounded, size: 24)
-                                      : const Icon(Icons.mic_none_rounded,
-                                          size: 22),
-                                  color: _isListening
-                                      ? AppTheme.errorColor
-                                      : AppTheme.primaryColor,
-                                  onPressed: _toggleSpeechInput,
+                                child: Tooltip(
+                                  message: _speechSupported == false
+                                      ? '此设备无系统语音识别（可用输入法语音键替代）'
+                                      : (_isListening ? '停止语音' : '语音输入'),
+                                  child: IconButton(
+                                    icon: _isListening
+                                        ? const Icon(Icons.mic_rounded,
+                                            size: 24)
+                                        : const Icon(Icons.mic_none_rounded,
+                                            size: 22),
+                                    color: _isListening
+                                        ? AppTheme.errorColor
+                                        : AppTheme.primaryColor,
+                                    disabledColor: Colors.grey.shade400,
+                                    onPressed: _speechSupported == false
+                                        ? null
+                                        : _toggleSpeechInput,
+                                  ),
                                 ),
                               ),
                             ],
