@@ -4,10 +4,10 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.alphacephei.vosk.Model
-import com.alphacephei.vosk.Recognizer
-import com.alphacephei.vosk.SpeechService
-import com.alphacephei.vosk.android.RecognitionListener
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.vosk.android.RecognitionListener
+import org.vosk.android.SpeechService
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -83,16 +83,18 @@ class VoskSpeechHandler(private val context: Context) {
                 val recognizer = Recognizer(m, SAMPLE_RATE)
                 recognizer.setWords(true)
                 val service = SpeechService(recognizer, SAMPLE_RATE)
-                service.addListener(object : RecognitionListener {
+                val listener = object : RecognitionListener {
                     override fun onPartialResult(hypothesis: String?) {
                         emit(hypothesis ?: return)
+                    }
+
+                    override fun onResult(hypothesis: String?) {
+                        // 中间轮询结果与 partial 相同，跳过避免重复
                     }
 
                     override fun onFinalResult(hypothesis: String?) {
                         emit(hypothesis ?: return)
                     }
-
-                    override fun onFullResult(hypothesis: String?) {}
 
                     override fun onError(e: Exception?) {
                         Log.e(TAG, "vosk recognize error", e)
@@ -101,9 +103,9 @@ class VoskSpeechHandler(private val context: Context) {
                     override fun onTimeout() {
                         Log.d(TAG, "vosk timeout")
                     }
-                })
+                }
                 speechService = service
-                service.startListening()
+                service.startListening(listener)
                 Log.d(TAG, "vosk listening started")
             } catch (e: Exception) {
                 Log.e(TAG, "vosk start failed", e)
