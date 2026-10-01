@@ -83,4 +83,3 @@ flutter:
   
   assets:
     - assets/sounds/
-    - assets/models/vosk-model-small-cn-0.22.zip
