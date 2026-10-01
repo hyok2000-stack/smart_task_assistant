@@ -76,3 +76,4 @@ app.*.map.json
 /plugins/
 /ancient_fairy_dance.svg
 /workbook_preview*.json
+/OUTPUT/
