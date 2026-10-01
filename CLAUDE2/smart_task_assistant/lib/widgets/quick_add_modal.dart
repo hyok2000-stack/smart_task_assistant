@@ -61,16 +61,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
   void initState() {
     super.initState();
 
-    // 异步预检语音可用性（两级引擎：系统 ASR → Vosk 离线模型；
-    // Vosk 首次加载需解压模型，耗时数秒，这里同时预热，故障切换时即时可用）
+    // 异步预检语音可用性（两级引擎：系统 ASR → 离线模型；
+    // 同时预热离线引擎，故障切换时即时可用）
     SpeechInputService.instance.ensureInitialized().then((systemOk) async {
       if (systemOk) {
         if (mounted) setState(() => _speechSupported = true);
-        await SpeechInputService.instance.ensureVoskReady();
+        // 后台预热离线引擎（系统识别不可靠时即时切换）
+        await SpeechInputService.instance.ensureOfflineReady();
         return;
       }
-      final voskOk = await SpeechInputService.instance.ensureVoskReady();
-      if (mounted) setState(() => _speechSupported = voskOk);
+      final offlineOk = await SpeechInputService.instance.ensureOfflineReady();
+      if (mounted) setState(() => _speechSupported = offlineOk);
     });
 
     // 如果有初始内容，设置到输入框并自动解析

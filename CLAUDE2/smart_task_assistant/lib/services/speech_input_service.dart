@@ -1,13 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import 'package:speech_to_text/speech_to_text.dart';
 
 /// 语音输入服务：两级识别引擎——
 /// 1. 系统 ASR（speech_to_text，走 Android RecognitionService）；
-/// 2. Vosk 离线识别（本地小模型，华为等无 GMS 设备的系统识别兜底）。
+/// 2. sherpa-onnx 离线识别（流式 zipformer 中文小模型，完全本地）。
+///
+/// 系统 ASR 出现"会话卡死不出结果"等不可靠行为时，自动切换离线引擎。
 class SpeechInputService {
   SpeechInputService._();
   static final SpeechInputService instance = SpeechInputService._();
@@ -16,16 +22,8 @@ class SpeechInputService {
   bool _initialized = false;
 
   /// 系统 ASR 是否被判定不可靠（如华为识别服务卡死：会话一直 in progress
-  /// 却永远不返回结果）。置位后调用方应直接改用 Vosk 离线引擎。
+  /// 却永远不返回结果）。置位后调用方应直接改用离线引擎。
   bool systemAsrUnreliable = false;
-
-  // Vosk 离线引擎
-  static const _voskChannel =
-      MethodChannel('com.smarttask.smart_task_assistant/speech');
-  static const _voskEvents =
-      EventChannel('com.smarttask.smart_task_assistant/speech_events');
-  bool _voskReady = false;
-  StreamSubscription? _voskSub;
 
   bool get isListening => _speech.isListening;
 
@@ -49,11 +47,13 @@ class SpeechInputService {
     return _initialized;
   }
 
+  // ==================== 系统 ASR ====================
+
   // 状态回调（由 UI 层在 startListening 时设置：引擎停止/出错时复位 UI）
   void Function()? _stoppedCallback;
   void Function(String message)? _errorListener;
 
-  /// 开始聆听。识别过程中 [onResult] 持续回传累计文本；
+  /// 开始系统识别聆听。识别过程中 [onResult] 持续回传累计文本；
   /// [onFinal] 在收到最终结果（用户停止说话/超时）时回调一次；
   /// [onStopped] 在引擎停止（含异常路径）时回调（调用方应复位 UI 状态）；
   /// [onError] 在识别服务出错时回调。
@@ -85,53 +85,119 @@ class SpeechInputService {
 
   Future<void> stopListening() => _speech.stop();
 
-  // ==================== Vosk 离线识别 ====================
+  // ==================== sherpa-onnx 离线识别 ====================
 
-  /// 初始化 Vosk 离线引擎（首次会从 APK 资产解压模型，耗时数秒）。
-  Future<bool> ensureVoskReady() async {
-    if (_voskReady) return true;
+  static const _offlineAssetDir = 'assets/models/sherpa-zh14m';
+  static const _offlineFiles = [
+    'tokens.txt',
+    'encoder-epoch-99-avg-1.int8.onnx',
+    'decoder-epoch-99-avg-1.onnx',
+    'joiner-epoch-99-avg-1.int8.onnx',
+  ];
+
+  AudioRecorder? _recorder;
+  StreamSubscription<Uint8List>? _micSub;
+  sherpa.OnlineRecognizer? _offlineRecognizer;
+  sherpa.OnlineStream? _offlineStream;
+  bool _offlineReady = false;
+
+  /// 初始化离线引擎（首次把模型文件从 APK 资产复制到内部存储，秒级完成）。
+  Future<bool> ensureOfflineReady() async {
+    if (_offlineReady) return true;
     try {
-      final ok = await _voskChannel.invokeMethod<bool>('init');
-      debugPrint('vosk init 结果: $ok');
-      _voskReady = ok ?? false;
-    } catch (e) {
-      debugPrint('vosk init 异常: $e');
-      _voskReady = false;
-    }
-    return _voskReady;
-  }
-
-  /// 开始 Vosk 离线聆听。
-  /// [onText] 持续回传识别文本（partial + final）；
-  /// [onStopped] 在停止/出错时回调（调用方复位 UI）。
-  Future<void> startVoskListening({
-    required void Function(String text) onText,
-    void Function()? onStopped,
-  }) async {
-    await _voskSub?.cancel();
-    _voskSub = _voskEvents.receiveBroadcastStream().listen(
-      (event) {
-        if (event is! String) return;
-        try {
-          final map = jsonDecode(event) as Map<String, dynamic>;
-          // final 结果优先（含 text 字段），否则用 partial
-          final text = (map['text'] ?? map['partial'] ?? '') as String;
-          if (text.trim().isNotEmpty) onText(text.trim());
-        } catch (_) {
-          // 非 JSON 事件忽略
+      final dir = await getApplicationDocumentsDirectory();
+      final modelDir = Directory('${dir.path}/sherpa-zh14m');
+      await modelDir.create(recursive: true);
+      for (final f in _offlineFiles) {
+        final target = File('${modelDir.path}/$f');
+        if (!target.existsSync() || target.lengthSync() == 0) {
+          final data = await rootBundle.load('$_offlineAssetDir/$f');
+          await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
         }
-      },
-      onDone: () => onStopped?.call(),
-      onError: (_) => onStopped?.call(),
-    );
-    await _voskChannel.invokeMethod('start');
+      }
+      _offlineRecognizer = sherpa.OnlineRecognizer(
+        sherpa.OnlineRecognizerConfig(
+          model: sherpa.OnlineModelConfig(
+            transducer: sherpa.OnlineTransducerModelConfig(
+              encoder: '${modelDir.path}/encoder-epoch-99-avg-1.int8.onnx',
+              decoder: '${modelDir.path}/decoder-epoch-99-avg-1.onnx',
+              joiner: '${modelDir.path}/joiner-epoch-99-avg-1.int8.onnx',
+            ),
+            tokens: '${modelDir.path}/tokens.txt',
+            numThreads: 2,
+          ),
+        ),
+      );
+      _offlineReady = true;
+    } catch (e) {
+      debugPrint('离线识别初始化失败: $e');
+      _offlineReady = false;
+    }
+    return _offlineReady;
   }
 
-  Future<void> stopVoskListening() async {
+  /// 开始离线聆听（16kHz PCM 麦克风流 → 流式解码）。
+  /// [onText] 持续回传当前识别文本（覆盖式，直接用于输入框回显）；
+  /// [onDone] 在停止聆听时回调最终文本。
+  Future<bool> startOfflineListening({
+    required void Function(String text) onText,
+    required void Function(String finalText) onDone,
+  }) async {
+    final rec = _offlineRecognizer;
+    if (rec == null) return false;
+
+    _recorder = AudioRecorder();
+    if (!await _recorder!.hasPermission()) return false;
+
+    final micStream = await _recorder!.startStream(
+      const RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
+    );
+    _offlineStream = rec.createStream();
+    _micSub = micStream.listen((data) {
+      final stream = _offlineStream;
+      if (stream == null) return;
+      // PCM int16 LE → 归一化 float32
+      final samples = Float32List(data.length ~/ 2);
+      final bd = ByteData.sublistView(data);
+      for (var i = 0; i < samples.length; i++) {
+        samples[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
+      }
+      stream.acceptWaveform(samples: samples, sampleRate: 16000);
+      while (rec.isReady(stream)) {
+        rec.decode(stream);
+      }
+      final text = rec.getResult(stream).text;
+      if (text.trim().isNotEmpty) onText(text.trim());
+    });
+    return true;
+  }
+
+  /// 停止离线聆听并返回当前识别文本。
+  Future<String> stopOfflineListening() async {
     try {
-      await _voskChannel.invokeMethod('stop');
+      await _recorder?.stop();
     } catch (_) {}
-    await _voskSub?.cancel();
-    _voskSub = null;
+    await _micSub?.cancel();
+    _micSub = null;
+    var text = '';
+    final stream = _offlineStream;
+    final rec = _offlineRecognizer;
+    if (stream != null && rec != null) {
+      // 冲刺解码剩余音频后取最终文本
+      while (rec.isReady(stream)) {
+        rec.decode(stream);
+      }
+      text = rec.getResult(stream).text.trim();
+    }
+    _offlineStream = null;
+    try {
+      await _recorder?.dispose();
+    } catch (_) {}
+    _recorder = null;
+    return text;
   }
 }
