@@ -17,6 +17,8 @@ import 'services/task_comment_service.dart';
 import 'services/tts_service.dart';
 import 'services/clipboard_monitor_service.dart';
 import 'widgets/quick_add_modal.dart';
+import 'widgets/reminder_action_dialog.dart';
+import 'widgets/habit_reminder_dialog.dart';
 import 'utils/app_localizations.dart';
 import 'database/database_helper.dart';
 
@@ -300,6 +302,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// 注入提醒弹窗构建（依赖倒置：ReminderService 不直接依赖 widgets，
+  /// 弹窗的 UI 构建留在 UI 层，用户选择的处理逻辑留在服务层）
+  void _wireReminderDialogs() {
+    final service = widget.reminderService;
+    service.showTaskReminderDialog = (task, onAction, onClosed) {
+      final context = navigatorKey.currentContext;
+      if (context == null) {
+        onClosed();
+        return;
+      }
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => ReminderActionDialog(
+          task: task,
+          onAction: onAction,
+        ),
+      ).then((_) => onClosed());
+    };
+    service.showHabitReminderDialog = (habit, onClosed) {
+      final context = navigatorKey.currentContext;
+      if (context == null) {
+        onClosed();
+        return;
+      }
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => HabitReminderDialog(habit: habit),
+      ).then((_) => onClosed());
+    };
+  }
+
   Future<void> _notifyNativeBackground() async {
     if (!Platform.isAndroid) return;
     try {
@@ -461,6 +496,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           .catchError((e) {
         debugPrint('提醒服务初始化失败（已忽略）: $e');
       });
+
+      // 注入提醒弹窗构建（依赖倒置：服务层不直接依赖 widgets）
+      _wireReminderDialogs();
 
       // 启动原生提醒服务（Android）
       await _startNativeReminderService();

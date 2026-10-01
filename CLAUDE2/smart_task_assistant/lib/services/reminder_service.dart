@@ -10,8 +10,6 @@ import '../providers/task_provider.dart';
 import '../providers/habit_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/habit.dart';
-import '../widgets/reminder_action_dialog.dart';
-import '../widgets/habit_reminder_dialog.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
 import 'tts_service.dart';
@@ -82,6 +80,27 @@ class ReminderService {
   String? _currentShowingReminderId;
   String? _currentShowingReminderType; // 'task' or 'habit'
   static const bool _verboseReminderLogs = false;
+
+  // --- UI 层注入的弹窗展示回调（依赖倒置：服务层不再直接 import widgets） ---
+  // 由 main.dart 在初始化时赋值；为 null 时（如单元测试环境）弹窗被安全跳过，
+  // 提醒状态机本身可独立测试。
+
+  /// 任务提醒弹窗展示器。onAction 回传用户选择（处理逻辑留在服务层）；
+  /// onClosed 在弹窗以任何方式关闭后调用（清除标记 + 持久化 snooze）。
+  void Function(
+    Task task,
+    void Function({
+      int? reminderMinutes,
+      bool dismissed,
+      int? snoozeMinutes,
+      bool postponeToTomorrow,
+    }) onAction,
+    void Function() onClosed,
+  )? showTaskReminderDialog;
+
+  /// 习惯提醒弹窗展示器。onClosed 在弹窗关闭后调用。
+  void Function(Habit habit, void Function() onClosed)?
+      showHabitReminderDialog;
 
   /// 初始化提醒服务
   Future<void> init(
@@ -620,20 +639,19 @@ class ReminderService {
     }
   }
 
-  /// 显示提醒对话框
+  /// 显示提醒对话框（弹窗构建由 UI 层注入，见 showTaskReminderDialog）
   void _showReminderDialog(Task task) {
-    final context = _navigatorKey!.currentContext!;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => ReminderActionDialog(
-        task: task,
-        onAction: (
-            {int? reminderMinutes,
-            bool dismissed = false,
-            int? snoozeMinutes,
-            bool postponeToTomorrow = false}) async {
+    final shower = showTaskReminderDialog;
+    if (shower == null) {
+      debugPrint('⚠️ showTaskReminderDialog 未注入（如测试环境），跳过弹窗');
+      return;
+    }
+    shower(task, ({
+      int? reminderMinutes,
+      bool dismissed = false,
+      int? snoozeMinutes,
+      bool postponeToTomorrow = false,
+    }) async {
           // 清除当前显示的提醒标记
           _currentShowingReminderId = null;
           _currentShowingReminderType = null;
@@ -733,28 +751,22 @@ class ReminderService {
             debugPrint(
                 '任务 "${task.title}" 将在 $_continualReminderIntervalSeconds 秒后再次提醒');
           }
-        },
-      ),
-    ).then((_) {
-      // 对话框关闭时也要清除标记（防止用户按返回键关闭）
-      _currentShowingReminderId = null;
-      _currentShowingReminderType = null;
-      // 对话框操作可能修改了 snooze 状态，持久化以便重启后保留
-      _saveSnoozedToPrefs();
-    });
+        }, () {
+          // 对话框关闭（含返回键）时清除标记并持久化 snooze
+          _currentShowingReminderId = null;
+          _currentShowingReminderType = null;
+          _saveSnoozedToPrefs();
+        });
   }
 
-  /// 显示习惯提醒对话框
+  /// 显示习惯提醒对话框（弹窗构建由 UI 层注入，见 showHabitReminderDialog）
   void _showHabitReminderDialog(Habit habit) {
-    final context = _navigatorKey!.currentContext!;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => HabitReminderDialog(
-        habit: habit,
-      ),
-    ).then((_) {
+    final shower = showHabitReminderDialog;
+    if (shower == null) {
+      debugPrint('⚠️ showHabitReminderDialog 未注入，跳过弹窗');
+      return;
+    }
+    shower(habit, () {
       // 对话框关闭时清除标记
       _currentShowingReminderId = null;
       _currentShowingReminderType = null;

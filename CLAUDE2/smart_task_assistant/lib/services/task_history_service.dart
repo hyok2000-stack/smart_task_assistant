@@ -74,8 +74,8 @@ class TaskHistoryService {
 
   Future<void> _persist() async {
     final entries = await _load();
-    // 审计记录保留最近 5000 条，避免无限占用本地存储。
-    if (entries.length > 5000) entries.removeRange(0, entries.length - 5000);
+    // 审计记录保留最近 1000 条（SharedPreferences 全量 JSON 重写，过大拖慢每次记录）。
+    if (entries.length > 1000) entries.removeRange(0, entries.length - 1000);
     await (await SharedPreferences.getInstance())
         .setString(_key, jsonEncode(entries.map((e) => e.toJson()).toList()));
   }
