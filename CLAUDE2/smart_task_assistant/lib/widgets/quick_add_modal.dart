@@ -1210,12 +1210,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   /// 语音输入：口述任务内容 → 文字填入输入框 → 本地规则解析。
   /// 再次点击停止聆听（以最终识别结果触发一次解析）。
-  /// 双引擎：系统 ASR 可用走系统识别；系统识别卡死/无响应自动切 Vosk 离线。
+  /// 双引擎：系统 ASR 可用走系统识别；系统识别卡死/无响应自动切离线引擎。
   Future<void> _toggleSpeechInput() async {
     // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
     if (_isListening || SpeechInputService.instance.isListening) {
       await SpeechInputService.instance.stopListening();
-      await SpeechInputService.instance.stopVoskListening();
+      await SpeechInputService.instance.stopOfflineListening();
       if (mounted) setState(() => _isListening = false);
       return;
     }
@@ -1223,14 +1223,14 @@ class _QuickAddModalState extends State<QuickAddModal> {
     // 系统 ASR 已被判定不可靠（本次会话曾无结果）→ 直接走离线引擎
     if (SpeechInputService.instance.systemAsrUnreliable ||
         _speechSupported == false) {
-      await _toggleVoskInput();
+      await _toggleOfflineInput();
       return;
     }
 
     final ok = await SpeechInputService.instance.ensureInitialized();
     if (!ok) {
       // 系统识别不可用 → 离线引擎
-      await _toggleVoskInput();
+      await _toggleOfflineInput();
       return;
     }
     // 麦克风运行时权限（首次会弹系统授权）
@@ -1279,7 +1279,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
         if (finalText.trim().isEmpty) {
           // 聆听了但零结果：系统引擎不可靠，标记后切离线引擎
           SpeechInputService.instance.systemAsrUnreliable = true;
-          _toggleVoskInput();
+          _toggleOfflineInput();
           return;
         }
         final full =
@@ -1306,15 +1306,18 @@ class _QuickAddModalState extends State<QuickAddModal> {
     );
   }
 
-  /// Vosk 离线语音路径（系统识别不可用时的本地兜底）
-  Future<void> _toggleVoskInput() async {
+  /// 离线引擎语音路径（sherpa-onnx 流式 zipformer，完全本地）
+  Future<void> _toggleOfflineInput() async {
     if (_isListening) {
-      await SpeechInputService.instance.stopVoskListening();
+      final finalText =
+          await SpeechInputService.instance.stopOfflineListening();
       if (mounted) setState(() => _isListening = false);
+      final full = _controller.text.trim();
+      if (full.isNotEmpty) _parseInputLocal(full);
       return;
     }
 
-    final ready = await SpeechInputService.instance.ensureVoskReady();
+    final ready = await SpeechInputService.instance.ensureOfflineReady();
     if (!ready) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1345,7 +1348,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
     setState(() => _isListening = true);
     final baseText = _controller.text;
-    await SpeechInputService.instance.startVoskListening(
+    await SpeechInputService.instance.startOfflineListening(
       onText: (text) {
         if (!mounted) return;
         setState(() {
@@ -1356,13 +1359,14 @@ class _QuickAddModalState extends State<QuickAddModal> {
           );
         });
       },
-      onStopped: () {
-        // Vosk 停止（点按/页面关闭）：用当前输入框文本触发解析
-        if (mounted && _isListening) {
-          setState(() => _isListening = false);
-          final full = _controller.text.trim();
-          if (full.isNotEmpty) _parseInputLocal(full);
-        }
+      onDone: (finalText) {
+        // 停止聆听：以最终文本重填输入框并触发解析
+        if (!mounted) return;
+        setState(() => _isListening = false);
+        final full = baseText.isEmpty
+            ? finalText.trim()
+            : '$baseText ${finalText.trim()}'.trim();
+        if (full.isNotEmpty) _parseInputLocal(full);
       },
     );
   }
