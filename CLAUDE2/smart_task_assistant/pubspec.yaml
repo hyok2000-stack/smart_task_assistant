@@ -55,7 +55,7 @@ dependencies:
 
   # 文件操作（移动端）
   file_picker: ^8.0.0
-  share_plus: ^9.0.0
+  share_plus: 10.1.0
 
   # 拍照 + OCR 文本识别（离线，ML Kit on-device 不依赖 GMS，华为可用）
   image_picker: ^1.1.2
@@ -69,7 +69,7 @@ dependencies:
 
   # 日历
   table_calendar: ^3.1.2
-  speech_to_text: ^6.6.0
+  speech_to_text: 7.0.0
 
 dev_dependencies:
   flutter_test:

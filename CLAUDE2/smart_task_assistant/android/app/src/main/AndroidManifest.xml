@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- 麦克风权限（语音快捷创建） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- 全屏提醒权限（锁屏弹出） -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -67,6 +70,18 @@
             android:name=".ReminderActionReceiver"
             android:enabled="true"
             android:exported="false">
+        </receiver>
+
+        <!-- 今日任务桌面小组件 -->
+        <receiver
+            android:name=".TodayWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
         </receiver>
 
         <!-- 开机/解锁/升级/时钟变化自启 BroadcastReceiver -->
@@ -136,6 +151,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ 包可见性：语音识别服务（语音快捷创建） -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

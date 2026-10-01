@@ -513,6 +513,10 @@ class ReminderChecker(private val context: Context) {
 
     // --- SP state management ---
 
+    /** 该任务是否为首次触发（firstSent 标记尚未写入）——用于提醒历史去重 */
+    fun isTaskFirstTrigger(id: String): Boolean =
+        !sp.contains(String.format(KEY_FIRST_SENT, id))
+
     fun markFirstSent(id: String) {
         sp.edit().putLong(String.format(KEY_FIRST_SENT, id), System.currentTimeMillis()).apply()
     }

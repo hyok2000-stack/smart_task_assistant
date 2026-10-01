@@ -13,6 +13,9 @@ import android.os.*
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 提醒前台服务：使用 AlarmManager 在 Doze 模式下也能定时唤醒检查任务/习惯
@@ -332,6 +335,8 @@ class ReminderForegroundService : Service() {
                     checker?.refreshData(type, id)
                     onHandleCheck()
                     scheduleNextCheck()
+                    // 任务数据变化 → 刷新桌面小组件
+                    TodayWidgetProvider.updateAll(this@ReminderForegroundService)
                 }
             }
             else -> {
@@ -515,6 +520,11 @@ class ReminderForegroundService : Service() {
 
                 for (item in items) {
                     Log.d(TAG, "Triggering reminder: type=${item.type} id=${item.id} title=${item.title}")
+                    // 提醒历史：任务只在首次触发时记录（持续提醒不刷屏）；
+                    // 习惯按触发点自然去重（间隔/固定时间每个触发点只到一次）
+                    val shouldLog = item.type == "habit" ||
+                        checker?.isTaskFirstTrigger(item.id) == true
+                    if (shouldLog) logReminderHistory(item)
                     val voiceAcceptedOrNoVoice = triggerReminder(
                         item,
                         speakVoice = mergedVoiceText == null,
@@ -571,6 +581,32 @@ class ReminderForegroundService : Service() {
             "habit" -> checker?.markHabitTriggered(item.id)
         }
         Log.d(TAG, "Marked reminder delivered after voice accepted/no voice: type=${item.type} id=${item.id}")
+    }
+
+    /** 提醒历史落库（reminder_logs 表，与 Flutter 前台共用同一张表） */
+    private fun logReminderHistory(item: ReminderChecker.ReminderItem) {
+        try {
+            val db = openOrCreateDatabase(
+                "smart_task_assistant.db", Context.MODE_PRIVATE, null
+            )
+            db.execSQL(
+                """INSERT OR REPLACE INTO reminder_logs
+                   (id, target_id, title, type, source, shown_at)
+                   VALUES (?, ?, ?, ?, 'native', ?)""",
+                arrayOf<Any>(
+                    "${System.currentTimeMillis()}_${item.id}_native",
+                    item.id,
+                    item.title ?: "",
+                    item.type,
+                    java.text.SimpleDateFormat(
+                        "yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US
+                    ).format(Date())
+                )
+            )
+            db.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "logReminderHistory failed", e)
+        }
     }
 
     private fun triggerReminder(item: ReminderChecker.ReminderItem, speakVoice: Boolean = true): Boolean {

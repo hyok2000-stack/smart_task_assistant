@@ -89,11 +89,12 @@ class ReminderActionReceiver : BroadcastReceiver() {
                 }
             }
         }
-        // 收起该提醒通知
+        // 收起该提醒通知并刷新桌面小组件
         try {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(taskId.hashCode())
         } catch (_: Exception) {
         }
+        TodayWidgetProvider.updateAll(context)
     }
 }

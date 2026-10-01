@@ -64,6 +64,8 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         notifyReminderAppState(true)
+        // APP 回前台刷新桌面小组件数据
+        TodayWidgetProvider.updateAll(this)
     }
 
     override fun onPause() {

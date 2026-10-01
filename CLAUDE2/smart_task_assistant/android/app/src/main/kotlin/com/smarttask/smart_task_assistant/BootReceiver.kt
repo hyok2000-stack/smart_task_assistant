@@ -28,6 +28,8 @@ class BootReceiver : BroadcastReceiver() {
             "android.intent.action.DATE_CHANGED",
             "android.intent.action.TIMEZONE_CHANGED" -> {
                 startServiceIfNeeded(context)
+                // 桌面小组件恢复数据
+                TodayWidgetProvider.updateAll(context)
             }
         }
     }
