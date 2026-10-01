@@ -8,6 +8,7 @@ import '../models/task.dart';
 import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../services/ai_service.dart';
+import '../services/task_parse_controller.dart';
 import '../theme/app_theme.dart';
 import '../utils/color_utils.dart';
 import 'ocr_source_sheet.dart';
@@ -81,26 +82,22 @@ class _QuickAddModalState extends State<QuickAddModal> {
     setState(() => _isAILoading = true);
 
     try {
-      // 加载 AI 配置
-      await _aiService.loadConfig();
-
-      // 尝试使用 AI 解析
-      final result = await _aiService.parseTask(input);
+      // AI 优先解析（未配置/失败自动回退本地规则，见 TaskParseController）
+      final result = await TaskParseController.parseWithEngine(input);
 
       if (result != null && mounted) {
+        final s = TaskParseController.resolve(result);
         setState(() {
           _parsedTask = result;
-          _selectedPriority = result.priority;
-          _selectedDueTime = result.dueTime;
-          _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
-          // 应用推荐的提醒时间
-          if (result.recommendedReminderMinutes != null) {
-            _selectedReminderMinutes = result.recommendedReminderMinutes;
-            // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
-            _showCustomReminder =
-                !_isInReminderOptions(_selectedReminderMinutes);
-            if (_showCustomReminder) {
-              _customReminderMinutes = _selectedReminderMinutes;
+          _selectedPriority = s.priority;
+          _selectedDueTime = s.dueTime;
+          _selectedTags = s.tags;
+          // 应用推荐的提醒时间（不在预设内时展开自定义输入框）
+          if (s.reminderMinutes != null) {
+            _selectedReminderMinutes = s.reminderMinutes;
+            _showCustomReminder = s.showCustomReminder;
+            if (s.showCustomReminder) {
+              _customReminderMinutes = s.customReminderMinutes;
             }
           }
         });
@@ -127,36 +124,27 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
     // 使用本地规则引擎解析
     final result = _aiService.parseTaskLocal(input);
+    final s = TaskParseController.resolve(result);
     setState(() {
       _parsedTask = result;
       // 自动更新选择器的值
-      _selectedPriority = result.priority;
-      _selectedDueTime = result.dueTime;
-      _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
-      // 应用推荐的提醒时间
-      if (result.recommendedReminderMinutes != null) {
-        _selectedReminderMinutes = result.recommendedReminderMinutes;
-        // 如果推荐的提醒时间不在预设选项中，显示自定义输入框
-        _showCustomReminder = !_isInReminderOptions(_selectedReminderMinutes);
-        if (_showCustomReminder) {
-          _customReminderMinutes = _selectedReminderMinutes;
+      _selectedPriority = s.priority;
+      _selectedDueTime = s.dueTime;
+      _selectedTags = s.tags;
+      // 应用推荐的提醒时间（不在预设内时展开自定义输入框）
+      if (s.reminderMinutes != null) {
+        _selectedReminderMinutes = s.reminderMinutes;
+        _showCustomReminder = s.showCustomReminder;
+        if (s.showCustomReminder) {
+          _customReminderMinutes = s.customReminderMinutes;
         }
       }
         });
   }
 
   /// 检查提醒时间是否在预设选项中
-  bool _isInReminderOptions(int? minutes) {
-    if (minutes == null) return true;
-    const presetOptions = [
-      10,
-      15,
-      30,
-      60,
-      1440,
-    ]; // 预设的提醒时间选项（分钟）：10分钟、15分钟、30分钟、1小时、1天
-    return presetOptions.contains(minutes);
-  }
+  bool _isInReminderOptions(int? minutes) =>
+      TaskParseController.isInPresetReminderOptions(minutes);
 
   /// 使用AI智能识别（手动调用）
   Future<void> _parseInputWithAI() async {
@@ -164,14 +152,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
     setState(() => _isAILoading = true);
     try {
-      await _aiService.loadConfig();
-      final result = await _aiService.parseTask(_controller.text);
+      final result = await TaskParseController.parseWithEngine(
+        _controller.text,
+      );
       if (result != null && mounted) {
+        final s = TaskParseController.resolve(result);
         setState(() {
           _parsedTask = result;
-          _selectedPriority = result.priority;
-          _selectedDueTime = result.dueTime;
-          _selectedTags = result.tags.isNotEmpty ? result.tags : ['工作'];
+          _selectedPriority = s.priority;
+          _selectedDueTime = s.dueTime;
+          _selectedTags = s.tags;
         });
       }
     } finally {

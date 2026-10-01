@@ -14,6 +14,7 @@ import '../widgets/ocr_source_sheet.dart';
 import '../utils/color_utils.dart';
 import '../services/ocr_service.dart';
 import '../services/ai_service.dart';
+import '../services/task_parse_controller.dart';
 import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
 import '../services/task_comment_service.dart';
@@ -1947,9 +1948,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       }
 
       // AI 优先（内部回退规则引擎）解析 OCR 全文
-      final aiService = AIService();
-      await aiService.loadConfig();
-      final parsed = await aiService.parseTask(text);
+      final parsed = await TaskParseController.parseWithEngine(text);
 
       // 规则兜底：AI 没解析出标题时，用 OCR 粗拆
       String title;
@@ -1983,7 +1982,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _onTitleChanged(_titleController.text);
 
       if (mounted) {
-        final engine = aiService.config.enabled ? 'AI' : '规则';
+        final engine = TaskParseController.engineLabel();
         final timeHint =
             dueTime != null ? '、时间 ${_formatDue(dueTime)}' : '';
         ScaffoldMessenger.of(context).showSnackBar(
