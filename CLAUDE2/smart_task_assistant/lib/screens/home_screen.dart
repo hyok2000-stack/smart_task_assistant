@@ -3609,7 +3609,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildDetailRow(IconData icon, String label, String value) {
-    final l = context.l;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -4601,7 +4600,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           final read = n['read'] as bool? ?? false;
                           final title = n['title'] as String? ?? '';
                           final body = n['body'] as String? ?? '';
-                          final createdAt = n['createdAt'] as String? ?? '';
                           final type = n['type'] as String? ?? '';
                           return ListTile(
                             leading: Container(

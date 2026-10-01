@@ -391,20 +391,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  /// 重新加载数据，并强制重置数据库连接
-  Future<void> _reloadDataWithReset() async {
-    debugPrint('Reloading data with database reset');
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    await _loadData(resetDatabase: true);
-  }
-
   /// 仅刷新内存数据，不重置数据库连接（用于回前台等高频场景）。
   ///
   /// database getter 内部已对 sqlite_master 做 ping 检测，连接真正失效时会
-  /// 自动重连——所以无需像 [_reloadDataWithReset] 那样每次都关闭正常连接。
+  /// 自动重连——所以无需每次回前台都关闭正常连接。
   Future<void> _reloadData() async {
     debugPrint('Reloading in-memory data (no db reset)');
     setState(() {

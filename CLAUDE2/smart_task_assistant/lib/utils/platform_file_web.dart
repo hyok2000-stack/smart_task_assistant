@@ -12,7 +12,8 @@ void downloadFile(String content, String fileName, String mimeType) {
   final blob = html.Blob([bytes], mimeType);
   final url = html.Url.createObjectUrlFromBlob(blob);
 
-  final anchor = html.AnchorElement(href: url)
+  // 不经变量直接触发下载（anchor 的值本身无用，click() 才是副作用）
+  html.AnchorElement(href: url)
     ..setAttribute('download', fileName)
     ..click();
 

@@ -9,6 +9,8 @@ import '../models/tag.dart';
 import '../providers/task_provider.dart';
 import '../services/ai_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/color_utils.dart';
+import 'ocr_source_sheet.dart';
 import 'tag_create_dialog.dart';
 
 /// 可拖动的快速创建任务对话框
@@ -1164,43 +1166,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   /// 编辑解析出的标题（AI 解析出错时用户可修正）。
   /// 选择 OCR 图片来源（拍照 / 相册）
-  void _showOcrSourcePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('拍照识别'),
-              subtitle: const Text('拍摄含有任务信息的图片'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _performOcr(fromCamera: true);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('从相册选择'),
-              subtitle: const Text('选择已有图片识别文字'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _performOcr(fromCamera: false);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showOcrSourcePicker() async {
+    final fromCamera = await showOcrSourcePicker(context);
+    if (fromCamera != null && mounted) {
+      await _performOcr(fromCamera: fromCamera);
+    }
   }
 
   /// 执行 OCR 识别：结果填入输入框并触发本地解析（自动提取时间/优先级/标签）
@@ -1484,9 +1454,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
           }
         }
 
-        final dbDefaultTags = allTags.where((t) => t.isDefault).toList();
-        final customTags = allTags.where((t) => !t.isDefault).toList();
-
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1668,9 +1635,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
     );
   }
 
-  Color _hexToColor(String hex) {
-    return Color(int.parse(hex.replaceFirst('#', '0xFF')));
-  }
+  Color _hexToColor(String hex) => parseHexColor(hex);
 }
 
 /// 显示快速创建对话框（居中显示）

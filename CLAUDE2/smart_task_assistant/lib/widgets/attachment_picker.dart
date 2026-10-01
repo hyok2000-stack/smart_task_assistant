@@ -96,47 +96,6 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     }
   }
 
-  /// 从字节内容保存附件到应用内部目录
-  Future<String?> _saveBytesToInternalStorage(
-      Uint8List bytes, String fileName) async {
-    try {
-      final dir = Directory(
-          '${(await getApplicationDocumentsDirectory())}/attachments');
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      final destPath = '${dir.path}/$fileName';
-      final file = File(destPath);
-      await file.writeAsBytes(bytes);
-      return destPath;
-    } catch (e) {
-      debugPrint('保存附件字节失败: $e');
-      return null;
-    }
-  }
-
-  /// 从文件路径复制附件到应用内部目录（path 回退方案）
-  Future<String?> _copyToInternalStorage(String sourcePath) async {
-    try {
-      final sourceFile = File(sourcePath);
-      if (!await sourceFile.exists()) return null;
-
-      final dir = Directory(
-          '${(await getApplicationDocumentsDirectory())}/attachments');
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-
-      final fileName = sourcePath.split(Platform.pathSeparator).last;
-      final destPath = '${dir.path}/$fileName';
-      await sourceFile.copy(destPath);
-      return destPath;
-    } catch (e) {
-      debugPrint('复制附件失败: $e');
-      return null;
-    }
-  }
-
   Future<void> _removeAt(int index) async {
     final newList = List<String>.from(_paths);
     newList.removeAt(index);

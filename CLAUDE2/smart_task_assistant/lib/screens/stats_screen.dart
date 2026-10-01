@@ -726,7 +726,6 @@ class StatsScreen extends StatelessWidget {
     final high = tasks.where((t) => t.priority.index == 2).length;
     final medium = tasks.where((t) => t.priority.index == 1).length;
     final low = tasks.where((t) => t.priority.index == 0).length;
-    final total = high + medium + low;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),

@@ -10,6 +10,8 @@ import '../models/tag.dart';
 import '../models/task_comment.dart';
 import '../providers/task_provider.dart';
 import '../widgets/attachment_picker.dart';
+import '../widgets/ocr_source_sheet.dart';
+import '../utils/color_utils.dart';
 import '../services/ocr_service.dart';
 import '../services/ai_service.dart';
 import '../services/backend_api_service.dart';
@@ -1914,43 +1916,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   /// 选择 OCR 图片来源（拍照 / 相册）
-  void _showOcrSourcePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('拍照识别'),
-              subtitle: const Text('拍摄含有任务信息的图片'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _performOcr(fromCamera: true);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('从相册选择'),
-              subtitle: const Text('选择已有图片识别文字'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _performOcr(fromCamera: false);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showOcrSourcePicker() async {
+    final fromCamera = await showOcrSourcePicker(context);
+    if (fromCamera != null && mounted) {
+      await _performOcr(fromCamera: fromCamera);
+    }
   }
 
   /// 执行 OCR 识别并自动填充任务标题和内容。
@@ -2451,14 +2421,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
-  Color _parseColor(String hexColor) {
-    try {
-      hexColor = hexColor.replaceAll('#', '');
-      return Color(int.parse('FF$hexColor', radix: 16));
-    } catch (e) {
-      return AppTheme.primaryColor;
-    }
-  }
+  Color _parseColor(String hexColor) => parseHexColor(hexColor);
 
   /// 构建标签选择芯片
   Widget _buildTagChip(Tag tag, bool isSelected) {

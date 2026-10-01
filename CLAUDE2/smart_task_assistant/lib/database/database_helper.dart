@@ -804,7 +804,6 @@ class DatabaseHelper {
         0;
 
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
     final overdue = Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COUNT(*) FROM tasks WHERE due_time < ? AND status != ? AND status != ?',
