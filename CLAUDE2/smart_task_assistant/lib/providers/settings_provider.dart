@@ -113,211 +113,94 @@ class SettingsProvider extends ChangeNotifier {
   /// 获取应用版本号
   String get appVersion => _appVersion;
 
-  /// 从存储加载设置
+  /// 从存储加载设置（Web/原生统一走键值适配器，序列化逻辑只写一份）
   Future<void> loadSettings() async {
-    if (kIsWeb) {
-      _loadFromWeb();
-    } else {
-      await _loadFromNative();
+    try {
+      final prefs = kIsWeb ? null : await SharedPreferences.getInstance();
+      _loadFromStore(_createStore(prefs));
+      if (!kIsWeb) {
+        // 安全改进：API Key 从 SecureStorage 读取（旧版本会先迁移）
+        await SecureStorageService.instance.migrateApiKeysIfNeeded();
+        _apiKey =
+            await SecureStorageService.instance.readAiApiKey() ?? _apiKey;
+        _chatAPIKey =
+            await SecureStorageService.instance.readAiChatApiKey() ??
+                _chatAPIKey;
+      }
+      await _loadAppVersion();
+    } catch (e) {
+      debugPrint('加载设置失败: $e');
     }
-    await _loadAppVersion();
     notifyListeners();
   }
 
-  void _loadFromWeb() {
-    // Web 平台从 localStorage 加载
-    try {
-      final themeModeStr = _getWebStorage('themeMode');
-      if (themeModeStr != null) {
-        _themeMode = ThemeMode.values.firstWhere(
-          (m) => m.toString() == themeModeStr,
-          orElse: () => ThemeMode.system,
-        );
-      }
-
-      final languageCode = _getWebStorage('language');
-      if (languageCode != null) {
-        _locale = Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US');
-      }
-
-      final clipboardEnabled = _getWebStorage('clipboardMonitorEnabled');
-      if (clipboardEnabled != null) {
-        _clipboardMonitorEnabled = clipboardEnabled == 'true';
-      }
-
-      final notificationsEnabled = _getWebStorage('notificationsEnabled');
-      if (notificationsEnabled != null) {
-        _notificationsEnabled = notificationsEnabled == 'true';
-      }
-      _autoCompleteParentTask =
-          _getWebStorage('autoCompleteParentTask') != 'false';
-
-      // 加载AI配置
-      final aiModeStr = _getWebStorage('aiMode');
-      if (aiModeStr != null) {
-        _aiMode = AIMode.values.firstWhere(
-          (m) => m.toString() == aiModeStr,
-          orElse: () => AIMode.local,
-        );
-      }
-
-      final localLLMAddress = _getWebStorage('localLLMAddress');
-      if (localLLMAddress != null) {
-        _localLLMAddress = localLLMAddress;
-      }
-
-      final localLLMModel = _getWebStorage('localLLMModel');
-      if (localLLMModel != null) {
-        _localLLMModel = localLLMModel;
-      }
-
-      final apiServiceName = _getWebStorage('apiServiceName');
-      if (apiServiceName != null) {
-        _apiServiceName = apiServiceName;
-      }
-
-      final apiKey = _getWebStorage('apiKey');
-      if (apiKey != null) {
-        _apiKey = apiKey;
-      }
-
-      final apiBase = _getWebStorage('apiBase');
-      if (apiBase != null) {
-        _apiBase = apiBase;
-      }
-
-      final apiModel = _getWebStorage('apiModel');
-      if (apiModel != null) {
-        _apiModel = apiModel;
-      }
-
-      // 加载ChatAI配置
-      final chatModeStr = _getWebStorage('chatMode');
-      if (chatModeStr != null) {
-        _chatMode = ChatAIMode.values.firstWhere(
-          (m) => m.toString() == chatModeStr,
-          orElse: () => ChatAIMode.remoteAPI,
-        );
-      }
-
-      final chatLocalLLMAddress = _getWebStorage('chatLocalLLMAddress');
-      if (chatLocalLLMAddress != null) {
-        _chatLocalLLMAddress = chatLocalLLMAddress;
-      }
-
-      final chatLocalLLMModel = _getWebStorage('chatLocalLLMModel');
-      if (chatLocalLLMModel != null) {
-        _chatLocalLLMModel = chatLocalLLMModel;
-      }
-
-      final chatAPIServiceName = _getWebStorage('chatAPIServiceName');
-      if (chatAPIServiceName != null) {
-        _chatAPIServiceName = chatAPIServiceName;
-      }
-
-      final chatAPIKey = _getWebStorage('chatAPIKey');
-      if (chatAPIKey != null) {
-        _chatAPIKey = chatAPIKey;
-      }
-
-      final chatAPIBase = _getWebStorage('chatAPIBase');
-      if (chatAPIBase != null) {
-        _chatAPIBase = chatAPIBase;
-      }
-
-      final chatAPIModel = _getWebStorage('chatAPIModel');
-      if (chatAPIModel != null) {
-        _chatAPIModel = chatAPIModel;
-      }
-    } catch (e) {
-      debugPrint('加载设置失败: $e');
+  /// 统一的设置加载（键不存在时保持当前值 = 字段默认值，
+  /// Web 与原生行为从此一致，不再各自漂移）
+  void _loadFromStore(_SettingsKV kv) {
+    final themeModeStr = kv.getString('themeMode');
+    if (themeModeStr != null) {
+      _themeMode = ThemeMode.values
+          .firstWhere((m) => m.toString() == themeModeStr, orElse: () => _themeMode);
     }
-  }
 
-  Future<void> _loadFromNative() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // 加载主题模式
-      final themeModeStr = prefs.getString('themeMode');
-      if (themeModeStr != null) {
-        _themeMode = ThemeMode.values.firstWhere(
-          (m) => m.toString() == themeModeStr,
-          orElse: () => ThemeMode.system,
-        );
-      }
-
-      // 加载语言
-      final languageCode = prefs.getString('language');
-      if (languageCode != null) {
-        _locale = Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US');
-      }
-
-      // 加载剪贴板监视（默认关闭：涉及隐私，需用户主动开启）
-      _clipboardMonitorEnabled =
-          prefs.getBool('clipboardMonitorEnabled') ?? false;
-
-      // 加载通知设置
-      _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
-
-      _reminderSoundEnabled = prefs.getBool('reminderSoundEnabled') ?? true;
-      _reminderVibrationEnabled =
-          prefs.getBool('reminderVibrationEnabled') ?? true;
-      _quietHoursEnabled = prefs.getBool('quietHoursEnabled') ?? false;
-      _quietHoursStart = prefs.getInt('quietHoursStart') ?? 22;
-      _quietHoursEnd = prefs.getInt('quietHoursEnd') ?? 7;
-      _taskReminderSoundEnabled =
-          prefs.getBool('taskReminderSoundEnabled') ?? true;
-      _taskReminderVibrationEnabled =
-          prefs.getBool('taskReminderVibrationEnabled') ?? true;
-      _habitReminderSoundEnabled =
-          prefs.getBool('habitReminderSoundEnabled') ?? true;
-      _habitReminderVibrationEnabled =
-          prefs.getBool('habitReminderVibrationEnabled') ?? true;
-      _autoCompleteParentTask = prefs.getBool('autoCompleteParentTask') ?? true;
-      _ttsVolume = prefs.getDouble('ttsVolume') ?? 0.9;
-
-      // 加载AI配置
-      final aiModeStr = prefs.getString('aiMode');
-      if (aiModeStr != null) {
-        _aiMode = AIMode.values.firstWhere(
-          (m) => m.toString() == aiModeStr,
-          orElse: () => AIMode.local,
-        );
-      }
-
-      _localLLMAddress =
-          prefs.getString('localLLMAddress') ?? 'http://localhost:11434';
-      _localLLMModel = prefs.getString('localLLMModel') ?? 'qwen2.5:7b';
-      _apiServiceName = prefs.getString('apiServiceName') ?? 'OpenAI';
-      // 安全改进：API Key 从 SecureStorage 读取（旧版本会先迁移）
-      await SecureStorageService.instance.migrateApiKeysIfNeeded();
-      _apiKey = await SecureStorageService.instance.readAiApiKey() ?? '';
-      _apiBase = prefs.getString('apiBase') ?? 'https://api.openai.com/v1';
-      _apiModel = prefs.getString('apiModel') ?? 'gpt-3.5-turbo';
-
-      // 加载ChatAI配置
-      final chatModeStr = prefs.getString('chatMode');
-      if (chatModeStr != null) {
-        _chatMode = ChatAIMode.values.firstWhere(
-          (m) => m.toString() == chatModeStr,
-          orElse: () => ChatAIMode.remoteAPI,
-        );
-      }
-
-      _chatLocalLLMAddress =
-          prefs.getString('chatLocalLLMAddress') ?? 'http://localhost:11434';
-      _chatLocalLLMModel = prefs.getString('chatLocalLLMModel') ?? 'qwen2.5:7b';
-      _chatAPIServiceName = prefs.getString('chatAPIServiceName') ?? 'OpenAI';
-      // 安全改进：Chat API Key 从 SecureStorage 读取（旧版本会先迁移）
-      _chatAPIKey =
-          await SecureStorageService.instance.readAiChatApiKey() ?? '';
-      _chatAPIBase =
-          prefs.getString('chatAPIBase') ?? 'https://api.openai.com/v1';
-      _chatAPIModel = prefs.getString('chatAPIModel') ?? 'gpt-3.5-turbo';
-    } catch (e) {
-      debugPrint('加载设置失败: $e');
+    final languageCode = kv.getString('language');
+    if (languageCode != null) {
+      _locale = Locale(languageCode, languageCode == 'zh' ? 'CN' : 'US');
     }
+
+    // 剪贴板监视（默认关闭：涉及隐私，需用户主动开启）
+    _clipboardMonitorEnabled =
+        kv.getBool('clipboardMonitorEnabled') ?? _clipboardMonitorEnabled;
+    _notificationsEnabled =
+        kv.getBool('notificationsEnabled') ?? _notificationsEnabled;
+    _reminderSoundEnabled =
+        kv.getBool('reminderSoundEnabled') ?? _reminderSoundEnabled;
+    _reminderVibrationEnabled =
+        kv.getBool('reminderVibrationEnabled') ?? _reminderVibrationEnabled;
+    _quietHoursEnabled = kv.getBool('quietHoursEnabled') ?? _quietHoursEnabled;
+    _quietHoursStart = kv.getInt('quietHoursStart') ?? _quietHoursStart;
+    _quietHoursEnd = kv.getInt('quietHoursEnd') ?? _quietHoursEnd;
+    _taskReminderSoundEnabled =
+        kv.getBool('taskReminderSoundEnabled') ?? _taskReminderSoundEnabled;
+    _taskReminderVibrationEnabled = kv.getBool('taskReminderVibrationEnabled') ??
+        _taskReminderVibrationEnabled;
+    _habitReminderSoundEnabled =
+        kv.getBool('habitReminderSoundEnabled') ?? _habitReminderSoundEnabled;
+    _habitReminderVibrationEnabled = kv.getBool('habitReminderVibrationEnabled') ??
+        _habitReminderVibrationEnabled;
+    _autoCompleteParentTask =
+        kv.getBool('autoCompleteParentTask') ?? _autoCompleteParentTask;
+    _ttsVolume = kv.getDouble('ttsVolume') ?? _ttsVolume;
+
+    // AI 配置（apiKey 在原生端由 SecureStorage 覆盖，见 loadSettings）
+    final aiModeStr = kv.getString('aiMode');
+    if (aiModeStr != null) {
+      _aiMode = AIMode.values
+          .firstWhere((m) => m.toString() == aiModeStr, orElse: () => _aiMode);
+    }
+    _localLLMAddress = kv.getString('localLLMAddress') ?? _localLLMAddress;
+    _localLLMModel = kv.getString('localLLMModel') ?? _localLLMModel;
+    _apiServiceName = kv.getString('apiServiceName') ?? _apiServiceName;
+    _apiKey = kv.getString('apiKey') ?? _apiKey;
+    _apiBase = kv.getString('apiBase') ?? _apiBase;
+    _apiModel = kv.getString('apiModel') ?? _apiModel;
+
+    // 智答AI配置
+    final chatModeStr = kv.getString('chatMode');
+    if (chatModeStr != null) {
+      _chatMode = ChatAIMode.values.firstWhere(
+          (m) => m.toString() == chatModeStr,
+          orElse: () => _chatMode);
+    }
+    _chatLocalLLMAddress =
+        kv.getString('chatLocalLLMAddress') ?? _chatLocalLLMAddress;
+    _chatLocalLLMModel =
+        kv.getString('chatLocalLLMModel') ?? _chatLocalLLMModel;
+    _chatAPIServiceName =
+        kv.getString('chatAPIServiceName') ?? _chatAPIServiceName;
+    _chatAPIKey = kv.getString('chatAPIKey') ?? _chatAPIKey;
+    _chatAPIBase = kv.getString('chatAPIBase') ?? _chatAPIBase;
+    _chatAPIModel = kv.getString('chatAPIModel') ?? _chatAPIModel;
   }
 
   Future<void> _loadAppVersion() async {
@@ -329,97 +212,60 @@ class SettingsProvider extends ChangeNotifier {
     }
   }
 
-  /// 保存设置
+  /// 保存设置（Web/原生统一走键值适配器）
   Future<void> _saveSettings() async {
     try {
-      if (kIsWeb) {
-        _saveToWeb();
-      } else {
-        await _saveToNative();
+      final prefs = kIsWeb ? null : await SharedPreferences.getInstance();
+      _saveToStore(_createStore(prefs), includeApiKeys: kIsWeb);
+      if (!kIsWeb) {
+        // 安全改进：API Key 不入 SharedPreferences，走 SecureStorage
+        await SecureStorageService.instance.writeAiApiKey(_apiKey);
+        await SecureStorageService.instance.writeAiChatApiKey(_chatAPIKey);
       }
     } catch (e) {
       debugPrint('保存设置失败: $e');
     }
   }
 
-  void _saveToWeb() {
-    _setWebStorage('themeMode', _themeMode.toString());
-    _setWebStorage('language', _locale.languageCode);
-    _setWebStorage(
-      'clipboardMonitorEnabled',
-      _clipboardMonitorEnabled.toString(),
-    );
-    _setWebStorage('notificationsEnabled', _notificationsEnabled.toString());
-    _setWebStorage(
-        'autoCompleteParentTask', _autoCompleteParentTask.toString());
+  /// 统一的设置保存（includeApiKeys 仅 Web 为 true——原生端 Key 走 SecureStorage）
+  void _saveToStore(_SettingsKV kv, {required bool includeApiKeys}) {
+    kv.setString('themeMode', _themeMode.toString());
+    kv.setString('language', _locale.languageCode);
+    kv.setBool('clipboardMonitorEnabled', _clipboardMonitorEnabled);
+    kv.setBool('notificationsEnabled', _notificationsEnabled);
+    kv.setBool('reminderSoundEnabled', _reminderSoundEnabled);
+    kv.setBool('reminderVibrationEnabled', _reminderVibrationEnabled);
+    kv.setBool('quietHoursEnabled', _quietHoursEnabled);
+    kv.setInt('quietHoursStart', _quietHoursStart);
+    kv.setInt('quietHoursEnd', _quietHoursEnd);
+    kv.setBool('taskReminderSoundEnabled', _taskReminderSoundEnabled);
+    kv.setBool('taskReminderVibrationEnabled', _taskReminderVibrationEnabled);
+    kv.setBool('habitReminderSoundEnabled', _habitReminderSoundEnabled);
+    kv.setBool('habitReminderVibrationEnabled', _habitReminderVibrationEnabled);
+    kv.setBool('autoCompleteParentTask', _autoCompleteParentTask);
+    kv.setDouble('ttsVolume', _ttsVolume);
 
-    // 保存AI配置
-    _setWebStorage('aiMode', _aiMode.toString());
-    _setWebStorage('localLLMAddress', _localLLMAddress);
-    _setWebStorage('localLLMModel', _localLLMModel);
-    _setWebStorage('apiServiceName', _apiServiceName);
-    _setWebStorage('apiKey', _apiKey);
-    _setWebStorage('apiBase', _apiBase);
-    _setWebStorage('apiModel', _apiModel);
+    kv.setString('aiMode', _aiMode.toString());
+    kv.setString('localLLMAddress', _localLLMAddress);
+    kv.setString('localLLMModel', _localLLMModel);
+    kv.setString('apiServiceName', _apiServiceName);
+    if (includeApiKeys) kv.setString('apiKey', _apiKey);
+    kv.setString('apiBase', _apiBase);
+    kv.setString('apiModel', _apiModel);
 
-    // 保存ChatAI配置
-    _setWebStorage('chatMode', _chatMode.toString());
-    _setWebStorage('chatLocalLLMAddress', _chatLocalLLMAddress);
-    _setWebStorage('chatLocalLLMModel', _chatLocalLLMModel);
-    _setWebStorage('chatAPIServiceName', _chatAPIServiceName);
-    _setWebStorage('chatAPIKey', _chatAPIKey);
-    _setWebStorage('chatAPIBase', _chatAPIBase);
-    _setWebStorage('chatAPIModel', _chatAPIModel);
+    kv.setString('chatMode', _chatMode.toString());
+    kv.setString('chatLocalLLMAddress', _chatLocalLLMAddress);
+    kv.setString('chatLocalLLMModel', _chatLocalLLMModel);
+    kv.setString('chatAPIServiceName', _chatAPIServiceName);
+    if (includeApiKeys) kv.setString('chatAPIKey', _chatAPIKey);
+    kv.setString('chatAPIBase', _chatAPIBase);
+    kv.setString('chatAPIModel', _chatAPIModel);
   }
 
-  Future<void> _saveToNative() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
+  /// 创建当前平台的键值存储适配器
+  static _SettingsKV _createStore(SharedPreferences? prefs) =>
+      prefs == null ? _WebKV() : _PrefsKV(prefs);
 
-      await prefs.setString('themeMode', _themeMode.toString());
-      await prefs.setString('language', _locale.languageCode);
-      await prefs.setBool('clipboardMonitorEnabled', _clipboardMonitorEnabled);
-      await prefs.setBool('notificationsEnabled', _notificationsEnabled);
-
-      await prefs.setBool('reminderSoundEnabled', _reminderSoundEnabled);
-      await prefs.setBool(
-          'reminderVibrationEnabled', _reminderVibrationEnabled);
-      await prefs.setBool('quietHoursEnabled', _quietHoursEnabled);
-      await prefs.setInt('quietHoursStart', _quietHoursStart);
-      await prefs.setInt('quietHoursEnd', _quietHoursEnd);
-      await prefs.setBool(
-          'taskReminderSoundEnabled', _taskReminderSoundEnabled);
-      await prefs.setBool(
-          'taskReminderVibrationEnabled', _taskReminderVibrationEnabled);
-      await prefs.setBool(
-          'habitReminderSoundEnabled', _habitReminderSoundEnabled);
-      await prefs.setBool(
-          'habitReminderVibrationEnabled', _habitReminderVibrationEnabled);
-      await prefs.setBool('autoCompleteParentTask', _autoCompleteParentTask);
-      await prefs.setDouble('ttsVolume', _ttsVolume);
-
-      await prefs.setString('aiMode', _aiMode.toString());
-      await prefs.setString('localLLMAddress', _localLLMAddress);
-      await prefs.setString('localLLMModel', _localLLMModel);
-      await prefs.setString('apiServiceName', _apiServiceName);
-      // 安全改进：API Key 不再明文存入 SharedPreferences，改走 SecureStorage
-      await SecureStorageService.instance.writeAiApiKey(_apiKey);
-      await prefs.setString('apiBase', _apiBase);
-      await prefs.setString('apiModel', _apiModel);
-
-      await prefs.setString('chatMode', _chatMode.toString());
-      await prefs.setString('chatLocalLLMAddress', _chatLocalLLMAddress);
-      await prefs.setString('chatLocalLLMModel', _chatLocalLLMModel);
-      await prefs.setString('chatAPIServiceName', _chatAPIServiceName);
-      await SecureStorageService.instance.writeAiChatApiKey(_chatAPIKey);
-      await prefs.setString('chatAPIBase', _chatAPIBase);
-      await prefs.setString('chatAPIModel', _chatAPIModel);
-    } catch (e) {
-      debugPrint('保存设置失败: $e');
-    }
-  }
-
-  /// 设置主题模式
   void setThemeMode(ThemeMode mode) {
     _themeMode = mode;
     _saveSettings();
@@ -737,18 +583,74 @@ class SettingsProvider extends ChangeNotifier {
     final aiService = AIService();
     return aiService.currentModelDisplayName;
   }
+}
 
-  // Web 存储辅助方法
-  String? _getWebStorage(String key) {
-    if (kIsWeb) {
-      return getWebStorage(key);
-    }
-    return null;
+/// 设置键值存储适配器：屏蔽 Web(localStorage 字符串) 与
+/// 原生(SharedPreferences 强类型)的差异，序列化逻辑只写一份。
+abstract class _SettingsKV {
+  String? getString(String key);
+  bool? getBool(String key);
+  int? getInt(String key);
+  double? getDouble(String key);
+  void setString(String key, String value);
+  void setBool(String key, bool value);
+  void setInt(String key, int value);
+  void setDouble(String key, double value);
+}
+
+/// 原生平台：SharedPreferences 强类型包装
+class _PrefsKV implements _SettingsKV {
+  _PrefsKV(this._prefs);
+  final SharedPreferences _prefs;
+
+  @override
+  String? getString(String key) => _prefs.getString(key);
+  @override
+  bool? getBool(String key) => _prefs.getBool(key);
+  @override
+  int? getInt(String key) => _prefs.getInt(key);
+  @override
+  double? getDouble(String key) => _prefs.getDouble(key);
+  @override
+  void setString(String key, String value) => _prefs.setString(key, value);
+  @override
+  void setBool(String key, bool value) => _prefs.setBool(key, value);
+  @override
+  void setInt(String key, int value) => _prefs.setInt(key, value);
+  @override
+  void setDouble(String key, double value) => _prefs.setDouble(key, value);
+}
+
+/// Web 平台：localStorage 全为字符串，读侧按需解析
+class _WebKV implements _SettingsKV {
+  @override
+  String? getString(String key) => getWebStorage(key);
+  @override
+  bool? getBool(String key) {
+    final v = getWebStorage(key);
+    return v == null ? null : v == 'true';
   }
 
-  void _setWebStorage(String key, String value) {
-    if (kIsWeb) {
-      setWebStorage(key, value);
-    }
+  @override
+  int? getInt(String key) {
+    final v = getWebStorage(key);
+    return v == null ? null : int.tryParse(v);
   }
+
+  @override
+  double? getDouble(String key) {
+    final v = getWebStorage(key);
+    return v == null ? null : double.tryParse(v);
+  }
+
+  @override
+  void setString(String key, String value) => setWebStorage(key, value);
+  @override
+  void setBool(String key, bool value) =>
+      setWebStorage(key, value.toString());
+  @override
+  void setInt(String key, int value) => setWebStorage(key, value.toString());
+  @override
+  void setDouble(String key, double value) =>
+      setWebStorage(key, value.toString());
 }
