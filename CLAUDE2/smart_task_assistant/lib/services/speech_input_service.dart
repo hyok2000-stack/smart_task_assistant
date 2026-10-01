@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -91,8 +92,10 @@ class SpeechInputService {
     if (_voskReady) return true;
     try {
       final ok = await _voskChannel.invokeMethod<bool>('init');
+      debugPrint('vosk init 结果: $ok');
       _voskReady = ok ?? false;
     } catch (e) {
+      debugPrint('vosk init 异常: $e');
       _voskReady = false;
     }
     return _voskReady;
