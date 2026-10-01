@@ -96,6 +96,47 @@ class MainActivity : FlutterActivity() {
         setupClipboardChannels(flutterEngine)
         setupReminderChannels(flutterEngine)
         setupFileChannels(flutterEngine)
+        setupSpeechChannels(flutterEngine)
+    }
+
+    // --- Vosk 离线语音识别通道 ---
+
+    private var voskHandler: VoskSpeechHandler? = null
+
+    private fun setupSpeechChannels(flutterEngine: FlutterEngine) {
+        val handler = VoskSpeechHandler(this)
+        voskHandler = handler
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.smarttask.smart_task_assistant/speech"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "init" -> handler.init(result)
+                "start" -> {
+                    handler.start()
+                    result.success(true)
+                }
+                "stop" -> {
+                    handler.stop()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.smarttask.smart_task_assistant/speech_events"
+        ).setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                handler.setEventSink(events)
+            }
+
+            override fun onCancel(arguments: Any?) {
+                handler.setEventSink(null)
+            }
+        })
     }
 
     // --- File open channel (open content URI via system Intent) ---

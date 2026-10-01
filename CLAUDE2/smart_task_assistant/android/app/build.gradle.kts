@@ -80,4 +80,6 @@ dependencies {
     // (text-recognition)，中文脚本需要的 artifact 必须手动引入，
     // 否则运行时 ClassNotFoundException: ChineseTextRecognizerOptions
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // Vosk 离线语音识别（华为等无 GMS 设备没有系统识别服务，本地识别兜底）
+    implementation("com.alphacephei:vosk-android:0.3.47")
 }

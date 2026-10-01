@@ -54,16 +54,22 @@ class _QuickAddModalState extends State<QuickAddModal> {
   bool _isRecurring = false;
   String _recurringRule = 'daily'; // daily, weekly, monthly, yearly
 
-  // 语音可用性预检：null=检测中，false=设备无识别服务（按钮置灰）
+  // 语音可用性预检：null=检测中，false=系统识别与离线识别都不可用（按钮置灰）
   bool? _speechSupported;
 
   @override
   void initState() {
     super.initState();
 
-    // 异步预检语音识别可用性（华为等无 GMS 设备没有系统识别服务）
-    SpeechInputService.instance.ensureInitialized().then((ok) {
-      if (mounted) setState(() => _speechSupported = ok);
+    // 异步预检语音可用性（两级引擎：系统 ASR → Vosk 离线模型；
+    // Vosk 首次加载需解压模型，耗时数秒）
+    SpeechInputService.instance.ensureInitialized().then((systemOk) async {
+      if (systemOk) {
+        if (mounted) setState(() => _speechSupported = true);
+        return;
+      }
+      final voskOk = await SpeechInputService.instance.ensureVoskReady();
+      if (mounted) setState(() => _speechSupported = voskOk);
     });
 
     // 如果有初始内容，设置到输入框并自动解析
@@ -1202,11 +1208,19 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   /// 语音输入：口述任务内容 → 文字填入输入框 → 本地规则解析。
   /// 再次点击停止聆听（以最终识别结果触发一次解析）。
+  /// 双引擎：系统 ASR 可用走系统识别；否则走 Vosk 离线识别。
   Future<void> _toggleSpeechInput() async {
     // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
     if (_isListening || SpeechInputService.instance.isListening) {
       await SpeechInputService.instance.stopListening();
+      await SpeechInputService.instance.stopVoskListening();
       if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    // 系统识别不可用 → Vosk 离线路径
+    if (_speechSupported == false) {
+      await _toggleVoskInput();
       return;
     }
 
@@ -1269,6 +1283,67 @@ class _QuickAddModalState extends State<QuickAddModal> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message)),
           );
+        }
+      },
+    );
+  }
+
+  /// Vosk 离线语音路径（系统识别不可用时的本地兜底）
+  Future<void> _toggleVoskInput() async {
+    if (_isListening) {
+      await SpeechInputService.instance.stopVoskListening();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    final ready = await SpeechInputService.instance.ensureVoskReady();
+    if (!ready) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('离线语音模型初始化失败，请重试')),
+        );
+      }
+      return;
+    }
+    // 麦克风运行时权限
+    final status = await Permission.microphone.request();
+    if (status.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('麦克风权限已被拒绝，请到系统设置中开启')),
+        );
+        openAppSettings();
+      }
+      return;
+    }
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('需要麦克风权限才能使用语音输入')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isListening = true);
+    final baseText = _controller.text;
+    await SpeechInputService.instance.startVoskListening(
+      onText: (text) {
+        if (!mounted) return;
+        setState(() {
+          _controller.text =
+              baseText.isEmpty ? text : '$baseText $text'.trim();
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+        });
+      },
+      onStopped: () {
+        // Vosk 停止（点按/页面关闭）：用当前输入框文本触发解析
+        if (mounted && _isListening) {
+          setState(() => _isListening = false);
+          final full = _controller.text.trim();
+          if (full.isNotEmpty) _parseInputLocal(full);
         }
       },
     );

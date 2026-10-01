@@ -1,7 +1,7 @@
 name: smart_task_assistant
 description: "智能任务助手 - 基于AI的任务管理工具"
 publish_to: 'none'
-version: 2.2.26+200
+version: 2.2.27+201
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -83,3 +83,4 @@ flutter:
   
   assets:
     - assets/sounds/
+    - assets/models/vosk-model-small-cn-0.22.zip

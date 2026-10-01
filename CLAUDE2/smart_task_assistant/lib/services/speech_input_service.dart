@@ -1,13 +1,26 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-/// 语音输入服务：语音转文字（设备端 ASR，中文），
-/// 供快速添加弹窗 / 任务编辑把口述内容填入 AI 解析链。
+/// 语音输入服务：两级识别引擎——
+/// 1. 系统 ASR（speech_to_text，走 Android RecognitionService）；
+/// 2. Vosk 离线识别（本地小模型，华为等无 GMS 设备的系统识别兜底）。
 class SpeechInputService {
   SpeechInputService._();
-  static final instance = SpeechInputService._();
+  static final SpeechInputService instance = SpeechInputService._();
 
   final SpeechToText _speech = SpeechToText();
   bool _initialized = false;
+
+  // Vosk 离线引擎
+  static const _voskChannel =
+      MethodChannel('com.smarttask.smart_task_assistant/speech');
+  static const _voskEvents =
+      EventChannel('com.smarttask.smart_task_assistant/speech_events');
+  bool _voskReady = false;
+  StreamSubscription? _voskSub;
 
   bool get isListening => _speech.isListening;
 
@@ -66,4 +79,52 @@ class SpeechInputService {
   }
 
   Future<void> stopListening() => _speech.stop();
+
+  // ==================== Vosk 离线识别 ====================
+
+  /// 初始化 Vosk 离线引擎（首次会从 APK 资产解压模型，耗时数秒）。
+  Future<bool> ensureVoskReady() async {
+    if (_voskReady) return true;
+    try {
+      final ok = await _voskChannel.invokeMethod<bool>('init');
+      _voskReady = ok ?? false;
+    } catch (e) {
+      _voskReady = false;
+    }
+    return _voskReady;
+  }
+
+  /// 开始 Vosk 离线聆听。
+  /// [onText] 持续回传识别文本（partial + final）；
+  /// [onStopped] 在停止/出错时回调（调用方复位 UI）。
+  Future<void> startVoskListening({
+    required void Function(String text) onText,
+    void Function()? onStopped,
+  }) async {
+    await _voskSub?.cancel();
+    _voskSub = _voskEvents.receiveBroadcastStream().listen(
+      (event) {
+        if (event is! String) return;
+        try {
+          final map = jsonDecode(event) as Map<String, dynamic>;
+          // final 结果优先（含 text 字段），否则用 partial
+          final text = (map['text'] ?? map['partial'] ?? '') as String;
+          if (text.trim().isNotEmpty) onText(text.trim());
+        } catch (_) {
+          // 非 JSON 事件忽略
+        }
+      },
+      onDone: () => onStopped?.call(),
+      onError: (_) => onStopped?.call(),
+    );
+    await _voskChannel.invokeMethod('start');
+  }
+
+  Future<void> stopVoskListening() async {
+    try {
+      await _voskChannel.invokeMethod('stop');
+    } catch (_) {}
+    await _voskSub?.cancel();
+    _voskSub = null;
+  }
 }
