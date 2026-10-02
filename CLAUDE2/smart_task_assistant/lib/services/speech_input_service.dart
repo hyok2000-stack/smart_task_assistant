@@ -116,6 +116,8 @@ class SpeechInputService {
           await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
         }
       }
+      // 必须先加载原生绑定，否则所有 FFI 调用抛 "Please initialize sherpa-onnx first"
+      sherpa.initBindings();
       _offlineRecognizer = sherpa.OnlineRecognizer(
         sherpa.OnlineRecognizerConfig(
           model: sherpa.OnlineModelConfig(
