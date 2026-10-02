@@ -187,6 +187,35 @@ class AIService {
     return _parseWithRules(input);
   }
 
+  /// 解析阿拉伯数字或汉字数字（语音识别常输出汉字："四点""三个小时后"）。
+  /// 支持 一~九、两、十、十X、X十、X十X；失败返回 null。
+  static int? _cnOrDigitToInt(String s) {
+    const d = {
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    if (s.length == 1) {
+      if (s == '十') return 10;
+      return d[s] ?? int.tryParse(s);
+    }
+    final tenIdx = s.indexOf('十');
+    if (tenIdx >= 0) {
+      final tens = tenIdx == 0 ? 1 : (d[s.substring(0, tenIdx)] ?? 0);
+      final rest = s.substring(tenIdx + 1);
+      final ones = rest.isEmpty ? 0 : (d[rest] ?? 0);
+      return tens * 10 + ones;
+    }
+    return int.tryParse(s);
+  }
+
   /// 解析自然语言任务
   Future<ParsedTask?> parseTask(String input) async {
     if (input.trim().isEmpty) return null;
@@ -416,32 +445,34 @@ class AIService {
     // 注意：timeRegex 的字符类已移除"时"字，只匹配 : 和 点。
     bool isRelativeTime = false; // 标记是否已通过相对时间设置 dueTime
 
-    // 识别X天后
-    final daysAfterRegex = RegExp(r'(\d+)天后');
+    // 识别X天后（支持汉字数字：两天后/三天后——语音识别常输出汉字）
+    final daysAfterRegex = RegExp(r'(\d+|[一二两三四五六七八九十]{1,3})天后');
     final daysAfterMatch = daysAfterRegex.firstMatch(title);
     if (daysAfterMatch != null) {
-      final days = int.tryParse(daysAfterMatch.group(1)!) ?? 1;
+      final days = _cnOrDigitToInt(daysAfterMatch.group(1)!) ?? 1;
       dueTime = DateTime(now.year, now.month, now.day + days, 18, 0);
       title = title.replaceAll(daysAfterRegex, '').trim();
       isRelativeTime = true;
     }
 
-    // 识别X小时后
-    final hoursAfterRegex = RegExp(r'(\d+)小时后');
+    // 识别X小时后（同样支持汉字数字：三个小时后）
+    final hoursAfterRegex = RegExp(r'(\d+|[一二两三四五六七八九十]{1,3})个?小时后');
     final hoursAfterMatch = hoursAfterRegex.firstMatch(title);
     if (hoursAfterMatch != null) {
-      final hours = int.tryParse(hoursAfterMatch.group(1)!) ?? 1;
+      final hours = _cnOrDigitToInt(hoursAfterMatch.group(1)!) ?? 1;
       dueTime = now.add(Duration(hours: hours));
       title = title.replaceAll(hoursAfterRegex, '').trim();
       isRelativeTime = true;
     }
 
-    // 识别具体时间 HH:mm 或 X点X分（字符类只含 : 和 点，不含"时"——避免"3小时"被误匹配）
-    final timeRegex = RegExp(r'(\d{1,2})[:点](\d{0,2})?分?');
+    // 识别具体时间 HH:mm 或 X点X分 或 汉字数字（四点/十点半——语音识别常输出汉字）
+    // 字符类只含 : 和 点，不含"时"——避免"3小时"被误匹配
+    final timeRegex = RegExp(r'(\d{1,2}|[一二两三四五六七八九十]{1,3})[:点](半|\d{0,2})?分?');
     final timeMatch = timeRegex.firstMatch(title);
     if (timeMatch != null) {
-      var hour = int.tryParse(timeMatch.group(1)!) ?? 18;
-      final minute = int.tryParse(timeMatch.group(2) ?? '0') ?? 0;
+      var hour = _cnOrDigitToInt(timeMatch.group(1)!) ?? 18;
+      final minuteRaw = timeMatch.group(2);
+      final minute = minuteRaw == '半' ? 30 : (int.tryParse(minuteRaw ?? '') ?? 0);
 
       // 根据时段调整小时数
       if (isAfternoon && hour >= 1 && hour <= 11) {

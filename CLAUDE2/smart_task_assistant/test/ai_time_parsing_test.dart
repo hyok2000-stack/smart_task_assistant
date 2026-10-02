@@ -217,4 +217,49 @@ void main() {
       expect(r.recommendedReminderMinutes, isNotNull);
     });
   });
+
+  group('汉字数字时间（语音输入场景）', () {
+    test('明天下午四点 → 明天 16:00', () {
+      final now = DateTime.now();
+      final r = ai.parseTaskLocal('明天下午四点交报告');
+      expect(r.title, '交报告');
+      expect(r.dueTime, DateTime(now.year, now.month, now.day + 1, 16, 0));
+    });
+
+    test('下午四点半 → 16:30', () {
+      final now = DateTime.now();
+      final r = ai.parseTaskLocal('下午四点半开评审');
+      expect(r.dueTime, DateTime(now.year, now.month, now.day, 16, 30));
+      expect(r.title, '开评审');
+    });
+
+    test('上午十点 → 10:00', () {
+      final now = DateTime.now();
+      final r = ai.parseTaskLocal('上午十点周会');
+      expect(r.dueTime, DateTime(now.year, now.month, now.day, 10, 0));
+    });
+
+    test('三个小时后 → 约三小时后', () {
+      final before = DateTime.now();
+      final r = ai.parseTaskLocal('三个小时后取材料');
+      final after = DateTime.now();
+      expect(r.title, '取材料');
+      expect(
+          r.dueTime!.isAfter(before.add(const Duration(hours: 2))), isTrue);
+      expect(
+          r.dueTime!.isBefore(after.add(const Duration(hours: 4))), isTrue);
+    });
+
+    test('两天后 → 后天 18:00', () {
+      final now = DateTime.now();
+      final r = ai.parseTaskLocal('两天后交材料');
+      expect(r.dueTime, DateTime(now.year, now.month, now.day + 2, 18, 0));
+    });
+
+    test('下午4点（阿拉伯数字）回归 → 16:00', () {
+      final now = DateTime.now();
+      final r = ai.parseTaskLocal('下午4点提交周报');
+      expect(r.dueTime, DateTime(now.year, now.month, now.day, 16, 0));
+    });
+  });
 }
