@@ -1358,6 +1358,8 @@ class _QuickAddModalState extends State<QuickAddModal> {
             TextPosition(offset: _controller.text.length),
           );
         });
+        // 实时解析：识别出的时间/优先级/标签即时更新到选择芯片
+        _parseInputLocal(_controller.text);
       },
       onDone: (finalText) {
         // 停止聆听：以最终文本重填输入框并触发解析
