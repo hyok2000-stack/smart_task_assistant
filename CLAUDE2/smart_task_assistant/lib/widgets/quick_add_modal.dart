@@ -1306,13 +1306,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
     );
   }
 
-  /// 离线引擎语音路径（sherpa-onnx 流式 zipformer，完全本地）
+  /// 离线引擎语音路径（Paraformer 中文，完全本地；非流式——
+  /// 聆听期间输入框不变，停止后一次性识别出文字并解析）
   Future<void> _toggleOfflineInput() async {
     if (_isListening) {
+      // 停止录音 → 识别整段音频 → 合并基础文本后解析
       final finalText =
           await SpeechInputService.instance.stopOfflineListening();
       if (mounted) setState(() => _isListening = false);
-      final full = _controller.text.trim();
+      final full = _controller.text.trim().isNotEmpty
+          ? '${_controller.text.trim()} ${finalText.trim()}'.trim()
+          : finalText.trim();
       if (full.isNotEmpty) _parseInputLocal(full);
       return;
     }
@@ -1347,30 +1351,13 @@ class _QuickAddModalState extends State<QuickAddModal> {
     }
 
     setState(() => _isListening = true);
-    final baseText = _controller.text;
-    await SpeechInputService.instance.startOfflineListening(
-      onText: (text) {
-        if (!mounted) return;
-        setState(() {
-          _controller.text =
-              baseText.isEmpty ? text : '$baseText $text'.trim();
-          _controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: _controller.text.length),
-          );
-        });
-        // 实时解析：识别出的时间/优先级/标签即时更新到选择芯片
-        _parseInputLocal(_controller.text);
-      },
-      onDone: (finalText) {
-        // 停止聆听：以最终文本重填输入框并触发解析
-        if (!mounted) return;
-        setState(() => _isListening = false);
-        final full = baseText.isEmpty
-            ? finalText.trim()
-            : '$baseText ${finalText.trim()}'.trim();
-        if (full.isNotEmpty) _parseInputLocal(full);
-      },
-    );
+    final started = await SpeechInputService.instance.startOfflineListening();
+    if (!started && mounted) {
+      setState(() => _isListening = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('麦克风启动失败，请检查权限后重试')),
+      );
+    }
   }
 
   /// 执行 OCR 识别：结果填入输入框并触发本地解析（自动提取时间/优先级/标签）

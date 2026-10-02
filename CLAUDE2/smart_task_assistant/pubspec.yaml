@@ -85,7 +85,5 @@ flutter:
   
   assets:
     - assets/sounds/
-    - assets/models/sherpa-zh14m/tokens.txt
-    - assets/models/sherpa-zh14m/encoder-epoch-99-avg-1.int8.onnx
-    - assets/models/sherpa-zh14m/decoder-epoch-99-avg-1.onnx
-    - assets/models/sherpa-zh14m/joiner-epoch-99-avg-1.int8.onnx
+    - assets/models/paraformer/tokens.txt
+    - assets/models/paraformer/model.int8.onnx
