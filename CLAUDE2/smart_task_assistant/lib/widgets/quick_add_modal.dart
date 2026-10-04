@@ -1335,14 +1335,20 @@ class _QuickAddModalState extends State<QuickAddModal> {
   /// 聆听期间输入框不变，停止后一次性识别出文字并解析）
   Future<void> _toggleOfflineInput() async {
     if (_isListening) {
-      // 停止录音 → 识别整段音频 → 合并基础文本后解析
+      // 停止录音 → 识别整段音频 → 填入输入框并解析
       final finalText =
           await SpeechInputService.instance.stopOfflineListening();
       if (mounted) setState(() => _isListening = false);
       final full = _controller.text.trim().isNotEmpty
           ? '${_controller.text.trim()} ${finalText.trim()}'.trim()
           : finalText.trim();
-      if (full.isNotEmpty) _parseInputLocal(full);
+      if (full.isNotEmpty) {
+        // 识别文字必须回填输入框（解析只更新预览，不写输入框）
+        _controller.text = full;
+        _controller.selection =
+            TextSelection.fromPosition(TextPosition(offset: full.length));
+        _parseInputLocal(full);
+      }
       return;
     }
 
@@ -1388,13 +1394,19 @@ class _QuickAddModalState extends State<QuickAddModal> {
     final baseText = _controller.text;
     final started = await SpeechInputService.instance.startOfflineListening(
       onFinished: (finalText) {
-        // 静音自动断句或手动停止完成识别：重填输入框并触发解析
+        // 静音自动断句或手动停止完成识别：填入输入框并触发解析
         if (!mounted) return;
         setState(() => _isListening = false);
         final full = baseText.isEmpty
             ? finalText.trim()
             : '$baseText ${finalText.trim()}'.trim();
-        if (full.isNotEmpty) _parseInputLocal(full);
+        if (full.isNotEmpty) {
+          // 识别文字必须回填输入框（解析只更新预览，不写输入框）
+          _controller.text = full;
+          _controller.selection =
+              TextSelection.fromPosition(TextPosition(offset: full.length));
+          _parseInputLocal(full);
+        }
       },
     );
     if (!started && mounted) {
