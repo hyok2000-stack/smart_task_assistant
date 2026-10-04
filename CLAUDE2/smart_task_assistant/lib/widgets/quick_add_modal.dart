@@ -63,6 +63,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
   // 永不报错），8 秒无结果自动切离线引擎
   Timer? _systemAsrWatchdog;
 
+  // 离线聆听时的实时拾音音量（0-100）
+  StreamSubscription<int>? _ampSub;
+  int _micLevel = 0;
+
+  void _stopAmpSub() {
+    _ampSub?.cancel();
+    _ampSub = null;
+    if (_micLevel != 0 && mounted) setState(() => _micLevel = 0);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +105,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
     // 弹窗关闭时若仍在聆听，立即停麦（隐私敏感：不允许后台持续拾音）；
     // 系统 ASR 与离线录音两条路径都要停
     _systemAsrWatchdog?.cancel();
+    _ampSub?.cancel();
     if (_isListening) {
       SpeechInputService.instance.stopListening();
       SpeechInputService.instance.stopOfflineListening();
@@ -547,6 +558,23 @@ class _QuickAddModalState extends State<QuickAddModal> {
                             ],
                           ),
                         ),
+                        // 聆听中的实时拾音音量条（让用户确认正在收声）
+                        if (_isListening) ...[
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: (_micLevel / 100).clamp(0.02, 1.0),
+                              minHeight: 4,
+                              backgroundColor: Colors.grey.shade200,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                _micLevel > 8
+                                    ? AppTheme.primaryColor
+                                    : Colors.grey.shade400,
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         // 优先级和截止时间选择
                         Row(
@@ -1357,6 +1385,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   Future<void> _toggleOfflineInput() async {
     if (_isListening) {
       // 停止录音 → 识别整段音频 → 填入输入框并解析
+      _stopAmpSub();
       if (mounted) {
         setState(() {
           _isListening = false;
@@ -1422,6 +1451,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
     final started = await SpeechInputService.instance.startOfflineListening(
       onMicClosed: () {
         // 麦克风已关（静音断句触发）：立即切"识别中"反馈，提示用户等待
+        _stopAmpSub();
         if (!mounted) return;
         setState(() {
           _isListening = false;
@@ -1430,6 +1460,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       },
       onFinished: (finalText) {
         // 静音自动断句或手动停止完成识别：填入输入框并触发解析
+        _stopAmpSub();
         if (!mounted) return;
         setState(() {
           _isListening = false;
@@ -1447,6 +1478,14 @@ class _QuickAddModalState extends State<QuickAddModal> {
         }
       },
     );
+    if (started) {
+      // 订阅实时音量，驱动输入框下方的拾音音量条
+      _ampSub?.cancel();
+      _ampSub = SpeechInputService.instance.amplitudeStream.listen((lv) {
+        if (!mounted || !_isListening) return;
+        setState(() => _micLevel = lv);
+      });
+    }
     if (!started && mounted) {
       setState(() {
         _isListening = false;

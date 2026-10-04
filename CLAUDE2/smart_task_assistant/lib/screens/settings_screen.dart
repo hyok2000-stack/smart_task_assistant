@@ -19,6 +19,7 @@ import '../widgets/tag_management_dialog.dart';
 import '../services/ai_service.dart';
 import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
+import '../services/speech_input_service.dart';
 import '../services/export_service.dart';
 import '../database/storage_service.dart';
 import 'sync_center_screen.dart';
@@ -159,6 +160,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         children: [
           _buildSectionHeader('通知'),
           _buildNotificationSettings(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('语音输入'),
+          _buildVoiceSettings(context),
           const SizedBox(height: 32),
           _buildSectionHeader('AI服务'),
           _buildAISettings(context),
@@ -719,8 +723,75 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (_) {}
   }
 
-  Widget _buildAISettings(BuildContext context) {
-    return Consumer<SettingsProvider>(
+  /// 语音输入设置：引擎状态与系统识别重置入口
+  Widget _buildVoiceSettings(BuildContext context) {
+    final unreliable = SpeechInputService.instance.systemAsrUnreliable;
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.mic_none_rounded,
+            title: '识别引擎',
+            subtitle: '离线 Paraformer（完全本地识别，无需网络）',
+            trailing: const Text('默认',
+                style:
+                    TextStyle(color: AppTheme.textHintColor, fontSize: 13)),
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.restore,
+            title: unreliable ? '重新启用系统语音识别' : '系统语音识别',
+            subtitle: unreliable
+                ? '系统识别曾卡死已被禁用；若手机系统已修复，点击重新启用'
+                : '不可用或卡死时将自动切回离线识别',
+            trailing: unreliable
+                ? const Icon(Icons.chevron_right,
+                    color: AppTheme.textHintColor)
+                : const Text('自动兜底',
+                    style: TextStyle(
+                        color: AppTheme.textHintColor, fontSize: 13)),
+            onTap: unreliable
+                ? () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('重新启用系统语音识别'),
+                        content: const Text(
+                            '系统识别在此设备上曾出现卡死（点击无反应），已被自动禁用并'
+                            '持久化。如果手机系统已更新修复，可重新启用：下次语音'
+                            '输入会先尝试系统识别，卡死 8 秒后仍会自动切回离线识别。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('重新启用'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      await SpeechInputService.instance.reEnableSystemAsr();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('已重新启用，下次语音输入时优先生效')),
+                        );
+                        setState(() {});
+                      }
+                    }
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAISettings(BuildContext context) {    return Consumer<SettingsProvider>(
       builder: (context, settings, _) {
         return Container(
           color: Colors.white,

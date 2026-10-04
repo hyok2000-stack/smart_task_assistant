@@ -43,6 +43,14 @@ class SpeechInputService {
         .then((sp) => sp.setBool(_kUnreliableKey, true));
   }
 
+  /// 重新启用系统识别（清除持久化的不可靠标志，设置页"重新启用"入口用）
+  Future<void> reEnableSystemAsr() async {
+    systemAsrUnreliable = false;
+    _initialized = false;
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kUnreliableKey);
+  }
+
   bool get isListening => _speech.isListening;
 
   /// 初始化（幂等）。设备无可用语音识别服务时返回 false。
@@ -200,6 +208,8 @@ class SpeechInputService {
 
       // 静音自动断句：检测到说话后，连续静音约 1.6 秒自动结束录音并识别
       final peak = _peakAmplitude(data);
+      // 实时音量给 UI（0-100），让用户看到正在拾音
+      _amplitudeCtrl.add((peak * 100 / 32767).round().clamp(0, 100));
       if (peak > _speechAmplitudeThreshold) {
         _heardSpeech = true;
         _silentChunks = 0;
@@ -263,10 +273,11 @@ class SpeechInputService {
         'pcm': pcm,
         'documentsDir': (await getApplicationDocumentsDirectory()).path,
       });
+      final normalized = normalizeAsrWordOrder(text);
       debugPrint(
-          '离线识别结果: "$text" (${(pcm.length / 1024).round()}KB 音频, '
+          '离线识别结果: "$normalized" (${(pcm.length / 1024).round()}KB 音频, '
           '耗时 ${sw.elapsedMilliseconds}ms)');
-      return text;
+      return normalized;
     } catch (e) {
       debugPrint('离线识别失败: $e');
       return '';
@@ -283,6 +294,11 @@ class SpeechInputService {
   int _silentChunks = 0;
   bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
   void Function()? _onMicClosed;
+
+  // 实时拾音音量（0-100），供聆听中的 UI 波形/进度显示
+  final StreamController<int> _amplitudeCtrl =
+      StreamController<int>.broadcast();
+  Stream<int> get amplitudeStream => _amplitudeCtrl.stream;
 
   /// 计算一段 PCM16 数据的峰值振幅（i 为字节偏移，奇数长度截尾）
   static int _peakAmplitude(Uint8List data) {
@@ -360,4 +376,38 @@ String _offlineRecognizeTask(Map args) {
   final text = recognizer.getResult(stream).text.trim();
   stream.free();
   return text;
+}
+
+// ============ 识别结果语序归位 ============
+// Paraformer 对短句常把时间短语甩到句尾（"开会明天下午"），时间解析不受
+// 影响，但标题读着别扭；把"句尾时间短语"归位到句首（"明天下午开会"）。
+
+/// 句尾时间短语：日期（今天/明天/周X/X月X日…）+ 时段（下午/晚上…）+
+/// 钟点（3点/3点半…）三者可自由组合，至少出现日期或时段
+final RegExp _trailingTimePhrase = RegExp(
+  r'('
+  r'(?:大后天|后天|明天|今天|昨天|前天'
+  r'|[本每]?(?:星期|礼拜|周)[一二三四五六日天]'
+  r'|[12]?\d月[123]?\d?[日号]?|[123]?\d[日号])'
+  r')?'
+  r'\s*(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里)?'
+  r'\s*((?:[01]?\d|2[0-3])[点时](?:[0-5]?\d)?分?(?:半|一刻)?)?'
+  r'\s*$',
+);
+
+/// 把句尾的时间短语移到句首。仅当句尾确实是时间短语（日期或时段开头）
+/// 且前面还有正文时才调整；已在句首/句中的时间不动。
+String normalizeAsrWordOrder(String text) {
+  final trimmed = text.trim();
+  if (trimmed.length < 4) return trimmed;
+  final m = _trailingTimePhrase.firstMatch(trimmed);
+  if (m == null || m.start == 0) return trimmed;
+  final timePart = trimmed.substring(m.start).trim();
+  // 必须含日期或时段（裸"3点"结尾如"工作到3点"不应调整）
+  final hasDateOrDaypart =
+      m.group(1) != null || m.group(2) != null;
+  if (!hasDateOrDaypart || timePart.isEmpty) return trimmed;
+  final rest = trimmed.substring(0, m.start).trim();
+  if (rest.isEmpty) return trimmed;
+  return '$timePart$rest';
 }
