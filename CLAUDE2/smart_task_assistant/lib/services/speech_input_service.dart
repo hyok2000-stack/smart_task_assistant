@@ -97,7 +97,6 @@ class SpeechInputService {
   StreamSubscription<Uint8List>? _micSub;
   final List<Uint8List> _pcmChunks = [];
   int _pcmTotal = 0;
-  sherpa.OfflineRecognizer? _offlineRecognizer;
   bool _offlineReady = false;
   bool _modelCopied = false;
   void Function(String finalText)? _onFinished;
@@ -185,13 +184,17 @@ class SpeechInputService {
 
   /// 停止录音并识别整段音频，返回最终文本（可能为空）。
   Future<String> stopOfflineListening() async {
+    // 防重入：静音自动断句已在识别中 → 本次手动停止不再重复识别
+    if (_offlineRecognizing) return '';
     try {
       await _micSub?.cancel();
     } catch (_) {}
     _micSub = null;
     try {
       await _recorder?.stop();
+      await _recorder?.dispose();
     } catch (_) {}
+    _recorder = null;
 
     final pcm = Uint8List(_pcmTotal);
     var off = 0;
@@ -201,36 +204,31 @@ class SpeechInputService {
     }
     _pcmChunks.clear();
     _pcmTotal = 0;
-    try {
-      await _recorder?.dispose();
-    } catch (_) {}
-    _recorder = null;
+    _heardSpeech = false;
+    _silentChunks = 0;
     if (pcm.length < 3200) {
       debugPrint('离线识别：录音过短（${pcm.length} 字节），跳过');
       return ''; // 短于 0.2 秒视为无有效输入
     }
 
-    final rec = _offlineRecognizer;
-    if (rec == null) {
-      debugPrint('离线识别：引擎未初始化');
-      return '';
-    }
+    // 后台 isolate 识别：与静音断句路径一致，
+    // 主线程解码长录音会冻结 UI 数秒~数十秒（看起来像"没反应"）
+    return _recognizePcmInBackground(pcm);
+  }
+
+  /// 后台 isolate 识别 PCM，返回文本；失败或识别中异常返回空串
+  Future<String> _recognizePcmInBackground(Uint8List pcm) async {
+    _offlineRecognizing = true;
     try {
-      final stream = rec.createStream();
-      final samples = Float32List(pcm.length ~/ 2);
-      final bd = ByteData.sublistView(pcm);
-      for (var i = 0; i < samples.length; i++) {
-        samples[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
-      }
-      stream.acceptWaveform(samples: samples, sampleRate: 16000);
-      rec.decode(stream);
-      final text = rec.getResult(stream).text.trim();
-      debugPrint('离线识别结果: "$text" (${pcm.length ~/ 1024}KB 音频)');
-      stream.free();
-      return text;
+      return await compute(_offlineRecognizeTask, {
+        'pcm': pcm,
+        'documentsDir': (await getApplicationDocumentsDirectory()).path,
+      });
     } catch (e) {
-      debugPrint('离线识别异常: $e');
+      debugPrint('离线识别失败: $e');
       return '';
+    } finally {
+      _offlineRecognizing = false;
     }
   }
 
@@ -240,6 +238,7 @@ class SpeechInputService {
   static const int _maxSilentFromStart = 40; // 从头静音约 4.5 秒自动放弃
   bool _heardSpeech = false;
   int _silentChunks = 0;
+  bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
 
   /// 计算一段 PCM16 数据的峰值振幅
   static int _peakAmplitude(Uint8List data) {
@@ -278,16 +277,7 @@ class SpeechInputService {
 
     var text = '';
     if (pcm.length >= 3200) {
-      try {
-        // 后台 isolate 识别：长录音的解码耗时数秒~数十秒，
-        // 在主线程执行会冻结 UI 触发系统 ANR（"无响应"弹窗）
-        text = await compute(_offlineRecognizeTask, {
-          'pcm': pcm,
-          'documentsDir': (await getApplicationDocumentsDirectory()).path,
-        });
-      } catch (e) {
-        debugPrint('离线识别失败: $e');
-      }
+      text = await _recognizePcmInBackground(pcm);
     }
     _onFinished?.call(text);
   }
