@@ -35,6 +35,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   bool _isAILoading = false;
   bool _isOcrProcessing = false;
   bool _isListening = false;
+  bool _isRecognizing = false; // 录音已结束、后台识别中（麦克风图标转圈）
   ParsedTask? _parsedTask;
   // 解析出的标题（用户可在预览中修正），为空时回退到 parsed.title
   String? _editableTitle;
@@ -512,16 +513,30 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                 child: Tooltip(
                                   message: _speechSupported == false
                                       ? '此设备无系统语音识别（可用输入法语音键替代）'
-                                      : (_isListening ? '停止语音' : '语音输入'),
+                                      : (_isRecognizing
+                                          ? '识别中…'
+                                          : (_isListening
+                                              ? '停止语音'
+                                              : '语音输入')),
                                   child: IconButton(
-                                    icon: _isListening
-                                        ? const Icon(Icons.mic_rounded,
-                                            size: 24)
-                                        : const Icon(Icons.mic_none_rounded,
-                                            size: 22),
-                                    color: _isListening
-                                        ? AppTheme.errorColor
-                                        : AppTheme.primaryColor,
+                                    icon: _isRecognizing
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2.2),
+                                          )
+                                        : (_isListening
+                                            ? const Icon(Icons.mic_rounded,
+                                                size: 24)
+                                            : const Icon(
+                                                Icons.mic_none_rounded,
+                                                size: 22)),
+                                    color: _isRecognizing
+                                        ? AppTheme.primaryColor
+                                        : (_isListening
+                                            ? AppTheme.errorColor
+                                            : AppTheme.primaryColor),
                                     disabledColor: Colors.grey.shade400,
                                     onPressed: _speechSupported == false
                                         ? null
@@ -1221,11 +1236,17 @@ class _QuickAddModalState extends State<QuickAddModal> {
   /// 双引擎：系统 ASR 可用走系统识别；系统识别卡死/无响应自动切离线引擎。
   Future<void> _toggleSpeechInput() async {
     // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
+    if (_isRecognizing) return; // 后台识别中，忽略点击
     if (_isListening || SpeechInputService.instance.isListening) {
       _systemAsrWatchdog?.cancel();
       await SpeechInputService.instance.stopListening();
       await SpeechInputService.instance.stopOfflineListening();
-      if (mounted) setState(() => _isListening = false);
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _isRecognizing = false;
+        });
+      }
       return;
     }
 
@@ -1336,9 +1357,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
   Future<void> _toggleOfflineInput() async {
     if (_isListening) {
       // 停止录音 → 识别整段音频 → 填入输入框并解析
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _isRecognizing = true; // 立即给出"识别中"反馈
+        });
+      }
       final finalText =
           await SpeechInputService.instance.stopOfflineListening();
-      if (mounted) setState(() => _isListening = false);
+      if (mounted) setState(() => _isRecognizing = false);
       final full = _controller.text.trim().isNotEmpty
           ? '${_controller.text.trim()} ${finalText.trim()}'.trim()
           : finalText.trim();
@@ -1393,10 +1420,21 @@ class _QuickAddModalState extends State<QuickAddModal> {
     setState(() => _isListening = true);
     final baseText = _controller.text;
     final started = await SpeechInputService.instance.startOfflineListening(
+      onMicClosed: () {
+        // 麦克风已关（静音断句触发）：立即切"识别中"反馈，提示用户等待
+        if (!mounted) return;
+        setState(() {
+          _isListening = false;
+          _isRecognizing = true;
+        });
+      },
       onFinished: (finalText) {
         // 静音自动断句或手动停止完成识别：填入输入框并触发解析
         if (!mounted) return;
-        setState(() => _isListening = false);
+        setState(() {
+          _isListening = false;
+          _isRecognizing = false;
+        });
         final full = baseText.isEmpty
             ? finalText.trim()
             : '$baseText ${finalText.trim()}'.trim();
@@ -1410,7 +1448,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
       },
     );
     if (!started && mounted) {
-      setState(() => _isListening = false);
+      setState(() {
+        _isListening = false;
+        _isRecognizing = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('麦克风启动失败，请检查权限后重试')),
       );

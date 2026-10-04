@@ -169,10 +169,12 @@ class SpeechInputService {
   /// 返回 false 表示麦克风不可用或离线引擎未就绪。
   Future<bool> startOfflineListening({
     required void Function(String finalText) onFinished,
+    void Function()? onMicClosed,
   }) async {
     // 模型文件须已就绪（ensureOfflineReady 负责复制）；识别在后台 isolate 进行
     if (!_offlineReady) return false;
     _onFinished = onFinished;
+    _onMicClosed = onMicClosed;
 
     _recorder = AudioRecorder();
     if (!await _recorder!.hasPermission()) return false;
@@ -280,6 +282,7 @@ class SpeechInputService {
   bool _heardSpeech = false;
   int _silentChunks = 0;
   bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
+  void Function()? _onMicClosed;
 
   /// 计算一段 PCM16 数据的峰值振幅（i 为字节偏移，奇数长度截尾）
   static int _peakAmplitude(Uint8List data) {
@@ -315,6 +318,9 @@ class SpeechInputService {
     _pcmTotal = 0;
     _heardSpeech = false;
     _silentChunks = 0;
+
+    // 麦克风已关闭：先通知 UI（切"识别中"反馈），解码在后台 isolate 进行
+    _onMicClosed?.call();
 
     var text = '';
     if (pcm.length >= 3200) {
