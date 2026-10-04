@@ -13,6 +13,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/add_task_screen.dart';
 import 'services/reminder_service.dart';
+import 'services/speech_input_service.dart';
 import 'services/task_comment_service.dart';
 import 'services/tts_service.dart';
 import 'services/clipboard_monitor_service.dart';
@@ -71,6 +72,9 @@ final AppSettings appSettings = AppSettings();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 恢复"系统识别不可靠"持久化标志（华为识别服务卡死过则直接走离线引擎）
+  SpeechInputService.instance.loadSystemAsrUnreliable();
 
   // 全局错误边界：任何 widget build 抛异常时显示友好提示，避免 release 模式渲染成白屏；
   // 同时打印异常堆栈，便于定位偶发性白页面的根因。

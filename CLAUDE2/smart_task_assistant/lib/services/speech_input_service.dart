@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -25,27 +26,51 @@ class SpeechInputService {
 
   /// 系统 ASR 是否被判定不可靠（如华为识别服务卡死：会话一直 in progress
   /// 却永远不返回结果）。置位后调用方应直接改用离线引擎。
+  /// 该标志持久化：一旦判定不可靠，重启后也不再尝试系统识别。
+  static const _kUnreliableKey = 'system_asr_unreliable';
   bool systemAsrUnreliable = false;
+
+  /// 启动时恢复持久化的不可靠标志（main 中调用一次）
+  Future<void> loadSystemAsrUnreliable() async {
+    final sp = await SharedPreferences.getInstance();
+    systemAsrUnreliable = sp.getBool(_kUnreliableKey) ?? false;
+  }
+
+  /// 判定系统识别不可靠并持久化
+  void markSystemAsrUnreliable() {
+    systemAsrUnreliable = true;
+    SharedPreferences.getInstance()
+        .then((sp) => sp.setBool(_kUnreliableKey, true));
+  }
 
   bool get isListening => _speech.isListening;
 
   /// 初始化（幂等）。设备无可用语音识别服务时返回 false。
+  /// initialize 加超时：华为识别服务可能永久挂起（不结束、不返回、不报错），
+  /// 挂起时点击麦克风会无任何反馈。
   Future<bool> ensureInitialized() async {
     if (_initialized) return true;
-    _initialized = await _speech.initialize(
-      onError: (error) {
-        // 识别服务出错：标记未初始化以便下次自愈，并通知监听方
-        _initialized = false;
-        _errorListener?.call(error.errorMsg ?? '语音识别出错');
-        _stoppedCallback?.call();
-      },
-      onStatus: (status) {
-        // 引擎停止且未给出最终结果时（异常路径），由 UI 复位状态
-        if (status == 'notListening') {
+    try {
+      _initialized = await _speech.initialize(
+        onError: (error) {
+          // 识别服务出错：标记未初始化以便下次自愈，并通知监听方
+          _initialized = false;
+          _errorListener?.call(error.errorMsg ?? '语音识别出错');
           _stoppedCallback?.call();
-        }
-      },
-    );
+        },
+        onStatus: (status) {
+          // 引擎停止且未给出最终结果时（异常路径），由 UI 复位状态
+          if (status == 'notListening') {
+            _stoppedCallback?.call();
+          }
+        },
+      ).timeout(const Duration(seconds: 3));
+    } catch (e) {
+      // 初始化失败/超时：标记不可靠，后续直接走离线引擎
+      debugPrint('系统识别初始化失败/超时: $e');
+      _initialized = false;
+      markSystemAsrUnreliable();
+    }
     return _initialized;
   }
 
@@ -157,8 +182,12 @@ class SpeechInputService {
       ),
     );
     _micSub = micStream.listen((data) {
-      _pcmChunks.add(Uint8List.fromList(data));
-      _pcmTotal += data.length;
+      // 丢弃奇数尾字节，保证 16bit 样本按 2 字节对齐
+      final len = data.length & ~1;
+      _pcmChunks.add(len == data.length
+          ? Uint8List.fromList(data)
+          : Uint8List.sublistView(data, 0, len));
+      _pcmTotal += len;
 
       // 静音自动断句：检测到说话后，连续静音约 1.6 秒自动结束录音并识别
       final peak = _peakAmplitude(data);
@@ -219,11 +248,16 @@ class SpeechInputService {
   /// 后台 isolate 识别 PCM，返回文本；失败或识别中异常返回空串
   Future<String> _recognizePcmInBackground(Uint8List pcm) async {
     _offlineRecognizing = true;
+    final sw = Stopwatch()..start();
     try {
-      return await compute(_offlineRecognizeTask, {
+      final text = await compute(_offlineRecognizeTask, {
         'pcm': pcm,
         'documentsDir': (await getApplicationDocumentsDirectory()).path,
       });
+      debugPrint(
+          '离线识别结果: "$text" (${(pcm.length / 1024).round()}KB 音频, '
+          '耗时 ${sw.elapsedMilliseconds}ms)');
+      return text;
     } catch (e) {
       debugPrint('离线识别失败: $e');
       return '';
@@ -240,12 +274,12 @@ class SpeechInputService {
   int _silentChunks = 0;
   bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
 
-  /// 计算一段 PCM16 数据的峰值振幅
+  /// 计算一段 PCM16 数据的峰值振幅（i 为字节偏移，奇数长度截尾）
   static int _peakAmplitude(Uint8List data) {
     var peak = 0;
     final bd = ByteData.sublistView(data);
     for (var i = 0; i + 1 < data.length; i += 2) {
-      final v = bd.getInt16(i * 2, Endian.little).abs();
+      final v = bd.getInt16(i, Endian.little).abs();
       if (v > peak) peak = v;
     }
     return peak;

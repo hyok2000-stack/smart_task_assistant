@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -57,6 +58,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
   // 语音可用性预检：null=检测中，false=系统识别与离线识别都不可用（按钮置灰）
   bool? _speechSupported;
 
+  // 系统 ASR 看门狗：华为识别服务的会话可能卡死（永不结束、永不返回、
+  // 永不报错），8 秒无结果自动切离线引擎
+  Timer? _systemAsrWatchdog;
+
   @override
   void initState() {
     super.initState();
@@ -86,9 +91,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   @override
   void dispose() {
-    // 弹窗关闭时若仍在聆听，立即停麦（隐私敏感：不允许后台持续拾音）
+    // 弹窗关闭时若仍在聆听，立即停麦（隐私敏感：不允许后台持续拾音）；
+    // 系统 ASR 与离线录音两条路径都要停
+    _systemAsrWatchdog?.cancel();
     if (_isListening) {
       SpeechInputService.instance.stopListening();
+      SpeechInputService.instance.stopOfflineListening();
       _isListening = false;
     }
     _controller.dispose();
@@ -1214,6 +1222,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   Future<void> _toggleSpeechInput() async {
     // 守卫用本地状态而非插件态：异步初始化/授权期间快速连点不会双开聆听
     if (_isListening || SpeechInputService.instance.isListening) {
+      _systemAsrWatchdog?.cancel();
       await SpeechInputService.instance.stopListening();
       await SpeechInputService.instance.stopOfflineListening();
       if (mounted) setState(() => _isListening = false);
@@ -1260,10 +1269,23 @@ class _QuickAddModalState extends State<QuickAddModal> {
     setState(() => _isListening = true);
     final baseText = _controller.text;
     var gotText = false;
+    // 看门狗：8 秒无任何识别结果 → 取消卡死会话并切离线引擎
+    _systemAsrWatchdog = Timer(const Duration(seconds: 8), () async {
+      if (!mounted || !_isListening) return;
+      debugPrint('系统 ASR 8 秒无结果，自动切离线引擎');
+      SpeechInputService.instance.markSystemAsrUnreliable();
+      await SpeechInputService.instance.stopListening();
+      if (!mounted) return;
+      setState(() => _isListening = false);
+      _toggleOfflineInput();
+    });
     await SpeechInputService.instance.startListening(
       onResult: (text) {
         if (!mounted) return;
-        if (text.trim().isNotEmpty) gotText = true;
+        if (text.trim().isNotEmpty) {
+          gotText = true;
+          _systemAsrWatchdog?.cancel();
+        }
         // 实时把识别内容追加到已有输入后面
         setState(() {
           _controller.text =
@@ -1275,10 +1297,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
       },
       onFinal: (finalText) {
         if (!mounted) return;
+        _systemAsrWatchdog?.cancel();
         setState(() => _isListening = false);
         if (finalText.trim().isEmpty) {
           // 聆听了但零结果：系统引擎不可靠，标记后切离线引擎
-          SpeechInputService.instance.systemAsrUnreliable = true;
+          SpeechInputService.instance.markSystemAsrUnreliable();
           _toggleOfflineInput();
           return;
         }
@@ -1288,14 +1311,16 @@ class _QuickAddModalState extends State<QuickAddModal> {
       },
       onStopped: () {
         // 引擎停止：有文字则已处理；无文字（卡死会话被清）标记不可靠
+        _systemAsrWatchdog?.cancel();
         if (!mounted) return;
         if (_isListening && !gotText) {
-          SpeechInputService.instance.systemAsrUnreliable = true;
+          SpeechInputService.instance.markSystemAsrUnreliable();
           debugPrint('系统 ASR 会话无结果，已标记为不可靠，后续走离线引擎');
         }
         if (_isListening) setState(() => _isListening = false);
       },
       onError: (message) {
+        _systemAsrWatchdog?.cancel();
         if (mounted) {
           setState(() => _isListening = false);
           ScaffoldMessenger.of(context).showSnackBar(

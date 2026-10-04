@@ -113,8 +113,15 @@ class TTSService {
       await _flutterTts?.setVolume(_volume);
       await _flutterTts?.setPitch(1.0);
 
-      // 获取可用语音列表
-      _availableVoices = await _flutterTts?.getVoices;
+      // 获取可用语音列表（插件运行时返回 List<Object?>，逐项安全转换，
+      // 直接赋值会抛 List<Object?> is not a List<Map<String,String>> 异常）
+      final rawVoices = await _flutterTts?.getVoices;
+      _availableVoices = rawVoices
+          ?.map((v) => v is Map
+              ? v.map((k, value) =>
+                  MapEntry(k.toString(), value?.toString() ?? ''))
+              : <String, String>{})
+          .toList();
       debugPrint('可用语音数量: ${_availableVoices?.length ?? 0}');
 
       // 查找男声和女声
