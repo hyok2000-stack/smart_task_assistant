@@ -1330,6 +1330,15 @@ class _QuickAddModalState extends State<QuickAddModal> {
       }
       return;
     }
+    // 首次使用会复制模型到本地（约 232MB，需 10-30 秒），提前给用户反馈
+    if (!SpeechInputService.instance.offlineModelOnDevice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('正在准备离线语音模型（首次约 10-30 秒）…'),
+          duration: Duration(seconds: 15),
+        ),
+      );
+    }
     // 麦克风运行时权限
     final status = await Permission.microphone.request();
     if (status.isPermanentlyDenied) {
@@ -1351,7 +1360,18 @@ class _QuickAddModalState extends State<QuickAddModal> {
     }
 
     setState(() => _isListening = true);
-    final started = await SpeechInputService.instance.startOfflineListening();
+    final baseText = _controller.text;
+    final started = await SpeechInputService.instance.startOfflineListening(
+      onFinished: (finalText) {
+        // 静音自动断句或手动停止完成识别：重填输入框并触发解析
+        if (!mounted) return;
+        setState(() => _isListening = false);
+        final full = baseText.isEmpty
+            ? finalText.trim()
+            : '$baseText ${finalText.trim()}'.trim();
+        if (full.isNotEmpty) _parseInputLocal(full);
+      },
+    );
     if (!started && mounted) {
       setState(() => _isListening = false);
       ScaffoldMessenger.of(context).showSnackBar(

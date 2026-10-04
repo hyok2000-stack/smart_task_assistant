@@ -1,7 +1,7 @@
 name: smart_task_assistant
 description: "智能任务助手 - 基于AI的任务管理工具"
 publish_to: 'none'
-version: 2.2.32+206
+version: 2.2.38+300
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -71,8 +71,8 @@ dependencies:
   table_calendar: ^3.1.2
   speech_to_text: 7.0.0
   web: 1.1.1
-  sherpa_onnx: ^1.13.8
   record: ^6.2.1
+  sherpa_onnx: ^1.13.8
 
 dev_dependencies:
   flutter_test:

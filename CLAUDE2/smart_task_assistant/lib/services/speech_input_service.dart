@@ -99,6 +99,11 @@ class SpeechInputService {
   int _pcmTotal = 0;
   sherpa.OfflineRecognizer? _offlineRecognizer;
   bool _offlineReady = false;
+  bool _modelCopied = false;
+  void Function(String finalText)? _onFinished;
+
+  /// 模型是否已复制到本机（首次使用需大复制，UI 层可据此给提示）
+  bool get offlineModelOnDevice => _modelCopied;
 
   /// 初始化离线引擎（首次把模型文件从 APK 资产复制到内部存储）。
   Future<bool> ensureOfflineReady() async {
@@ -117,19 +122,9 @@ class SpeechInputService {
         final data = await rootBundle.load(_offlineTokensAsset);
         await tokensFile.writeAsBytes(data.buffer.asUint8List(), flush: true);
       }
-      // 必须先加载原生绑定，否则 FFI 调用抛 "Please initialize sherpa-onnx first"
+      _modelCopied = true;
+      // 主 isolate 预加载原生绑定；模型本体由后台 isolate 识别时自行加载
       sherpa.initBindings();
-      _offlineRecognizer = sherpa.OfflineRecognizer(
-        sherpa.OfflineRecognizerConfig(
-          model: sherpa.OfflineModelConfig(
-            paraformer: sherpa.OfflineParaformerModelConfig(
-              model: modelFile.path,
-            ),
-            tokens: tokensFile.path,
-            numThreads: 2,
-          ),
-        ),
-      );
       _offlineReady = true;
     } catch (e) {
       debugPrint('离线识别初始化失败: $e');
@@ -139,16 +134,22 @@ class SpeechInputService {
   }
 
   /// 开始离线录音（Paraformer 非流式：整段录完后由 stop 一次性识别）。
+  /// [onFinished] 在录音结束（手动停止 或 静音自动断句）后回调最终文本。
   /// 返回 false 表示麦克风不可用或离线引擎未就绪。
-  Future<bool> startOfflineListening() async {
-    final rec = _offlineRecognizer;
-    if (rec == null) return false;
+  Future<bool> startOfflineListening({
+    required void Function(String finalText) onFinished,
+  }) async {
+    // 模型文件须已就绪（ensureOfflineReady 负责复制）；识别在后台 isolate 进行
+    if (!_offlineReady) return false;
+    _onFinished = onFinished;
 
     _recorder = AudioRecorder();
     if (!await _recorder!.hasPermission()) return false;
 
     _pcmChunks.clear();
     _pcmTotal = 0;
+    _heardSpeech = false;
+    _silentChunks = 0;
     final micStream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -159,6 +160,25 @@ class SpeechInputService {
     _micSub = micStream.listen((data) {
       _pcmChunks.add(Uint8List.fromList(data));
       _pcmTotal += data.length;
+
+      // 静音自动断句：检测到说话后，连续静音约 1.6 秒自动结束录音并识别
+      final peak = _peakAmplitude(data);
+      if (peak > _speechAmplitudeThreshold) {
+        _heardSpeech = true;
+        _silentChunks = 0;
+      } else if (_heardSpeech) {
+        _silentChunks++;
+        if (_silentChunks >= _silentChunksToStop) {
+          _finishOfflineRecording();
+          return;
+        }
+      } else {
+        _silentChunks++;
+        if (_silentChunks >= _maxSilentFromStart) {
+          _finishOfflineRecording();
+          return;
+        }
+      }
     });
     return true;
   }
@@ -185,20 +205,122 @@ class SpeechInputService {
       await _recorder?.dispose();
     } catch (_) {}
     _recorder = null;
-    if (pcm.length < 3200) return ''; // 短于 0.2 秒视为无有效输入
+    if (pcm.length < 3200) {
+      debugPrint('离线识别：录音过短（${pcm.length} 字节），跳过');
+      return ''; // 短于 0.2 秒视为无有效输入
+    }
 
     final rec = _offlineRecognizer;
-    if (rec == null) return '';
-    final stream = rec.createStream();
-    final samples = Float32List(pcm.length ~/ 2);
-    final bd = ByteData.sublistView(pcm);
-    for (var i = 0; i < samples.length; i++) {
-      samples[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
+    if (rec == null) {
+      debugPrint('离线识别：引擎未初始化');
+      return '';
     }
-    stream.acceptWaveform(samples: samples, sampleRate: 16000);
-    rec.decode(stream);
-    final text = rec.getResult(stream).text.trim();
-    stream.free();
-    return text;
+    try {
+      final stream = rec.createStream();
+      final samples = Float32List(pcm.length ~/ 2);
+      final bd = ByteData.sublistView(pcm);
+      for (var i = 0; i < samples.length; i++) {
+        samples[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
+      }
+      stream.acceptWaveform(samples: samples, sampleRate: 16000);
+      rec.decode(stream);
+      final text = rec.getResult(stream).text.trim();
+      debugPrint('离线识别结果: "$text" (${pcm.length ~/ 1024}KB 音频)');
+      stream.free();
+      return text;
+    } catch (e) {
+      debugPrint('离线识别异常: $e');
+      return '';
+    }
   }
+
+  // ---- 静音自动断句参数与状态 ----
+  static const int _speechAmplitudeThreshold = 600; // int16 振幅阈值
+  static const int _silentChunksToStop = 14; // 约 1.6 秒静音（每块 ~120ms）
+  static const int _maxSilentFromStart = 40; // 从头静音约 4.5 秒自动放弃
+  bool _heardSpeech = false;
+  int _silentChunks = 0;
+
+  /// 计算一段 PCM16 数据的峰值振幅
+  static int _peakAmplitude(Uint8List data) {
+    var peak = 0;
+    final bd = ByteData.sublistView(data);
+    for (var i = 0; i + 1 < data.length; i += 2) {
+      final v = bd.getInt16(i * 2, Endian.little).abs();
+      if (v > peak) peak = v;
+    }
+    return peak;
+  }
+
+  /// 结束录音 → 后台识别 → 清理，并把最终文本回调给 UI 层
+  Future<void> _finishOfflineRecording() async {
+    // 防重入：清掉麦克风订阅与录音器
+    try {
+      await _micSub?.cancel();
+    } catch (_) {}
+    _micSub = null;
+    try {
+      await _recorder?.stop();
+      await _recorder?.dispose();
+    } catch (_) {}
+    _recorder = null;
+
+    final pcm = Uint8List(_pcmTotal);
+    var off = 0;
+    for (final c in _pcmChunks) {
+      pcm.setAll(off, c);
+      off += c.length;
+    }
+    _pcmChunks.clear();
+    _pcmTotal = 0;
+    _heardSpeech = false;
+    _silentChunks = 0;
+
+    var text = '';
+    if (pcm.length >= 3200) {
+      try {
+        // 后台 isolate 识别：长录音的解码耗时数秒~数十秒，
+        // 在主线程执行会冻结 UI 触发系统 ANR（"无响应"弹窗）
+        text = await compute(_offlineRecognizeTask, {
+          'pcm': pcm,
+          'documentsDir': (await getApplicationDocumentsDirectory()).path,
+        });
+      } catch (e) {
+        debugPrint('离线识别失败: $e');
+      }
+    }
+    _onFinished?.call(text);
+  }
+}
+
+/// 后台 isolate 识别任务：在独立 isolate 中创建 Paraformer 离线识别器并解码整段音频。
+/// 必须是顶层函数（compute 要求）；模型在 isolate 内独立加载，与主 isolate 互不干扰。
+String _offlineRecognizeTask(Map args) {
+  final pcm = args['pcm'] as Uint8List;
+  final modelDir = args['documentsDir'] as String;
+
+  // 每个 isolate 有独立的 FFI 绑定状态，必须先初始化
+  sherpa.initBindings();
+  final recognizer = sherpa.OfflineRecognizer(
+    sherpa.OfflineRecognizerConfig(
+      model: sherpa.OfflineModelConfig(
+        paraformer: sherpa.OfflineParaformerModelConfig(
+          model: '$modelDir/paraformer-zh/model.int8.onnx',
+        ),
+        tokens: '$modelDir/paraformer-zh/tokens.txt',
+        numThreads: 2,
+      ),
+    ),
+  );
+  final stream = recognizer.createStream();
+  final samples = Float32List(pcm.length ~/ 2);
+  final bd = ByteData.sublistView(pcm);
+  for (var i = 0; i < samples.length; i++) {
+    samples[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
+  }
+  stream.acceptWaveform(samples: samples, sampleRate: 16000);
+  recognizer.decode(stream);
+  final text = recognizer.getResult(stream).text.trim();
+  stream.free();
+  return text;
 }

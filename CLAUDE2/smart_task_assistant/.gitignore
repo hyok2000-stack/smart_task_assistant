@@ -77,3 +77,7 @@ app.*.map.json
 /ancient_fairy_dance.svg
 /workbook_preview*.json
 /OUTPUT/
+/assets/models/paraformer/model.int8.onnx
+
+# 语音模型压缩包体积过大（最大 487MB），仅本地提供不入库
+/assets/models/*.tar.bz2
