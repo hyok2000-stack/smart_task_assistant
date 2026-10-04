@@ -48,8 +48,15 @@ class SpeechInputService {
   /// 初始化（幂等）。设备无可用语音识别服务时返回 false。
   /// initialize 加超时：华为识别服务可能永久挂起（不结束、不返回、不报错），
   /// 挂起时点击麦克风会无任何反馈。
-  Future<bool> ensureInitialized() async {
-    if (_initialized) return true;
+  /// 单飞：并发调用共享同一个初始化 Future——speech_to_text 插件对
+  /// 重入的 initialize 会死锁（弹窗预检与点击麦克风的竞态）。
+  Future<bool>? _initFuture;
+  Future<bool> ensureInitialized() {
+    if (_initialized) return Future.value(true);
+    return _initFuture ??= _doInitialize().whenComplete(() => _initFuture = null);
+  }
+
+  Future<bool> _doInitialize() async {
     try {
       _initialized = await _speech.initialize(
         onError: (error) {
