@@ -242,7 +242,7 @@ class _FocusScreenState extends State<FocusScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _running ? '专注中，别被打扰哦' : '选择任务和时长，开始专注',
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: 13, color: AppTheme.textSecondaryColor),
                       ),
                     ],

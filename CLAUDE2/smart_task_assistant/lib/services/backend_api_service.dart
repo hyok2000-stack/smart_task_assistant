@@ -247,7 +247,6 @@ class BackendApiService {
   static final BackendApiService instance = BackendApiService._();
 
   static const _appKey = 'smart-task-app-2025';
-  static const _tokenKey = 'backend.token';
   static const _userIdKey = 'backend.userId';
   static const _nicknameKey = 'backend.nickname';
   static const _baseUrlKey = 'backend.baseUrl';

@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -73,7 +75,7 @@ Future<List<Map<String, dynamic>>> getExportFilesList() async {
 
     return exportFiles;
   } catch (e) {
-    print('获取导出文件列表失败: $e');
+    debugPrint('获取导出文件列表失败: $e');
     return [];
   }
 }
@@ -91,7 +93,7 @@ Future<Map<String, String>?> importDataFromPath(String filePath) async {
       'fileName': fileName,
     };
   } catch (e) {
-    print('导入数据失败: $e');
+    debugPrint('导入数据失败: $e');
     return null;
   }
 }
@@ -155,13 +157,13 @@ Future<void> clearExportFiles() async {
       if (file is File && file.path.endsWith('.json')) {
         await file.delete();
         deletedCount++;
-        print('已删除导出文件: ${file.uri.pathSegments.last}');
+        debugPrint('已删除导出文件: ${file.uri.pathSegments.last}');
       }
     }
 
-    print('共删除 $deletedCount 个导出文件');
+    debugPrint('共删除 $deletedCount 个导出文件');
   } catch (e) {
-    print('清除导出文件失败: $e');
+    debugPrint('清除导出文件失败: $e');
     rethrow;
   }
 }

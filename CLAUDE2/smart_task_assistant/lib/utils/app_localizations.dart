@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../main.dart' show AppSettings, appSettings;
 
 /// 应用国际化工具类
 class AppLocalizations {

@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 /// 冒泡排序算法实现
 ///
 /// 时间复杂度：

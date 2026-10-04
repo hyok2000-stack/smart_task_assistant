@@ -21,13 +21,10 @@ class ClipboardMonitorService {
   bool _isInitialized = false; // 初始化状态标志
 
   // 上一次的剪贴板内容，避免重复弹出
-  String? _lastClipboardContent;
 
   // 导航键，用于弹出窗口
-  GlobalKey<NavigatorState>? _navigatorKey;
 
   // 回调函数，用于显示任务创建窗口
-  Function(String content)? _onClipboardContent;
 
   // Android 原生服务实例
   ClipboardMonitorServiceNative? _nativeService;
@@ -43,8 +40,6 @@ class ClipboardMonitorService {
       dispose();
     }
 
-    _navigatorKey = navigatorKey;
-    _onClipboardContent = onClipboardContent;
     _isInitialized = true;
 
     // 根据平台选择不同的实现
@@ -107,7 +102,6 @@ class ClipboardMonitorService {
 
   /// 清除缓存的内容（用于允许再次弹出相同内容）
   void clearCache() {
-    _lastClipboardContent = null;
   }
 
   /// 释放资源

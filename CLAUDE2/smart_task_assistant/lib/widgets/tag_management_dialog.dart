@@ -14,7 +14,6 @@ class TagManagementDialog extends StatefulWidget {
 
 class _TagManagementDialogState extends State<TagManagementDialog> {
   final TextEditingController _nameController = TextEditingController();
-  final String _selectedColor = '#6366F1';
 
   // 预定义颜色（统一使用大写，与tag_create_dialog保持一致）
   final List<String> _colorOptions = [

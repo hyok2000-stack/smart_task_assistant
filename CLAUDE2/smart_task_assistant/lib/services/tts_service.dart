@@ -20,7 +20,6 @@ class TTSService {
 
   // 当前播放模式：tts 或 custom
   String? _currentPlaybackMode;
-  String? _currentCustomPath;
 
   // 播放完成 Completer
   Completer<void>? _playbackCompleter;
@@ -283,7 +282,6 @@ class TTSService {
       // 使用自定义语音文件
       if (isCustomVoice) {
         _currentPlaybackMode = 'custom';
-        _currentCustomPath = customVoicePath;
         debugPrint('使用自定义语音文件');
         await _playCustomVoice(customVoicePath);
         return;
@@ -291,7 +289,6 @@ class TTSService {
 
       // 使用 TTS 语音
       _currentPlaybackMode = 'tts';
-      _currentCustomPath = null;
 
       await init();
 
@@ -599,7 +596,6 @@ class TTSService {
     _isPlaying = false;
     _isSpeaking = false;
     _currentPlaybackMode = null;
-    _currentCustomPath = null;
     // 完成 Completer，解除 speakAndWait 的等待
     if (_playbackCompleter != null && !_playbackCompleter!.isCompleted) {
       _playbackCompleter!.complete();

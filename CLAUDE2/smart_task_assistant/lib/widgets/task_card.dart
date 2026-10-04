@@ -405,7 +405,7 @@ class TaskCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
-      transform: Matrix4.identity()..scale(isSelected ? 0.98 : 1.0),
+      transform: Matrix4.identity()..scaleByDouble(isSelected ? 0.98 : 1.0, isSelected ? 0.98 : 1.0, 1, 1),
       child: Material(
         color: Colors.transparent,
         child: InkWell(

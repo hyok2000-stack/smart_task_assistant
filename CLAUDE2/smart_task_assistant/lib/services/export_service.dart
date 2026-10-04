@@ -227,7 +227,8 @@ class ExportService {
     final content = asJson ? generateJSON(tasks) : generateCSV(tasks);
     final file = File('${dir.path}/tasks_export.$ext');
     await file.writeAsString(content);
-    await Share.shareXFiles([XFile(file.path)], text: '任务导出');
+    await SharePlus.instance
+        .share(ShareParams(files: [XFile(file.path)], text: '任务导出'));
   }
 
   /// 导出完整备份并分享（含任务+标签+习惯+日志）。
@@ -247,7 +248,8 @@ class ExportService {
     );
     final file = File('${dir.path}/smart_task_backup_$ts.json');
     await file.writeAsString(content);
-    await Share.shareXFiles([XFile(file.path)], text: '智能任务助手完整备份');
+    await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], text: '智能任务助手完整备份'));
   }
 
   String _escape(String value) {

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/city.dart';
@@ -117,7 +117,6 @@ class WeatherService {
 
   // IP 定位结果缓存（城市名 + adcode），替代原 Geolocator 的 Position
   String? _locatedCity;
-  String? _locatedAdcode;
   WeatherInfo? _currentWeather;
   bool _isLoading = false;
   CityInfo? _selectedCity; // 用户选择的城市
@@ -349,7 +348,6 @@ class WeatherService {
       final adcode = data['adcode'] as String?;
       if (city != null && city.isNotEmpty) {
         _locatedCity = city;
-        _locatedAdcode = adcode;
         debugPrint('天气服务：IP 定位成功 - 城市: $city, adcode: $adcode');
       }
     } catch (e) {
@@ -531,7 +529,6 @@ class WeatherService {
       await prefs.remove(_cacheKey);
       _currentWeather = null;
       _locatedCity = null;
-      _locatedAdcode = null;
       debugPrint('天气服务：已清除缓存');
     } catch (e) {
       debugPrint('天气服务：清除缓存失败 - $e');

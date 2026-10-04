@@ -172,7 +172,6 @@ class StatsScreen extends StatelessWidget {
     final completed = provider.tasks
         .where((t) =>
             t.isCompleted &&
-            t.createdAt != null &&
             t.completedAt != null &&
             !t.completedAt!.isBefore(t.createdAt))
         .toList();
@@ -181,7 +180,7 @@ class StatsScreen extends StatelessWidget {
     String avgText = '—';
     if (completed.isNotEmpty) {
       final totalMinutes = completed
-          .map((t) => t.completedAt!.difference(t.createdAt!).inMinutes)
+          .map((t) => t.completedAt!.difference(t.createdAt).inMinutes)
           .reduce((a, b) => a + b);
       final avgHours = totalMinutes / completed.length / 60.0;
       avgText = avgHours < 1
@@ -225,11 +224,11 @@ class StatsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.insights_rounded,
+              Icon(Icons.insights_rounded,
                   size: 18, color: AppTheme.primaryColor),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text('效率洞察',
                   style: TextStyle(
                       fontSize: 15,
@@ -244,7 +243,7 @@ class StatsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('平均完成耗时',
+                    const Text('平均完成耗时',
                         style: TextStyle(
                             fontSize: 12, color: AppTheme.textSecondaryColor)),
                     const SizedBox(height: 4),
@@ -260,7 +259,7 @@ class StatsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('最有效率时段',
+                    const Text('最有效率时段',
                         style: TextStyle(
                             fontSize: 12, color: AppTheme.textSecondaryColor)),
                     const SizedBox(height: 4),
@@ -276,7 +275,7 @@ class StatsScreen extends StatelessWidget {
           ),
           if (completed.isEmpty) ...[
             const SizedBox(height: 8),
-            Text('完成带截止/创建时间的任务后，这里会给出你的效率画像',
+            const Text('完成带截止/创建时间的任务后，这里会给出你的效率画像',
                 style: TextStyle(fontSize: 11, color: AppTheme.textHintColor)),
           ],
         ],

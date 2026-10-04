@@ -2,6 +2,7 @@
 ///
 /// 用 SharedPreferences mock 验证「保存 → 重新加载」往返一致，
 /// 以及 isQuietTime 的跨天区间判断。
+library;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

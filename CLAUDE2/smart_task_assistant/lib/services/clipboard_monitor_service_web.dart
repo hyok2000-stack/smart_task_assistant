@@ -60,7 +60,6 @@ String? loadSettingsWeb() {
 Future<String?> _getClipboardText() async {
   try {
     final clipboard = web.window.navigator.clipboard;
-    if (clipboard == null) return null;
     // JSPromise<JSString> → Future<JSString> → String
     final text = await clipboard.readText().toDart;
     return text.toDart;

@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -70,7 +68,7 @@ class SpeechInputService {
         onError: (error) {
           // 识别服务出错：标记未初始化以便下次自愈，并通知监听方
           _initialized = false;
-          _errorListener?.call(error.errorMsg ?? '语音识别出错');
+          _errorListener?.call(error.errorMsg);
           _stoppedCallback?.call();
         },
         onStatus: (status) {
@@ -189,8 +187,6 @@ class SpeechInputService {
 
     _pcmChunks.clear();
     _pcmTotal = 0;
-    _heardSpeech = false;
-    _silentChunks = 0;
     final micStream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -206,25 +202,12 @@ class SpeechInputService {
           : Uint8List.sublistView(data, 0, len));
       _pcmTotal += len;
 
-      // 静音自动断句：检测到说话后，连续静音约 1.6 秒自动结束录音并识别
+      // 静音自动断句 + 实时音量给 UI（0-100）
       final peak = _peakAmplitude(data);
-      // 实时音量给 UI（0-100），让用户看到正在拾音
       _amplitudeCtrl.add((peak * 100 / 32767).round().clamp(0, 100));
-      if (peak > _speechAmplitudeThreshold) {
-        _heardSpeech = true;
-        _silentChunks = 0;
-      } else if (_heardSpeech) {
-        _silentChunks++;
-        if (_silentChunks >= _silentChunksToStop) {
-          _finishOfflineRecording();
-          return;
-        }
-      } else {
-        _silentChunks++;
-        if (_silentChunks >= _maxSilentFromStart) {
-          _finishOfflineRecording();
-          return;
-        }
+      if (_silence.shouldStop(peak)) {
+        _finishOfflineRecording();
+        return;
       }
     });
     return true;
@@ -252,8 +235,6 @@ class SpeechInputService {
     }
     _pcmChunks.clear();
     _pcmTotal = 0;
-    _heardSpeech = false;
-    _silentChunks = 0;
     if (pcm.length < 3200) {
       debugPrint('离线识别：录音过短（${pcm.length} 字节），跳过');
       return ''; // 短于 0.2 秒视为无有效输入
@@ -286,12 +267,8 @@ class SpeechInputService {
     }
   }
 
-  // ---- 静音自动断句参数与状态 ----
-  static const int _speechAmplitudeThreshold = 600; // int16 振幅阈值
-  static const int _silentChunksToStop = 14; // 约 1.6 秒静音（每块 ~120ms）
-  static const int _maxSilentFromStart = 40; // 从头静音约 4.5 秒自动放弃
-  bool _heardSpeech = false;
-  int _silentChunks = 0;
+  // ---- 静音自动断句（状态机见文件末尾 SilenceDetector）----
+  final SilenceDetector _silence = SilenceDetector();
   bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
   void Function()? _onMicClosed;
 
@@ -332,8 +309,6 @@ class SpeechInputService {
     }
     _pcmChunks.clear();
     _pcmTotal = 0;
-    _heardSpeech = false;
-    _silentChunks = 0;
 
     // 麦克风已关闭：先通知 UI（切"识别中"反馈），解码在后台 isolate 进行
     _onMicClosed?.call();
@@ -410,4 +385,47 @@ String normalizeAsrWordOrder(String text) {
   final rest = trimmed.substring(0, m.start).trim();
   if (rest.isEmpty) return trimmed;
   return '$timePart$rest';
+}
+
+/// 静音断句状态机：逐块送入峰值振幅，返回是否应结束本次录音。
+/// 两种结束条件：
+/// 1. 检测到说话后，连续静音 [silenceChunksToStop] 块（约 1.6 秒）→ 断句；
+/// 2. 从头一直没人说话，累计 [maxSilentChunksFromStart] 块（约 4.5 秒）→ 放弃。
+class SilenceDetector {
+  SilenceDetector({
+    this.speechThreshold = 600,
+    this.silenceChunksToStop = 14,
+    this.maxSilentChunksFromStart = 40,
+  });
+
+  /// int16 峰值超过此值视为说话
+  final int speechThreshold;
+
+  /// 说话后允许的连续静音块数（每块 ~120ms）
+  final int silenceChunksToStop;
+
+  /// 从头无人说话时的最大静音块数
+  final int maxSilentChunksFromStart;
+
+  bool heardSpeech = false;
+  int silentChunks = 0;
+
+  void reset() {
+    heardSpeech = false;
+    silentChunks = 0;
+  }
+
+  /// 送入一个音频块的峰值振幅，返回 true 表示应结束录音
+  bool shouldStop(int peak) {
+    if (peak > speechThreshold) {
+      heardSpeech = true;
+      silentChunks = 0;
+      return false;
+    }
+    silentChunks++;
+    if (heardSpeech) {
+      return silentChunks >= silenceChunksToStop;
+    }
+    return silentChunks >= maxSilentChunksFromStart;
+  }
 }

@@ -25,7 +25,6 @@ class _AIChatDialogState extends State<AIChatDialog>
   String _currentModelName = '本地规则引擎';
   final _focusNode = FocusNode();
   late AnimationController _typingAnimationController;
-  final List<int> _dotIndices = [0, 1, 2];
 
   /// 添加一条对话消息，并限制历史最多 50 条（避免长对话内存无限增长）
   void _addMessage(_ChatMessage msg) {

@@ -31,7 +31,6 @@ class _QuickAddModalState extends State<QuickAddModal> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _aiService = AIService();
-  final bool _isLoading = false;
   bool _isAILoading = false;
   bool _isOcrProcessing = false;
   bool _isListening = false;
@@ -1418,6 +1417,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
       return;
     }
     // 首次使用会复制模型到本地（约 232MB，需 10-30 秒），提前给用户反馈
+    if (!mounted) return;
     if (!SpeechInputService.instance.offlineModelOnDevice) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

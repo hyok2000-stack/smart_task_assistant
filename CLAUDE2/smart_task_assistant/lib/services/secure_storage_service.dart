@@ -24,13 +24,11 @@ class SecureStorageService {
 
   /// 懒初始化 FlutterSecureStorage。
   ///
-  /// 注意：关闭 encryptedSharedPreferences。该选项在部分 Android 设备上会触发
   /// 原生层 Keystore 异常（绕过 Dart try-catch 直接崩溃，见 flutter_secure_storage
   /// issue #480/#547）。默认模式仍使用 Android Keystore 加密，足够安全。
   FlutterSecureStorage? _tryCreateStorage() {
     try {
       return const FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: false),
       );
     } catch (_) {
       return null;

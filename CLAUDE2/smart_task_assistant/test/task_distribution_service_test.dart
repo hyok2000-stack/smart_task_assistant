@@ -393,7 +393,7 @@ void main() {
       test('应该根据状态获取分发', () {
         final d1 = service.create(taskId: 'task-1', assigneeName: '张三');
         final d2 = service.create(taskId: 'task-2', assigneeName: '李四');
-        final d3 = service.create(taskId: 'task-3', assigneeName: '王五');
+        service.create(taskId: 'task-3', assigneeName: '王五'); // 保持 pending
 
         service.accept(d1.id);
         service.reject(d2.id);

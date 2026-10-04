@@ -1000,8 +1000,6 @@ class AIService {
         return '已完成';
       case TaskStatus.cancelled:
         return '已取消';
-      default:
-        return '待处理';
     }
   }
 

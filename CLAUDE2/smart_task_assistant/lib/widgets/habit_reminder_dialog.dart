@@ -22,14 +22,14 @@ class HabitReminderDialog extends StatelessWidget {
         habit.id == 'habit_clock_out';
 
     return Dialog(
-      backgroundColor: Theme.of(context).dialogBackgroundColor,
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Theme.of(context).dialogBackgroundColor,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(

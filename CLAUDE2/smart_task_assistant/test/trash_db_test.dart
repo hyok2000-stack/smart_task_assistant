@@ -1,6 +1,7 @@
 /// 回收站数据库往返测试（sqflite_ffi 桌面实现，无需真机）
 ///
 /// 覆盖：快照入库 → 列表 → 恢复 → 彻底删除 → 30 天自动清理
+library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:smart_task_assistant/database/database_helper.dart';

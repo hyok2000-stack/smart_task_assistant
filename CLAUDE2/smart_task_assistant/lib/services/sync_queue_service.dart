@@ -78,7 +78,6 @@ class SyncQueueService {
     _items.removeWhere((item) {
       final payload = item.payload;
       return payload['id'] == taskId;
-      return false;
     });
     await _save();
   }
