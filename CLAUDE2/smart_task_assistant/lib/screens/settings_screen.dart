@@ -20,6 +20,7 @@ import '../services/ai_service.dart';
 import '../services/backend_api_service.dart';
 import '../services/tts_service.dart';
 import '../services/speech_input_service.dart';
+import '../services/reminder_service.dart';
 import '../services/export_service.dart';
 import '../database/storage_service.dart';
 import 'sync_center_screen.dart';
@@ -73,6 +74,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadSettingsToControllers();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshReminderPermissionState();
+      _refreshKeepAliveStatus();
+    });
+  }
+
+  // --- 后台保活状态（EMUI 限制治理） ---
+  bool? _batteryIgnored;
+  bool? _exactAlarmAllowed;
+
+  Future<void> _refreshKeepAliveStatus() async {
+    final battery = await ReminderService.isBatteryOptimizationIgnored();
+    final exact = await ReminderService.canScheduleExactAlarms();
+    if (!mounted) return;
+    setState(() {
+      _batteryIgnored = battery;
+      _exactAlarmAllowed = exact;
     });
   }
 
@@ -160,6 +176,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         children: [
           _buildSectionHeader('通知'),
           _buildNotificationSettings(context),
+          const SizedBox(height: 32),
+          _buildSectionHeader('后台保活'),
+          _buildKeepAliveSettings(context),
           const SizedBox(height: 32),
           _buildSectionHeader('语音输入'),
           _buildVoiceSettings(context),
@@ -647,6 +666,70 @@ class _SettingsScreenState extends State<SettingsScreen>
           MethodChannel('com.smarttask.smart_task_assistant/reminder');
       await channel.invokeMethod('openExactAlarmSettings');
     } catch (_) {}
+  }
+
+  /// 后台保活：电池优化豁免、精确闹钟、华为自启动管理。
+  /// 三项齐全后台提醒才不会华为省电策略延迟饿死。
+  Widget _buildKeepAliveSettings(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          _buildListTile(
+            icon: Icons.battery_saver,
+            title: '电池优化豁免',
+            subtitle: _batteryIgnored == null
+                ? '检查中…'
+                : (_batteryIgnored!
+                    ? '已豁免，息屏时提醒不会被延迟'
+                    : '⚠️ 未豁免：息屏/闲置时提醒最多延迟10分钟以上'),
+            trailing: _batteryIgnored == false
+                ? const Icon(Icons.chevron_right,
+                    color: AppTheme.textHintColor)
+                : const Icon(Icons.check_circle, color: Colors.green),
+            onTap: _batteryIgnored == false
+                ? () async {
+                    await ReminderService.requestIgnoreBatteryOptimization();
+                    await Future.delayed(const Duration(seconds: 2));
+                    _refreshKeepAliveStatus();
+                  }
+                : null,
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.alarm_on,
+            title: '精确闹钟权限',
+            subtitle: _exactAlarmAllowed == null
+                ? '检查中…'
+                : (_exactAlarmAllowed!
+                    ? '已授予，提醒准时触发'
+                    : '⚠️ 未授予：Android 12+ 上定时提醒可能不准点'),
+            trailing: _exactAlarmAllowed == false
+                ? const Icon(Icons.chevron_right,
+                    color: AppTheme.textHintColor)
+                : const Icon(Icons.check_circle, color: Colors.green),
+            onTap: _exactAlarmAllowed == false
+                ? () {
+                    ReminderService.openAutoStartSettings();
+                  }
+                : null,
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.rocket_launch,
+            title: '华为自启动管理',
+            subtitle:
+                '后台提醒失效的头号原因：一键清理会强杀应用且收不到任何闹钟。'
+                '请允许"自启动 + 关联启动 + 后台活动"三项',
+            trailing: const Icon(Icons.chevron_right,
+                color: AppTheme.textHintColor),
+            onTap: () {
+              ReminderService.openAutoStartSettings();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   /// 语音输入设置：引擎状态与系统识别重置入口

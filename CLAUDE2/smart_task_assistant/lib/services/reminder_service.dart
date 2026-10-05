@@ -882,6 +882,51 @@ class ReminderService {
   bool _isScreenOn = true;
   DateTime _lastScreenCheck = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // --- 后台保活状态（EMUI 限制治理，设置页"后台保活"卡片用） ---
+
+  /// 是否已豁免电池优化（Doze 期间提醒不再被延迟）。非 Android 或查询失败
+  /// 时按已豁免处理，避免误报
+  static Future<bool> isBatteryOptimizationIgnored() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _reminderChannel
+              .invokeMethod<bool>('isBatteryOptimizationIgnored') ??
+          true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 精确闹钟权限（Android 12+ 需要用户在系统设置中授予）
+  static Future<bool> canScheduleExactAlarms() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _reminderChannel
+              .invokeMethod<bool>('canScheduleExactAlarms') ??
+          true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 弹系统授权框请求豁免电池优化
+  static Future<void> requestIgnoreBatteryOptimization() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderChannel
+          .invokeMethod('requestIgnoreBatteryOptimization');
+    } catch (_) {}
+  }
+
+  /// 打开华为自启动管理页（EMUI/鸿蒙后台提醒的第一开关；
+  /// 非华为设备会退回应用详情页，同样可以管理权限）
+  static Future<void> openAutoStartSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _reminderChannel.invokeMethod('openAutoStartSettings');
+    } catch (_) {}
+  }
+
   /// 标记提醒已由原生层显示（避免 Flutter 层重复弹窗）
   void markShown(String id) {
     _lastReminderTime[id] = DateTime.now();

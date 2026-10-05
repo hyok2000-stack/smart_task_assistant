@@ -205,6 +205,84 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "isBatteryOptimizationIgnored" -> {
+                    // 后台保活状态①：是否已豁免电池优化（Doze 期间闹钟不受限）
+                    try {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "canScheduleExactAlarms" -> {
+                    // 后台保活状态②：精确闹钟权限（Android 12+）
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                            result.success(am.canScheduleExactAlarms())
+                        } else {
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        result.success(true)
+                    }
+                }
+                "requestIgnoreBatteryOptimization" -> {
+                    // 弹系统授权框：请求豁免电池优化
+                    try {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.w("MainActivity", "requestIgnoreBatteryOptimization failed", e)
+                        result.success(false)
+                    }
+                }
+                "openAutoStartSettings" -> {
+                    // 华为自启动管理页（EMUI/鸿蒙后台提醒的第一开关）；
+                    // 各版本页面组件名不同，依次尝试，全部失败则退回应用详情页
+                    val candidates = listOf(
+                        Intent().setClassName(
+                            "com.huawei.systemmanager",
+                            "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+                        ),
+                        Intent().setClassName(
+                            "com.huawei.systemmanager",
+                            "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"
+                        ),
+                        Intent().setClassName(
+                            "com.huawei.systemmanager",
+                            "com.huawei.systemmanager.optimize.process.ProtectActivity"
+                        )
+                    )
+                    var launched = false
+                    for (intent in candidates) {
+                        try {
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            launched = true
+                            break
+                        } catch (e: Exception) {
+                            // 尝试下一个
+                        }
+                    }
+                    if (!launched) {
+                        try {
+                            startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        } catch (e: Exception) {
+                            Log.w("MainActivity", "openAutoStartSettings all failed", e)
+                        }
+                    }
+                    result.success(launched)
+                }
                 "startService" -> {
                     try {
                         ReminderForegroundService.start(this)

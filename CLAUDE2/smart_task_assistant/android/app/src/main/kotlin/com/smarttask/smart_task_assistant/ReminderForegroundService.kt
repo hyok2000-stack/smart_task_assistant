@@ -219,14 +219,18 @@ class ReminderForegroundService : Service() {
             Log.w(TAG, "WARNING: App is NOT whitelisted from battery optimization! " +
                 "Reminders will be delayed or missed during Doze mode.")
             val sp = getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
-            if (!sp.getBoolean("battery_optimization_prompted", false)) {
+            // 每 3 天可重提一次：用户第一次可能误点拒绝，永久只弹一次会导致
+            // 之后整段日子提醒被 Doze 延迟饿死而无任何引导
+            val lastPromptAt = sp.getLong("battery_optimization_last_prompt_at", 0L)
+            val now = System.currentTimeMillis()
+            if (now - lastPromptAt > 3 * 24 * 3600_000L) {
                 try {
                     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                         data = Uri.parse("package:$packageName")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     startActivity(intent)
-                    sp.edit().putBoolean("battery_optimization_prompted", true).apply()
+                    sp.edit().putLong("battery_optimization_last_prompt_at", now).apply()
                     Log.d(TAG, "Battery optimization exemption dialog shown")
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to show battery optimization dialog", e)
@@ -235,7 +239,7 @@ class ReminderForegroundService : Service() {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         startActivity(intent)
-                        sp.edit().putBoolean("battery_optimization_prompted", true).apply()
+                        sp.edit().putLong("battery_optimization_last_prompt_at", now).apply()
                     } catch (e2: Exception) {
                         Log.w(TAG, "Also failed to open battery settings", e2)
                     }
@@ -251,16 +255,18 @@ class ReminderForegroundService : Service() {
             if (!canSchedule) {
                 Log.w(TAG, "WARNING: Exact alarm permission not granted! " +
                     "setAlarmClock() will silently fail on Android 12+.")
-                // 引导用户授权精确闹钟（仅提示一次，避免反复弹设置页）
+                // 引导用户授权精确闹钟（每 3 天可重提一次，避免永久只弹一次）
                 val sp = getSharedPreferences("reminder_prefs", Context.MODE_PRIVATE)
-                if (!sp.getBoolean("exact_alarm_prompted", false)) {
+                val lastPromptAt = sp.getLong("exact_alarm_last_prompt_at", 0L)
+                val now = System.currentTimeMillis()
+                if (now - lastPromptAt > 3 * 24 * 3600_000L) {
                     try {
                         // Settings.ACTION_REQUEST_EXACT_ALARM 需 API 31+，用字符串常量兼容较低 compileSdk；运行时已限定 SDK_INT>=S
                         val intent = Intent("android.settings.REQUEST_EXACT_ALARM").apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         startActivity(intent)
-                        sp.edit().putBoolean("exact_alarm_prompted", true).apply()
+                        sp.edit().putLong("exact_alarm_last_prompt_at", now).apply()
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to request exact alarm permission", e)
                     }
