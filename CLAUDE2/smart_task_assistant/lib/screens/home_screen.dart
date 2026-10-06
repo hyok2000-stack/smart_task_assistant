@@ -297,7 +297,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            // AI 建议卡片
+                    // 今日待办数量
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _buildTodayPendingChip(provider),
+                        ),
+                      ),
+                    ),
+                    // AI 建议卡片
             if (provider.todayTasks.any((t) => !t.isCompleted) &&
                 !_isAICardDismissed)
               SliverToBoxAdapter(
@@ -1393,6 +1403,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } else {
       return Icons.wb_sunny_rounded;
     }
+  }
+
+  /// 今日待办数量胶囊：未完成的今日任务数（含逾期），0 时置灰
+  Widget _buildTodayPendingChip(TaskProvider provider) {
+    final count = provider.todayTasks.where((t) => !t.isCompleted).length;
+    final hasTasks = count > 0;
+    final color =
+        hasTasks ? AppTheme.primaryColor : AppTheme.textSecondaryColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: hasTasks
+            ? AppTheme.primaryColor.withValues(alpha: 0.12)
+            : Colors.grey.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.fact_check_rounded, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            '今日待办 $count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 构建AI建议卡片 - 紧凑单行横幅
