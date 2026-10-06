@@ -462,97 +462,102 @@ class _QuickAddModalState extends State<QuickAddModal> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 输入框（带拍照识别按钮）
+                        // 输入框（整行宽度）；拍照/语音按钮下沉到下方工具行，
+                        // 不再挤占输入框宽度
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: Colors.grey.shade200),
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          child: Column(
                             children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _controller,
-                                  focusNode: _focusNode,
-                                  onChanged: _parseInputLocal,
-                                  maxLines: 3,
-                                  minLines: 1,
-                                  decoration: const InputDecoration(
-                                    hintText: '例如：明天下午3点开会，比较紧急 #工作',
-                                    hintStyle: TextStyle(
-                                      color: AppTheme.textHintColor,
-                                      fontSize: 15,
-                                    ),
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.all(16),
-                                  ),
-                                  style: const TextStyle(
+                              TextField(
+                                controller: _controller,
+                                focusNode: _focusNode,
+                                onChanged: _parseInputLocal,
+                                maxLines: 3,
+                                minLines: 1,
+                                decoration: const InputDecoration(
+                                  hintText: '例如：明天下午3点开会，比较紧急 #工作',
+                                  hintStyle: TextStyle(
+                                    color: AppTheme.textHintColor,
                                     fontSize: 15,
-                                    height: 1.5,
-                                    color: AppTheme.textPrimaryColor,
                                   ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding:
+                                      EdgeInsets.fromLTRB(16, 14, 16, 6),
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  height: 1.5,
+                                  color: AppTheme.textPrimaryColor,
                                 ),
                               ),
-                              // 拍照识别文本（OCR）
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    right: 8, bottom: 8),
-                                child: _isOcrProcessing
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : IconButton(
-                                        tooltip: '拍照识别文本',
-                                        icon: const Icon(
-                                            Icons.camera_alt_outlined,
-                                            size: 22),
-                                        color: AppTheme.primaryColor,
-                                        onPressed: _showOcrSourcePicker,
-                                      ),
-                              ),
-                              // 语音输入（口述任务，走 AI 解析链）；
-                              // 设备无识别服务时置灰，提示用输入法语音替代
-                              Padding(
-                                padding:
-                                    const EdgeInsets.only(right: 8, bottom: 8),
-                                child: Tooltip(
-                                  message: _speechSupported == false
-                                      ? '此设备无系统语音识别（可用输入法语音键替代）'
-                                      : (_isRecognizing
-                                          ? '识别中…'
-                                          : (_isListening
-                                              ? '停止语音'
-                                              : '语音输入')),
-                                  child: IconButton(
-                                    icon: _isRecognizing
-                                        ? const SizedBox(
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  // 拍照识别文本（OCR）
+                                  _isOcrProcessing
+                                      ? const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 6),
+                                          child: SizedBox(
                                             width: 20,
                                             height: 20,
                                             child: CircularProgressIndicator(
-                                                strokeWidth: 2.2),
-                                          )
-                                        : (_isListening
-                                            ? const Icon(Icons.mic_rounded,
-                                                size: 24)
-                                            : const Icon(
-                                                Icons.mic_none_rounded,
-                                                size: 22)),
-                                    color: _isRecognizing
-                                        ? AppTheme.primaryColor
-                                        : (_isListening
-                                            ? AppTheme.errorColor
-                                            : AppTheme.primaryColor),
-                                    disabledColor: Colors.grey.shade400,
-                                    onPressed: _speechSupported == false
-                                        ? null
-                                        : _toggleSpeechInput,
+                                                strokeWidth: 2),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          tooltip: '拍照识别文本',
+                                          icon: const Icon(
+                                              Icons.camera_alt_outlined,
+                                              size: 20),
+                                          color: AppTheme.primaryColor,
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: _showOcrSourcePicker,
+                                        ),
+                                  const SizedBox(width: 8),
+                                  // 语音输入（口述任务，走 AI 解析链）；
+                                  // 设备无识别服务时置灰，提示用输入法语音替代
+                                  Tooltip(
+                                    message: _speechSupported == false
+                                        ? '此设备无系统语音识别（可用输入法语音键替代）'
+                                        : (_isRecognizing
+                                            ? '识别中…'
+                                            : (_isListening
+                                                ? '停止语音'
+                                                : '语音输入')),
+                                    child: IconButton(
+                                      icon: _isRecognizing
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2.2),
+                                            )
+                                          : (_isListening
+                                              ? const Icon(Icons.mic_rounded,
+                                                  size: 22)
+                                              : const Icon(
+                                                  Icons.mic_none_rounded,
+                                                  size: 20)),
+                                      color: _isRecognizing
+                                          ? AppTheme.primaryColor
+                                          : (_isListening
+                                              ? AppTheme.errorColor
+                                              : AppTheme.primaryColor),
+                                      disabledColor: Colors.grey.shade400,
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: _speechSupported == false
+                                          ? null
+                                          : _toggleSpeechInput,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                ],
                               ),
                             ],
                           ),
