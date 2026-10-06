@@ -1470,11 +1470,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    Text(
-                      '$completedCount/$totalCount',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondaryColor,
+                    // 数字涨到 4 位数后 12px 放不下会折行溢出圆环，
+                    // 用 FittedBox 按 50px 宽度自适应缩小
+                    SizedBox(
+                      width: 50,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '$completedCount/$totalCount',
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondaryColor,
+                          ),
+                        ),
                       ),
                     ),
                   ],
