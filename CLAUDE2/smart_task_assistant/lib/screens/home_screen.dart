@@ -1439,54 +1439,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       child: Row(
         children: [
-          // 紧凑的进度环
+          // 紧凑的进度环：环内只放百分比，分数放环正下方，
+          // 避免 4 位数分数在环内折行/压到环线
           SizedBox(
             width: 56,
-            height: 56,
-            child: Stack(
-              alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
                   width: 56,
                   height: 56,
-                  child: CircularProgressIndicator(
-                    value: progressPercent,
-                    strokeWidth: 6,
-                    backgroundColor:
-                        AppTheme.primaryColor.withValues(alpha: 0.1),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppTheme.primaryColor),
-                    strokeCap: StrokeCap.round,
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${(progressPercent * 100).toInt()}%',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                    // 数字涨到 4 位数后 12px 放不下会折行溢出圆环，
-                    // 用 FittedBox 按 50px 宽度自适应缩小
-                    SizedBox(
-                      width: 50,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '$completedCount/$totalCount',
-                          maxLines: 1,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondaryColor,
-                          ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: CircularProgressIndicator(
+                          value: progressPercent,
+                          strokeWidth: 6,
+                          backgroundColor:
+                              AppTheme.primaryColor.withValues(alpha: 0.1),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppTheme.primaryColor),
+                          strokeCap: StrokeCap.round,
                         ),
                       ),
+                      Text(
+                        '${(progressPercent * 100).toInt()}%',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // 分数放环外下方，FittedBox 兜底超长数字
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '$completedCount/$totalCount',
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textSecondaryColor,
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
