@@ -1408,6 +1408,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
         _controller.selection =
             TextSelection.fromPosition(TextPosition(offset: full.length));
         _parseInputLocal(full);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未识别到语音内容，请靠近一点再试')),
+        );
       }
       return;
     }
@@ -1480,6 +1484,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
           _controller.selection =
               TextSelection.fromPosition(TextPosition(offset: full.length));
           _parseInputLocal(full);
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未识别到语音内容，请靠近一点再试')),
+          );
         }
       },
     );

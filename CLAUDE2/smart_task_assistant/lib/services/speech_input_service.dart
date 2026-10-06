@@ -185,6 +185,9 @@ class SpeechInputService {
     _recorder = AudioRecorder();
     if (!await _recorder!.hasPermission()) return false;
 
+    // 新会话必须重置静音断句状态机：上次会话遗留的 heardSpeech/silentChunks
+    // 会让本次开头的一点静音立刻触发断句，录到纯静音、识别为空
+    _silence.reset();
     _pcmChunks.clear();
     _pcmTotal = 0;
     final micStream = await _recorder!.startStream(

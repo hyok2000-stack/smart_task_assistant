@@ -63,6 +63,26 @@ void main() {
       expect(d.shouldStop(50), isTrue);
     });
 
+    test('两次录音会话：新会话必须 reset，否则开头的静音立刻断句', () {
+      final d = SilenceDetector();
+      // 第一次会话：说话 → 静音满 14 块触发断句（状态残留）
+      for (var i = 0; i < 3; i++) {
+        d.shouldStop(1000);
+      }
+      for (var i = 1; i <= 13; i++) {
+        expect(d.shouldStop(100), isFalse, reason: '第一次会话静音第 $i 块不应断句');
+      }
+      expect(d.shouldStop(100), isTrue, reason: '第一次会话应正常断句');
+      // 第二次会话若不 reset：silentChunks 已 ≥14，第 1 块静音立即触发
+      expect(d.shouldStop(100), isTrue, reason: '不 reset 时复现 bug：开头静音立即断句');
+      // 正确做法：服务层开新会话前 reset → 恢复完整的开头宽限期
+      d.reset();
+      for (var i = 1; i <= 39; i++) {
+        expect(d.shouldStop(100), isFalse, reason: '新会话开头静音第 $i 块不应断句');
+      }
+      expect(d.shouldStop(100), isTrue);
+    });
+
     test('默认参数换算时间：14 块≈1.6 秒，40 块≈4.5 秒', () {
       final d = SilenceDetector();
       expect(d.silenceChunksToStop, 14);
