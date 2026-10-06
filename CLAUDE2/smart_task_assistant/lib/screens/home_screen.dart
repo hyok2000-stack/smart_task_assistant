@@ -200,10 +200,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 顶部工具栏（同步失败时换行，同步 chip 单独第二行，避免和天气 chip 挤）
+                    // 顶部工具栏（第一行：天气+功能按钮；第二行：今日待办+云同步）
                     Builder(builder: (context) {
-                      final syncFailed = provider.backendSyncError != null &&
-                          provider.backendSyncError!.isNotEmpty;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -216,11 +214,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     // 天气紧凑图标
                                     _buildWeatherChip(),
                                     const SizedBox(width: 8),
-                                    // 云同步 chip：非失败时在第一行
-                                    if (!syncFailed) ...[
-                                      _buildSyncDot(provider),
-                                      const SizedBox(width: 8),
-                                    ],
                                     // 离线提示点
                                     StreamBuilder<List<ConnectivityResult>>(
                                       stream:
@@ -285,11 +278,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                             ],
                           ),
-                          // 同步失败时，chip 单独排到第二行
-                          if (syncFailed) ...[
-                            const SizedBox(height: 8),
-                            _buildSyncDot(provider),
-                          ],
+                          // 第二行：今日待办数量 + 云同步状态
+                          //（云同步与右侧搜索等大按钮同行时会被遮挡，统一下沉）
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _buildTodayPendingChip(provider),
+                              const SizedBox(width: 8),
+                              _buildSyncDot(provider),
+                            ],
+                          ),
                         ],
                       );
                     }),
@@ -297,17 +295,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-                    // 今日待办数量
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _buildTodayPendingChip(provider),
-                        ),
-                      ),
-                    ),
-                    // AI 建议卡片
+            // AI 建议卡片
             if (provider.todayTasks.any((t) => !t.isCompleted) &&
                 !_isAICardDismissed)
               SliverToBoxAdapter(
