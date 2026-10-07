@@ -14,6 +14,7 @@ import '../widgets/quick_add_modal.dart';
 import '../widgets/task_list_skeleton.dart';
 import '../widgets/task_template_dialog.dart';
 import '../widgets/ai_chat_dialog.dart';
+import '../widgets/backend_login_dialog.dart';
 import 'focus_screen.dart';
 import '../utils/app_localizations.dart';
 import '../services/weather_service.dart';
@@ -937,7 +938,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       label = l.syncLabelOff;
       tooltip = l.syncNotLoggedIn;
       icon = Icons.cloud_off_rounded;
-      onTap = () => setState(() => _currentIndex = 4);
+      // 未登录：直接弹出登录对话框（登录成功自动同步云端变更），
+      // 不再绕道设置页手动翻找登录入口
+      onTap = () async {
+        await showBackendLoginDialog(context);
+        if (mounted) setState(() {});
+      };
     } else if (isSyncing) {
       color = AppTheme.infoColor;
       label = l.syncLabelSyncing;
