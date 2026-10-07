@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../database/database_helper.dart';
 import '../models/task.dart';
 import '../providers/task_provider.dart';
+import '../services/reminder_service.dart';
 import '../theme/app_theme.dart';
 import 'package:uuid/uuid.dart';
 
@@ -32,8 +33,10 @@ class _FocusScreenState extends State<FocusScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    // 专注进行中直接退出页面：会话按已进行时长落库（incomplete），不丢数据
+    // 专注进行中直接退出页面：会话按已进行时长落库（incomplete），不丢数据；
+    // 勿扰同步解除，到期提醒恢复正常
     if (_running && _startedAt != null) {
+      ReminderService.setFocusDnd(active: false);
       final elapsed =
           DateTime.now().difference(_startedAt!).inMinutes;
       DatabaseHelper().saveFocusSession(
@@ -57,6 +60,8 @@ class _FocusScreenState extends State<FocusScreen> {
       _startedAt = DateTime.now();
       _deadlineAt = deadline;
     });
+    // 专注勿扰：计时期间暂停所有到期提醒（墙钟截止，App 被杀也会到点自动恢复）
+    ReminderService.setFocusDnd(active: true, deadline: deadline);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       // 以墙钟校准：退后台 Timer 冻结后回来自动追平
       final remaining = _deadlineAt!.difference(DateTime.now()).inSeconds;
@@ -76,6 +81,8 @@ class _FocusScreenState extends State<FocusScreen> {
 
   Future<void> _finish({required bool completed}) async {
     _timer?.cancel();
+    // 专注结束（完成或手动停止）：解除勿扰，到期提醒恢复
+    ReminderService.setFocusDnd(active: false);
     final startedAt = _startedAt ?? DateTime.now();
     // 会话时长按墙钟计算（而非剩余秒数），后台冻结不会失真
     final elapsed = DateTime.now().difference(startedAt).inMinutes;
@@ -241,7 +248,7 @@ class _FocusScreenState extends State<FocusScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _running ? '专注中，别被打扰哦' : '选择任务和时长，开始专注',
+                        _running ? '专注中，到期提醒已暂停' : '选择任务和时长，开始专注',
                         style: const TextStyle(
                             fontSize: 13, color: AppTheme.textSecondaryColor),
                       ),

@@ -1,7 +1,7 @@
 name: smart_task_assistant
 description: "智能任务助手 - 基于AI的任务管理工具"
 publish_to: 'none'
-version: 2.2.53+315
+version: 2.2.54+316
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

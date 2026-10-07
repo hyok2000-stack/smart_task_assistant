@@ -273,6 +273,8 @@ class ReminderService {
 
   void _checkRemindersInner() {
     if (_settingsProvider?.isQuietTime(DateTime.now()) ?? false) return;
+    // 专注模式勿扰：专注计时进行中暂停所有到期提醒（结束后自动恢复）
+    if (isFocusDndActive) return;
     // APP 在后台时，Flutter 层跳过提醒检查，由原生服务全权处理
     // 原因：flutter_tts 在 Activity 暂停时无法发声，
     // 且 Flutter 层更新状态会导致提醒被"吞掉"而原生层不再触发
@@ -875,6 +877,41 @@ class ReminderService {
 
   /// App 是否在前台（前台时由 Flutter 层处理提醒，后台时由 Kotlin 层处理）
   bool isAppForeground = true;
+
+  // --- 专注模式勿扰：专注计时进行中暂停所有到期提醒 ---
+  // 静态成员：FocusScreen 与检查链可能持有不同实例，标志必须全局共享
+
+  static const _focusDndKey = 'focus_dnd_until';
+  static int focusDndUntilMs = 0;
+
+  static bool get isFocusDndActive =>
+      focusDndUntilMs > DateTime.now().millisecondsSinceEpoch;
+
+  /// 专注页设置/清除勿扰：内存值供检查层即时生效，磁盘值（字符串形式）
+  /// 供原生检查层读取，App 重启后由 [initFocusDndFromPrefs] 恢复
+  static Future<void> setFocusDnd(
+      {required bool active, DateTime? deadline}) async {
+    focusDndUntilMs =
+        (active && deadline != null) ? deadline.millisecondsSinceEpoch : 0;
+    final sp = await SharedPreferences.getInstance();
+    if (focusDndUntilMs > 0) {
+      await sp.setString(_focusDndKey, focusDndUntilMs.toString());
+    } else {
+      await sp.remove(_focusDndKey);
+    }
+  }
+
+  /// 启动时恢复勿扰状态（专注中 App 被杀后重启仍继续静音到期提醒）
+  static Future<void> initFocusDndFromPrefs() async {
+    final sp = await SharedPreferences.getInstance();
+    final v = int.tryParse(sp.getString(_focusDndKey) ?? '') ?? 0;
+    focusDndUntilMs = v;
+    // 已过期的残留值顺手清掉
+    if (v > 0 && !isFocusDndActive) {
+      await sp.remove(_focusDndKey);
+      focusDndUntilMs = 0;
+    }
+  }
 
   // 屏幕状态缓存（由原生层 isScreenOn 查询更新）
   static const _reminderChannel =

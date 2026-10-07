@@ -76,6 +76,9 @@ void main() {
   // 恢复"系统识别不可靠"持久化标志（华为识别服务卡死过则直接走离线引擎）
   SpeechInputService.instance.loadSystemAsrUnreliable();
 
+  // 恢复专注模式勿扰状态（专注中 App 被杀后重启，到期截止前仍保持静音）
+  ReminderService.initFocusDndFromPrefs();
+
   // 全局错误边界：任何 widget build 抛异常时显示友好提示，避免 release 模式渲染成白屏；
   // 同时打印异常堆栈，便于定位偶发性白页面的根因。
   ErrorWidget.builder = (FlutterErrorDetails details) {

@@ -694,6 +694,15 @@ class ReminderChecker(private val context: Context) {
             Log.d(TAG, "Quiet hours active, skip reminder check")
             return items
         }
+        // 专注模式勿扰：Flutter 专注计时写入截止时刻（字符串毫秒），
+        // 进行中暂停所有到期提醒，结束后自动恢复
+        val focusDndUntil = runCatching {
+            flutterPrefs?.getString("flutter.focus_dnd_until", null)?.toLongOrNull()
+        }.getOrDefault(null) ?: 0L
+        if (focusDndUntil > System.currentTimeMillis()) {
+            Log.d(TAG, "Focus DND active until $focusDndUntil, skip all reminders")
+            return items
+        }
         val db = openDb() ?: return items
 
         try {
