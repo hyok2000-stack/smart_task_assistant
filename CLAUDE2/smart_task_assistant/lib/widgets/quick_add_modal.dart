@@ -52,7 +52,7 @@ class _QuickAddModalState extends State<QuickAddModal> {
   bool _showCustomReminder = false;
 
   // 周期任务
-  bool _isRecurring = false;
+  bool _isRecurring = true; // 默认每日周期
   String _recurringRule = 'daily'; // daily, weekly, monthly, yearly
 
   // 语音可用性预检：null=检测中，false=系统识别与离线识别都不可用（按钮置灰）

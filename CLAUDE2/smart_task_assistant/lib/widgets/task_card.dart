@@ -649,8 +649,8 @@ class TaskCard extends StatelessWidget {
                         _buildStatusTag(context, task.status),
                         // 截止时间
                         if (task.dueTime != null) _buildTimeTag(context),
-                        // 重复周期
-                        if (task.isRecurring) _buildRecurringTag(context),
+                        // 重复周期：所有任务都显示，点击可选周期
+                        _buildRecurringTag(context),
                         // 提醒时间
                         if (task.reminderMinutes != null &&
                             task.reminderMinutes! > 0)
@@ -1119,22 +1119,32 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  /// 构建重复周期标签 - 可点击修改
+  /// 构建重复周期标签 - 所有任务可见，点击修改周期；
+  /// 非周期任务显示"不重复"并置灰，周期任务按规则紫色高亮
   Widget _buildRecurringTag(BuildContext context) {
     final l = context.l;
     String label;
+    Color color;
     switch (task.recurringRule) {
       case 'daily':
         label = l.dailyRepeat;
+        color = AppTheme.primaryColor;
         break;
       case 'weekly':
         label = l.weeklyRepeat;
+        color = AppTheme.primaryColor;
         break;
       case 'monthly':
         label = l.monthlyRepeat;
+        color = AppTheme.primaryColor;
+        break;
+      case 'yearly':
+        label = l.yearlyRepeat;
+        color = AppTheme.primaryColor;
         break;
       default:
-        label = l.recurringCycleShort;
+        label = l.noRepeat;
+        color = AppTheme.textSecondaryColor;
     }
 
     return GestureDetector(
@@ -1142,11 +1152,11 @@ class TaskCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: AppTheme.primaryColor.withValues(alpha: 0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onRecurringTap != null
               ? Border.all(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                  color: color.withValues(alpha: 0.3),
                   width: 1,
                 )
               : null,
@@ -1158,9 +1168,9 @@ class TaskCard extends StatelessWidget {
             const SizedBox(width: 3),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppTheme.primaryColor,
+                color: color,
                 fontWeight: FontWeight.w600,
               ),
             ),

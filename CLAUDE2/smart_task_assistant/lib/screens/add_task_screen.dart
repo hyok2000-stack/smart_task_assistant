@@ -44,7 +44,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   TaskStatus _status = TaskStatus.pending; // 任务状态
   List<String> _selectedTagIds = [];
   int? _reminderMinutes; // 单选提醒时间
-  bool _isRecurring = false; // 是否周期任务
+  bool _isRecurring = true; // 默认每日周期任务
   String _recurringRule = 'daily'; // 周期规则：daily, weekly, monthly
   bool _isProcessing = false;
   bool _aiDetected = false;
