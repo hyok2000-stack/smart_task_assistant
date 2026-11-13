@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, EventChannel;
+import 'package:path_provider/path_provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -70,6 +71,32 @@ class AppSettings extends ChangeNotifier {
 // 全局设置实例
 final AppSettings appSettings = AppSettings();
 
+/// 渲染崩溃持久化：追加写入应用外部目录 render_errors.log（超 200KB 截断重写）。
+/// 写在 /sdcard/Android/data/<包名>/files/ 下——adb shell 可直接读取，
+/// logcat 缓冲几十秒就会被系统日志刷掉，文件是事后定位渲染异常的唯一可靠来源。
+Future<void> _logBuildErrorToFile(FlutterErrorDetails details) async {
+  try {
+    final entry = '===== ${DateTime.now().toIso8601String()} =====\n'
+        '${details.exception}\n'
+        '${details.stack}\n\n';
+    final dirs = <String?>[
+      (await getExternalStorageDirectory())?.path,
+    ];
+    for (final path in dirs) {
+      if (path == null) continue;
+      try {
+        final f = File('$path/render_errors.log');
+        if (f.existsSync() && f.lengthSync() > 200 * 1024) {
+          await f.writeAsString('');
+        }
+        await f.writeAsString(entry, mode: FileMode.append);
+      } catch (_) {}
+    }
+  } catch (_) {
+    // 日志写入失败不能影响错误页展示
+  }
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -80,10 +107,11 @@ void main() {
   ReminderService.initFocusDndFromPrefs();
 
   // 全局错误边界：任何 widget build 抛异常时显示友好提示，避免 release 模式渲染成白屏；
-  // 同时打印异常堆栈，便于定位偶发性白页面的根因。
+  // 同时打印异常堆栈并持久化到文件（logcat 缓冲会滚动，渲染崩溃需要事后可查）。
   ErrorWidget.builder = (FlutterErrorDetails details) {
     debugPrint(
         '===== Widget build error =====\n${details.exception}\n${details.stack}');
+    unawaited(_logBuildErrorToFile(details));
     // 把异常摘要展示在页面上（可选中复制/截图）。release 模式下 debugPrint 不可见，
     // 这样用户能把错误信息反馈出来，便于定位偶发性渲染异常的根因。
     final errorSummary = details.exception.toString();
