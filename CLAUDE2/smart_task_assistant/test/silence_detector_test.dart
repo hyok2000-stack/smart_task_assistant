@@ -90,4 +90,30 @@ void main() {
       expect(d.speechThreshold, 600);
     });
   });
+
+  group('adaptiveThreshold 噪声自适应阈值', () {
+    test('安静环境：基线为 0，回落到默认 600', () {
+      expect(SilenceDetector.adaptiveThreshold(0), 600);
+      expect(SilenceDetector.adaptiveThreshold(100), 600);
+    });
+
+    test('噪声基线 250 → 阈值 750（3 倍）', () {
+      expect(SilenceDetector.adaptiveThreshold(250), 750);
+    });
+
+    test('极高噪声基线按 3 倍走，不设上限', () {
+      expect(SilenceDetector.adaptiveThreshold(1000), 3000);
+    });
+
+    test('自适应阈值下说话检测仍生效', () {
+      final d = SilenceDetector();
+      // 采样出基线 400 → 阈值 1200
+      final t = SilenceDetector.adaptiveThreshold(400);
+      expect(t, 1200);
+      expect(d.shouldStop(1000, threshold: t), isFalse); // 低于阈值不算说话
+      expect(d.heardSpeech, isFalse);
+      expect(d.shouldStop(1500, threshold: t), isFalse); // 高于阈值算说话
+      expect(d.heardSpeech, isTrue);
+    });
+  });
 }

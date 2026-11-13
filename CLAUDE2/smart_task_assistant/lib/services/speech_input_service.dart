@@ -188,6 +188,9 @@ class SpeechInputService {
     // 新会话必须重置静音断句状态机：上次会话遗留的 heardSpeech/silentChunks
     // 会让本次开头的一点静音立刻触发断句，录到纯静音、识别为空
     _silence.reset();
+    // 环境噪声自适应：开头约 0.5 秒采样噪声基线（每块约 120ms，4 块）
+    _noiseSampleLeft = 4;
+    _noisePeakMax = 0;
     _pcmChunks.clear();
     _pcmTotal = 0;
     final micStream = await _recorder!.startStream(
@@ -208,7 +211,15 @@ class SpeechInputService {
       // 静音自动断句 + 实时音量给 UI（0-100）
       final peak = _peakAmplitude(data);
       _amplitudeCtrl.add((peak * 100 / 32767).round().clamp(0, 100));
-      if (_silence.shouldStop(peak)) {
+      // 开头约 0.5 秒只采样环境噪声基线，不参与断句判定
+      if (_noiseSampleLeft > 0) {
+        _noiseSampleLeft--;
+        if (peak > _noisePeakMax) _noisePeakMax = peak;
+        return;
+      }
+      // 自适应阈值：环境噪声峰值的 3 倍，不低于默认 600
+      if (_silence.shouldStop(peak,
+          threshold: SilenceDetector.adaptiveThreshold(_noisePeakMax))) {
         _finishOfflineRecording();
         return;
       }
@@ -272,6 +283,9 @@ class SpeechInputService {
 
   // ---- 静音自动断句（状态机见文件末尾 SilenceDetector）----
   final SilenceDetector _silence = SilenceDetector();
+  // 环境噪声自适应：录音开头采样噪声基线（每块约120ms，4块≈0.5秒）
+  int _noiseSampleLeft = 0;
+  int _noisePeakMax = 0;
   bool _offlineRecognizing = false; // isolate 识别进行中（防重入）
   void Function()? _onMicClosed;
 
@@ -418,9 +432,18 @@ class SilenceDetector {
     silentChunks = 0;
   }
 
-  /// 送入一个音频块的峰值振幅，返回 true 表示应结束录音
-  bool shouldStop(int peak) {
-    if (peak > speechThreshold) {
+  /// 由环境噪声峰值计算自适应阈值：基线 3 倍，不低于 [floor]（默认 600）。
+  /// 嘈杂环境基线高→阈值水涨船高；安静环境基线低→回落到默认值。
+  static int adaptiveThreshold(int noisePeakMax, {int floor = 600}) {
+    final v = noisePeakMax * 3;
+    return v > floor ? v : floor;
+  }
+
+  /// 送入一个音频块的峰值振幅，返回 true 表示应结束录音。
+  /// [threshold] 传入环境噪声自适应阈值，不传则用默认 [speechThreshold]。
+  bool shouldStop(int peak, {int? threshold}) {
+    final effective = threshold ?? speechThreshold;
+    if (peak > effective) {
       heardSpeech = true;
       silentChunks = 0;
       return false;

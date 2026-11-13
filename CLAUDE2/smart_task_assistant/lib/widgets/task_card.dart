@@ -31,8 +31,10 @@ class TaskCard extends StatelessWidget {
   final String? distributionStatus;
   final bool isPinned;
   final VoidCallback? onPinToggle;
+
   /// 是否启用左滑/右滑操作（完成、删除）。批量选择模式下应置为 false。
   final bool enableSwipeActions;
+
   /// 「保存为模板」回调（在更多菜单中触发）
   final VoidCallback? onSaveAsTemplate;
 
@@ -70,9 +72,7 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = compact
-        ? _buildCompactCard(context)
-        : _buildFullCard(context);
+    final card = compact ? _buildCompactCard(context) : _buildFullCard(context);
 
     // 仅当提供了完成/删除回调、非紧凑卡（紧凑卡用于横向滚动，手势会冲突）、
     // 且未处于批量选择态时启用滑动
@@ -104,9 +104,8 @@ class TaskCard extends StatelessWidget {
                   icon: task.isCompleted
                       ? Icons.undo_rounded
                       : Icons.check_rounded,
-                  label: task.isCompleted
-                      ? l.swipeUndoComplete
-                      : l.swipeComplete,
+                  label:
+                      task.isCompleted ? l.swipeUndoComplete : l.swipeComplete,
                 ),
               ],
             )
@@ -203,7 +202,8 @@ class TaskCard extends StatelessWidget {
                         boxShadow: task.isCompleted && value > 0.5
                             ? [
                                 BoxShadow(
-                                  color: AppTheme.successColor.withValues(alpha: 0.3),
+                                  color: AppTheme.successColor
+                                      .withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -213,7 +213,8 @@ class TaskCard extends StatelessWidget {
                       child: value > 0.3
                           ? Opacity(
                               opacity: value.clamp(0, 1).toDouble(),
-                              child: const Icon(Icons.check, size: 12, color: Colors.white),
+                              child: const Icon(Icons.check,
+                                  size: 12, color: Colors.white),
                             )
                           : null,
                     ),
@@ -323,7 +324,8 @@ class TaskCard extends StatelessWidget {
                       ],
                       if (isDistributed) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
+                        const Icon(Icons.send_rounded,
+                            size: 11, color: AppTheme.primaryColor),
                       ],
                     ],
                   ),
@@ -361,7 +363,8 @@ class TaskCard extends StatelessWidget {
               const SizedBox(width: 4),
               GestureDetector(
                 onTap: onPinToggle,
-                child: const Icon(Icons.push_pin, size: 16, color: AppTheme.primaryColor),
+                child: const Icon(Icons.push_pin,
+                    size: 16, color: AppTheme.primaryColor),
               ),
             ],
           ],
@@ -405,7 +408,8 @@ class TaskCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
-      transform: Matrix4.identity()..scaleByDouble(isSelected ? 0.98 : 1.0, isSelected ? 0.98 : 1.0, 1, 1),
+      transform: Matrix4.identity()
+        ..scaleByDouble(isSelected ? 0.98 : 1.0, isSelected ? 0.98 : 1.0, 1, 1),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -449,7 +453,8 @@ class TaskCard extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isSelected ? 0.12 : 0.06),
+                      color: Colors.black
+                          .withValues(alpha: isSelected ? 0.12 : 0.06),
                       blurRadius: isSelected ? 20 : 12,
                       offset: const Offset(0, 4),
                     ),
@@ -475,7 +480,8 @@ class TaskCard extends StatelessWidget {
                         GestureDetector(
                           onTap: onComplete,
                           child: TweenAnimationBuilder<double>(
-                            tween: Tween<double>(begin: 0, end: task.isCompleted ? 1 : 0),
+                            tween: Tween<double>(
+                                begin: 0, end: task.isCompleted ? 1 : 0),
                             duration: const Duration(milliseconds: 400),
                             curve: Curves.elasticOut,
                             builder: (context, value, child) {
@@ -691,9 +697,14 @@ class TaskCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.person_pin_rounded, size: 11, color: Colors.orange.shade700),
+          Icon(Icons.person_pin_rounded,
+              size: 11, color: Colors.orange.shade700),
           const SizedBox(width: 3),
-          Text('指派给我', style: TextStyle(fontSize: 12, color: Colors.orange.shade700, fontWeight: FontWeight.w600)),
+          Text('指派给我',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange.shade700,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -702,7 +713,8 @@ class TaskCard extends StatelessWidget {
   Widget _buildDistributedBadge(BuildContext context) {
     final l = context.l;
     if (distributionStatus != null) {
-      return DistributionStatusWidget(status: distributionStatus!, compact: true);
+      return DistributionStatusWidget(
+          status: distributionStatus!, compact: true);
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -713,7 +725,8 @@ class TaskCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.send_rounded, size: 11, color: AppTheme.primaryColor),
+          const Icon(Icons.send_rounded,
+              size: 11, color: AppTheme.primaryColor),
           const SizedBox(width: 3),
           Text(
             l.distributed,
@@ -778,7 +791,8 @@ class TaskCard extends StatelessWidget {
     }
 
     return GestureDetector(
-      onTap: onPriorityChange != null ? () => _showPriorityPicker(context) : null,
+      onTap:
+          onPriorityChange != null ? () => _showPriorityPicker(context) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -981,10 +995,30 @@ class TaskCard extends StatelessWidget {
     if (onStatusChange == null) return;
     final l = context.l;
     final options = <(TaskStatus, String, IconData, Color)>[
-      (TaskStatus.pending, l.statusPending, Icons.schedule_rounded, AppTheme.warningColor),
-      (TaskStatus.inProgress, l.statusInProgress, Icons.play_circle_filled_rounded, AppTheme.infoColor),
-      (TaskStatus.completed, l.statusCompleted, Icons.check_circle_rounded, AppTheme.successColor),
-      (TaskStatus.cancelled, l.statusCancelled, Icons.cancel_rounded, AppTheme.textHintColor),
+      (
+        TaskStatus.pending,
+        l.statusPending,
+        Icons.schedule_rounded,
+        AppTheme.warningColor
+      ),
+      (
+        TaskStatus.inProgress,
+        l.statusInProgress,
+        Icons.play_circle_filled_rounded,
+        AppTheme.infoColor
+      ),
+      (
+        TaskStatus.completed,
+        l.statusCompleted,
+        Icons.check_circle_rounded,
+        AppTheme.successColor
+      ),
+      (
+        TaskStatus.cancelled,
+        l.statusCancelled,
+        Icons.cancel_rounded,
+        AppTheme.textHintColor
+      ),
     ];
     showModalBottomSheet(
       context: context,
@@ -1164,7 +1198,8 @@ class TaskCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.repeat_rounded, size: 11, color: AppTheme.primaryColor),
+            const Icon(Icons.repeat_rounded,
+                size: 11, color: AppTheme.primaryColor),
             const SizedBox(width: 3),
             Text(
               label,
@@ -1207,7 +1242,8 @@ class TaskCard extends StatelessWidget {
           color: Colors.orange.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
           border: onReminderTap != null
-              ? Border.all(color: Colors.orange.withValues(alpha: 0.3), width: 1)
+              ? Border.all(
+                  color: Colors.orange.withValues(alpha: 0.3), width: 1)
               : null,
         ),
         child: Row(
@@ -1225,7 +1261,8 @@ class TaskCard extends StatelessWidget {
             ),
             if (onReminderTap != null) ...[
               const SizedBox(width: 2),
-              Icon(Icons.edit, size: 8, color: Colors.orange.withValues(alpha: 0.7)),
+              Icon(Icons.edit,
+                  size: 8, color: Colors.orange.withValues(alpha: 0.7)),
             ],
           ],
         ),
@@ -1244,60 +1281,89 @@ class TaskCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // 标签行防拥挤：最多展示 2 个，其余折叠为 +N（点击标签行仍可编辑全部）
+    const maxVisible = 2;
+    final visibleTags = taskTags.take(maxVisible).toList();
+    final hiddenCount = taskTags.length - visibleTags.length;
+
     return GestureDetector(
       onTap: () => _showTagEditDialog(context),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: taskTags.map((tag) {
-          final color = _parseColor(tag.color);
-          return Container(
-            margin: const EdgeInsets.only(right: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.12)],
+        children: [
+          ...visibleTags.map((tag) {
+            final color = _parseColor(tag.color);
+            return Container(
+              margin: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    color.withValues(alpha: 0.18),
+                    color.withValues(alpha: 0.12)
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.15),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.15),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.label_rounded,
+                      size: 8,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    tag.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(Icons.edit,
+                      size: 8, color: color.withValues(alpha: 0.8)),
+                ],
+              ),
+            );
+          }),
+          if (hiddenCount > 0)
+            Container(
+              margin: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '+$hiddenCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondaryColor,
                 ),
-              ],
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.label_rounded,
-                    size: 8,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  tag.name,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                Icon(Icons.edit, size: 8, color: color.withValues(alpha: 0.8)),
-              ],
-            ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }

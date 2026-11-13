@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../providers/task_provider.dart';
@@ -726,6 +727,75 @@ class _SettingsScreenState extends State<SettingsScreen>
             onTap: () {
               ReminderService.openAutoStartSettings();
             },
+          ),
+          _buildDivider(),
+          _buildListTile(
+            icon: Icons.bug_report_outlined,
+            title: '查看历史渲染错误',
+            subtitle: '页面渲染异常时自动记录完整堆栈，便于定位偶发问题',
+            trailing: const Icon(Icons.chevron_right,
+                color: AppTheme.textHintColor),
+            onTap: () => _showRenderErrorLog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 查看/复制/清空历史渲染错误日志（main.dart ErrorWidget 写入的堆栈文件，
+  /// 存于应用外部目录 /sdcard/Android/data/<包名>/files/，adb 也可读取）
+  Future<void> _showRenderErrorLog(BuildContext context) async {
+    final ext = await getExternalStorageDirectory();
+    final file = File('${ext?.path}/render_errors.log');
+    final content =
+        file.existsSync() && file.lengthSync() > 0 ? file.readAsStringSync() : '';
+
+    if (content.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂无渲染错误记录（最近未发生渲染异常）')),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('历史渲染错误'),
+        content: SizedBox(
+          width: MediaQuery.of(ctx).size.width > 420
+              ? 420
+              : MediaQuery.of(ctx).size.width * 0.9,
+          height: 320,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(fontSize: 11, height: 1.4),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('已复制到剪贴板')),
+              );
+            },
+            child: const Text('复制全部'),
+          ),
+          TextButton(
+            onPressed: () {
+              file.writeAsStringSync('');
+              Navigator.pop(ctx);
+            },
+            child: const Text('清空'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
           ),
         ],
       ),
