@@ -1847,7 +1847,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  /// 把 AI 配置弹窗输入框的当前值一次性提交到 Provider
+  ///（输入过程中不提交：每键写 Provider 会同步写盘并重建整个设置页，导致输入卡顿）
+  void _commitAIControllers(SettingsProvider settings) {
+    settings.setLocalLLMAddress(_localLLMAddressController.text);
+    settings.setLocalLLMModel(_localLLMModelController.text);
+    settings.setAPIKey(_apiKeyController.text);
+    settings.setAPIBase(_apiBaseController.text);
+    settings.setAPIModel(_apiModelController.text);
+  }
+
   void _showAISettingsDialog(BuildContext context, SettingsProvider settings) {
+    // 打开弹窗时同步一次控制器；后续输入只在弹窗内生效，保存/测试时才提交
+    _localLLMAddressController.text = settings.localLLMAddress;
+    _localLLMModelController.text = settings.localLLMModel;
+    _apiKeyController.text = settings.apiKey;
+    _apiBaseController.text = settings.apiBase;
+    _apiModelController.text = settings.apiModel;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1906,15 +1922,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                             hintText: 'http://localhost:11434',
                             border: const OutlineInputBorder(),
                             errorText:
-                                settings.isValidUrl(settings.localLLMAddress) ||
-                                        settings.localLLMAddress.isEmpty
-                                    ? null
-                                    : '请输入有效的URL地址',
+                                    _localLLMAddressController.text.isEmpty ||
+                                        settings.isValidUrl(
+                                            _localLLMAddressController.text)
+                                ? null
+                                : '请输入有效的URL地址',
                           ),
                           controller: _localLLMAddressController,
-                          onChanged: (value) {
-                            settings.setLocalLLMAddress(value);
-                          },
+                          onChanged: (value) => setState(() {}),
                         ),
                         const SizedBox(height: 12),
                         TextField(
@@ -1923,15 +1938,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                             hintText: 'qwen2.5:7b',
                             border: const OutlineInputBorder(),
                             errorText: !settings.isValidModelName(
-                              settings.localLLMModel,
+                              _localLLMModelController.text,
                             )
                                 ? '请输入模型名称'
                                 : null,
                           ),
                           controller: _localLLMModelController,
-                          onChanged: (value) {
-                            settings.setLocalLLMModel(value);
-                          },
+                          onChanged: (value) => setState(() {}),
                         ),
                       ]),
                     ],
@@ -1948,15 +1961,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                               hintText: 'https://api.openai.com/v1',
                               border: const OutlineInputBorder(),
                               errorText:
-                                  !settings.isValidUrl(settings.apiBase) &&
-                                          settings.apiBase.isNotEmpty
+                                  !settings.isValidUrl(_apiBaseController.text) &&
+                                          _apiBaseController.text.isNotEmpty
                                       ? '请输入有效的URL地址'
                                       : null,
                             ),
                             controller: _apiBaseController,
-                            onChanged: (value) {
-                              settings.setAPIBase(value);
-                            },
+                            onChanged: (value) => setState(() {}),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -1965,14 +1976,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                               hintText: 'gpt-3.5-turbo',
                               border: const OutlineInputBorder(),
                               errorText:
-                                  !settings.isValidModelName(settings.apiModel)
+                                  !settings.isValidModelName(_apiModelController.text)
                                       ? '请输入模型名称'
                                       : null,
                             ),
                             controller: _apiModelController,
-                            onChanged: (value) {
-                              settings.setAPIModel(value);
-                            },
+                            onChanged: (value) => setState(() {}),
                           ),
                         ],
                       ),
@@ -1988,8 +1997,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                     TextButton.icon(
                       onPressed: _isTestingConnection
                           ? null
-                          : () => _testConnection(
-                              settings, settings.aiMode, setState),
+                          : () {
+                              // 先提交输入框当前值，测试的就是输入框里的配置
+                              _commitAIControllers(settings);
+                              _testConnection(
+                                  settings, settings.aiMode, setState);
+                            },
                       icon: _isTestingConnection
                           ? const SizedBox(
                               width: 16,
@@ -2056,7 +2069,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: () async {
-                          // 同步 AI 配置到 AIService
+                          // 保存时一次性提交输入框的值到 Provider，再同步到 AIService
+                          _commitAIControllers(settings);
                           await settings.syncAIConfig();
                           if (!context.mounted) return;
                           Navigator.pop(context);
@@ -2202,9 +2216,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
           controller: _apiKeyController,
-          onChanged: (value) {
-            settings.setAPIKey(value);
-          },
           obscureText: obscureText,
         );
       },
