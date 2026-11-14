@@ -168,9 +168,15 @@ class _AIChatDialogState extends State<AIChatDialog>
       // 强制重新加载AI配置，确保使用最新的设置
       await _aiService.loadConfig(forceReload: true);
 
-      // C8: 检测任务创建意图
+      // 检测任务创建意图；疑问句不算——如"今天任务怎么安排？"应作为问题
+      // 交给 AI 回答，而不是返回任务卡片
+      final isQuestion = message.contains('？') ||
+          message.contains('?') ||
+          RegExp('^(怎么|如何|为什么|为啥|什么|啥|是否|能不能|可不可以|会不会|多少|几时|何时|哪)')
+              .hasMatch(message.trim());
       final taskKeywords = ['创建任务', '添加任务', '新建任务', '提醒我', '帮我记', '安排', '待办'];
-      final isTaskIntent = taskKeywords.any((k) => message.contains(k));
+      final isTaskIntent =
+          !isQuestion && taskKeywords.any((k) => message.contains(k));
       if (isTaskIntent) {
         final parsed = await _aiService.parseTask(message);
         if (parsed != null) {

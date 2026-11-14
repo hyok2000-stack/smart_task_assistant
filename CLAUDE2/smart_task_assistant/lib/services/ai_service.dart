@@ -612,7 +612,8 @@ class AIService {
     try {
       final dio = Dio();
       dio.options.connectTimeout = const Duration(seconds: 15);
-      dio.options.receiveTimeout = const Duration(seconds: 120);
+      // 聊天回复一般 30 秒内返回；120 秒太久会让用户以为"不回答"
+      dio.options.receiveTimeout = const Duration(seconds: 60);
 
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
@@ -1086,7 +1087,8 @@ class AIService {
 
       final dio = Dio();
       dio.options.connectTimeout = const Duration(seconds: 15);
-      dio.options.receiveTimeout = const Duration(seconds: 120);
+      // 聊天回复一般 30 秒内返回；120 秒太久会让用户以为"不回答"
+      dio.options.receiveTimeout = const Duration(seconds: 60);
 
       final response = await dio.post(
         '${_config.baseUrl}/chat/completions',
@@ -1127,6 +1129,10 @@ class AIService {
       if (e is DioException) {
         if (e.response != null) {
           errorDetail = 'HTTP ${e.response?.statusCode}: ${e.response?.data}';
+        } else if (e.type == DioExceptionType.connectionTimeout) {
+          errorDetail = '连接超时（15秒），请检查网络或 API 地址';
+        } else if (e.type == DioExceptionType.receiveTimeout) {
+          errorDetail = 'AI 响应超时（60秒无回复），请稍后重试或更换模型';
         } else {
           errorDetail = e.type.toString();
         }

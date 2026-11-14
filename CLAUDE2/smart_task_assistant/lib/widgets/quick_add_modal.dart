@@ -53,7 +53,11 @@ class _QuickAddModalState extends State<QuickAddModal> {
 
   // 周期任务
   bool _isRecurring = true; // 默认每日周期
-  String _recurringRule = 'daily'; // daily, weekly, monthly, yearly
+  String? _recurringRule = 'daily'; // daily, weekly, monthly, yearly；null=单次
+  bool _recurringManuallySet = false; // 用户手动改过周期后，解析不再自动覆盖
+  // 周期词：口述文本里出现则视为明确要求重复
+  static final RegExp _repeatWordRe =
+      RegExp('每天|每日|每周|星期|礼拜|每月|每年|工作日');
 
   // 语音可用性预检：null=检测中，false=系统识别与离线识别都不可用（按钮置灰）
   bool? _speechSupported;
@@ -174,6 +178,12 @@ class _QuickAddModalState extends State<QuickAddModal> {
       _selectedPriority = s.priority;
       _selectedDueTime = s.dueTime;
       _selectedTags = s.tags;
+      // 周期默认策略：默认每日；但解析出明确日期且未提及周期词 → 单次，
+      // 避免一次性会议变成天天重复
+      if (!_recurringManuallySet) {
+        _isRecurring = _repeatWordRe.hasMatch(input) || s.dueTime == null;
+        _recurringRule = _isRecurring ? 'daily' : null;
+      }
       // 应用推荐的提醒时间（不在预设内时展开自定义输入框）
       if (s.reminderMinutes != null) {
         _selectedReminderMinutes = s.reminderMinutes;
@@ -809,7 +819,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
                                   Switch(
                                     value: _isRecurring,
                                     onChanged: (value) {
-                                      setState(() => _isRecurring = value);
+                                      setState(() {
+                                        _isRecurring = value;
+                                        _recurringManuallySet = true;
+                                      });
                                     },
                                     activeThumbColor: const Color(0xFF8B5CF6),
                                   ),
@@ -1752,7 +1765,10 @@ class _QuickAddModalState extends State<QuickAddModal> {
   Widget _buildRecurringChip(String label, String rule) {
     final isSelected = _recurringRule == rule;
     return GestureDetector(
-      onTap: () => setState(() => _recurringRule = rule),
+      onTap: () => setState(() {
+        _recurringRule = rule;
+        _recurringManuallySet = true;
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(

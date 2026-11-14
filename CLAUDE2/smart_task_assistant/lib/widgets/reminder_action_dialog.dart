@@ -26,9 +26,11 @@ class ReminderActionDialog extends StatelessWidget {
   });
 
   // 稍后提醒选项，不修改任务本身的提前提醒设置
+  // minutes = -1 表示"今天不再提醒"：静默到今天午夜，明天恢复正常提醒
   static const List<Map<String, dynamic>> _timeOptions = [
     {'minutes': 10, 'label': '10分钟后'},
     {'minutes': 60, 'label': '1小时后'},
+    {'minutes': -1, 'label': '今天不再'},
   ];
 
   @override
@@ -213,8 +215,16 @@ class ReminderActionDialog extends StatelessWidget {
   }) {
     return OutlinedButton(
       onPressed: () {
+        int snoozeMinutes = minutes;
+        if (minutes < 0) {
+          // "今天不再提醒"：临时静默到今天午夜（明天恢复正常提醒循环）
+          final now = DateTime.now();
+          final midnight = DateTime(now.year, now.month, now.day + 1);
+          snoozeMinutes = midnight.difference(now).inMinutes;
+          if (snoozeMinutes < 1) snoozeMinutes = 1;
+        }
         // 只设置临时稍后提醒，不修改任务的提前提醒时间
-        onAction(snoozeMinutes: minutes);
+        onAction(snoozeMinutes: snoozeMinutes);
         Navigator.pop(context);
       },
       style: OutlinedButton.styleFrom(
