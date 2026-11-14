@@ -146,8 +146,9 @@ class _AIChatDialogState extends State<AIChatDialog>
     final text = _controller.text.trim();
     if (text.isEmpty || _isLoading) return;
 
-    await _sendQuickMessage(text);
+    // 先清空输入框再发送：问题应立即从输入栏消失，AI 回复稍后到达
     _controller.clear();
+    await _sendQuickMessage(text);
   }
 
   /// 发送快捷消息（用于快捷按钮）
